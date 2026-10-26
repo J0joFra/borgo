@@ -4,7 +4,10 @@ City builder medievale in 3D low-poly per mobile in orizzontale, fatto con **God
 Il design completo è nel documento "Borgo — Game Design Document".
 
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
-![L'accampamento attorno al falò, con abitanti e tende migliorate](docs/falo.png)
+![Il falò, la torre del signore e le tende](docs/falo.png)
+![Campo di rape: coltura, semi e resa](docs/colture.png)
+![Il mercato del regno](docs/mercato.png)
+![Il forestale ripianta il bosco](docs/forestale.png)
 ![Dove mettere un campo: la terra fertile si colora](docs/zone.png)
 ![Il bosco tagliato dal taglialegna e il fiume](docs/disboscamento.png)
 ![Il feudo con i modelli KayKit](docs/feudo.png)
@@ -48,6 +51,20 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   con la bandiera del suo colore.
 - **Consiglio**: i due consiglieri guardano il villaggio e suggeriscono cosa fare, ognuno sulla sua arte (cibo, legna,
   case, oro, felicità, costruire); non ripetono mai lo stesso consiglio. In futuro potranno diventare vassalli delle terre conquistate.
+- **Dimora del signore**: scelta la guida, la tenda della sua famiglia diventa una torre a forma di castello attaccata al falò:
+  il centro del feudo. Si migliora in "Torre del signore".
+- **Popolazione**: la gente arriva un po' alla volta se c'è posto, più spesso se il villaggio è felice e pieno di scorte
+  (e di legna prima dell'inverno). Con la fame la felicità scende piano e ogni tanto qualcuno se ne va; idem se si è scontenti.
+- **Colture con semi**: orzo (primavera-estate), grano (estate-autunno), rape (autunno-inverno: crescono anche con la neve).
+  Il campo si semina all'inizio della prima stagione della coltura, consumando semi, e al raccolto ne restituisce di più.
+  Sulla mappa ci sono macchie di **piante selvatiche**: si parte con i semi di quella più vicina al falò; un campo messo sopra
+  la sua pianta selvatica non chiede semi e rende di più; il raccoglitore vicino alle piante selvatiche raccoglie semi.
+- **Mercato del regno** (pulsante "Mercato"): si compra e si vende a lotti di 10. I prezzi seguono le regioni della mappa
+  (più regioni producono una cosa, meno costa), oscillano a ogni stagione e cambiano con gli eventi del regno (carestie,
+  incendi, nuove miniere...). D'inverno il cibo rincara. Con un edificio "mercato" si fanno prezzi migliori.
+- **Forestale**: ripianta gli alberi nelle radure lasciate dai taglialegna (poi sui prati); in un anno tornano bosco.
+- **Strade** (pulsante "Strade"): tocchi l'inizio e la fine, il percorso è a L. Costano 1 pietra per cella in piano e 2 in salita;
+  sulle strade non si costruisce e la gente cammina più svelta. Toccando una strada la si può togliere.
 - **Abitanti che camminano**: ognuno ha una casa e, se lavora, va e viene dal suo edificio; i disoccupati stanno attorno al falò.
 - **Zone del territorio**: ogni cella ha una fertilità (più alta vicino all'acqua, la terra fertile è un verde più scuro).
   Taglialegna, cava, cacciatore e raccoglitore rendono di più con tanto bosco o tante rocce attorno; il pescatore rende di
@@ -63,7 +80,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Feudo in 3D** con modelli KayKit, telecamera isometrica con zoom e rotazione, stagioni visibili (erba, chiome, neve, luce).
 - **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
 
-**Da fare**: carte evento, banditi e difese, conquista delle regioni e vassalli, sentieri, ricrescita dei boschi, audio.
+**Da fare**: carte evento, banditi e difese, conquista delle regioni e vassalli, audio.
 
 ## Dove cambiare le cose
 
@@ -73,11 +90,15 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 | Ritmo, felicità, tasse, livelli | `data/bilanciamento.json` |
 | Nomi, risorse e signori delle regioni | `data/regioni.json` |
 | Casate, tratti, nome del regno caduto | `data/famiglie.json` |
+| Colture: stagioni, resa, semi | `data/colture.json` |
+| Mercato: prezzi, margini, eventi del regno | `data/mercato.json` |
+| Regole del mercato | `scripts/mercato.gd` |
+| Regioni della mappa (condivise da mappa e mercato) | `scripts/regno/regioni.gd` |
 | Consigli dei consiglieri | `scripts/consiglio.gd` |
 | Prologo davanti al falò | `scripts/ui/prologo.gd` |
 | Regole della partita | `scripts/game_state.gd` (autoload `GameState`) |
 | Terreno e regole di piazzamento | `scripts/feudo/terreno.gd` |
-| Fiume, fertilità, rese delle zone, disboscamento | `scripts/feudo/terreno.gd` |
+| Fiume, fertilità, zone, disboscamento, piantine, piante selvatiche, strade | `scripts/feudo/terreno.gd` |
 | Disegno del terreno, alberi, ceppi, zone colorate | `scripts/feudo/vista_terreno.gd` |
 | Abitanti che camminano | `scripts/feudo/abitanti.gd` |
 | Modelli degli edifici | `scripts/feudo/edificio_3d.gd` |

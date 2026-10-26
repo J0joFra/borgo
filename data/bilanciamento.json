@@ -1,90 +1,28 @@
 {
 	"tick_secondi": 2.0,
 	"tick_per_stagione": 60,
-	"partenza": {
-		"falo": "falo",
-		"tenda": "tenda",
-		"distanza_tende": 4
-	},
-	"risorse_iniziali": {
-		"legna": 30,
-		"pietra": 10,
-		"cibo": 40,
-		"oro": 20
-	},
+	"partenza": {"falo": "falo", "tenda": "tenda", "distanza_tende": 4},
+	"risorse_iniziali": {"legna": 30, "pietra": 10, "cibo": 40, "oro": 20},
 	"capacita_base": 100,
 	"cibo_per_abitante_tick": 0.1,
 	"felicita_base": 50,
-	"felicita": {
-		"senza_casa": -10,
-		"cibo_vario": 10,
-		"pane": 10,
-		"fame": -20,
-		"freddo": -15,
-		"disoccupazione": -10,
-		"soglia_disoccupazione": 0.2
-	},
+	"felicita": {"senza_casa": -10, "cibo_vario": 10, "pane": 10, "fame": -20, "freddo": -15, "disoccupazione": -10, "soglia_disoccupazione": 0.2},
 	"tasse": {
-		"basse": {
-			"oro": 0,
-			"felicita": 10
-		},
-		"normali": {
-			"oro": 1,
-			"felicita": 0
-		},
-		"alte": {
-			"oro": 2,
-			"felicita": -15
-		}
+		"basse": {"oro": 0, "felicita": 10},
+		"normali": {"oro": 1, "felicita": 0},
+		"alte": {"oro": 2, "felicita": -15}
 	},
-	"re": {
-		"tassa_iniziale": 15,
-		"incremento": 10,
-		"mancati_per_sconfitta": 2,
-		"malus_felicita": 15
-	},
-	"crescita": {
-		"soglia_arrivi": 60,
-		"soglia_partenze": 30,
-		"quota_partenze": 0.1,
-		"quota_morti_fame": 0.2,
-		"famiglia": 4
-	},
-	"vicinanza": {
-		"raggio": 4,
-		"malus_lontano": 0.5
-	},
-	"costruzione": {
-		"secondi_per_4_tile": 10,
-		"minimo": 10,
-		"massimo": 40,
-		"molt_inverno": 2
-	},
+	"re": {"tassa_iniziale": 15, "incremento": 10, "mancati_per_sconfitta": 2, "malus_felicita": 15},
+	"crescita": {"soglia_arrivi": 55, "controllo_ogni": 15, "probabilita_massima": 0.6, "massimo_per_volta": 3, "fame_partenza_ogni": 10, "soglia_partenze": 30, "scontenti_partenza_ogni": 20},
+	"vicinanza": {"raggio": 4, "malus_lontano": 0.5},
+	"costruzione": {"secondi_per_4_tile": 10, "minimo": 10, "massimo": 40, "molt_inverno": 2},
 	"rimborso_demolizione": 0.5,
 	"livelli": [
-		{
-			"nome": "Villaggio"
-		},
-		{
-			"nome": "Borgo",
-			"abitanti": 25,
-			"felicita": 50,
-			"edifici": {
-				"magazzino": 1
-			}
-		},
-		{
-			"nome": "Città",
-			"abitanti": 60,
-			"felicita": 60,
-			"edifici": {
-				"chiesa": 1
-			}
-		}
+		{"nome": "Villaggio"},
+		{"nome": "Borgo", "abitanti": 25, "felicita": 50, "edifici": {"magazzino": 1}},
+		{"nome": "Città", "abitanti": 60, "felicita": 60, "edifici": {"chiesa": 1}}
 	],
-	"disboscamento": {
-		"stagioni_per_esaurire": 12
-	},
-	"mangiare_grano": true
+	"disboscamento": {"stagioni_per_esaurire": 12},
+	"mangiare_grano": true,
+	"piantine": {"stagioni_per_crescere": 4}
 }

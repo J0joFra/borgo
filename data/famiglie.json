@@ -36,7 +36,7 @@
 	],
 	"tratti": {
 		"boscaioli": {"nome": "Boscaioli", "descrizione": "+20% legna", "produzione": {"legna": 1.2}, "area": "legna"},
-		"contadini": {"nome": "Contadini", "descrizione": "+20% cibo", "produzione": {"cibo": 1.2, "grano": 1.2}, "area": "cibo"},
+		"contadini": {"nome": "Contadini", "descrizione": "+20% cibo e raccolti", "produzione": {"cibo": 1.2, "grano": 1.2, "orzo": 1.2, "rape": 1.2}, "area": "cibo"},
 		"scalpellini": {"nome": "Scalpellini", "descrizione": "+20% pietra e ferro", "produzione": {"pietra": 1.2, "ferro": 1.2}, "area": "costruire"},
 		"mercanti": {"nome": "Mercanti", "descrizione": "+25% oro da tasse e mercato", "produzione": {"oro": 1.25}, "tasse": 1.25, "area": "oro"},
 		"devoti": {"nome": "Devoti", "descrizione": "+5 felicità", "felicita": 5, "area": "felicita"},

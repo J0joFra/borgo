@@ -113,7 +113,7 @@ func _mostra_consiglio() -> void:
 		var f: Dictionary = GameState.famiglie[i]
 		nomi.append("%s (%s)" % [f.capo, GameState.tratto(i).get("nome", "").to_lower()])
 	col.add_child(_testo(
-		"Le altre due casate non se ne vanno: %s siederanno nel tuo consiglio e ti daranno suggerimenti, ognuno sulla propria arte.\nUn giorno, quando conquisterai nuove terre, potrai affidarne una a loro come vassalli.\n\nPrima di tutto: cibo, legna e un tetto prima dell'inverno." % " e ".join(nomi),
+		"Le altre due casate non se ne vanno: %s siederanno nel tuo consiglio e ti daranno suggerimenti, ognuno sulla propria arte.\nUn giorno, quando conquisterai nuove terre, potrai affidarne una a loro come vassalli.\n\n%s\nPrima di tutto: cibo, legna e un tetto prima dell'inverno." % [" e ".join(nomi), _semi_iniziali()],
 		8, TESTO, 400))
 	var via := Button.new()
 	via.text = "Al lavoro"
@@ -124,6 +124,14 @@ func _mostra_consiglio() -> void:
 		finito.emit()
 		queue_free())
 	col.add_child(via)
+
+
+func _semi_iniziali() -> String:
+	for nome in GameState.nomi_colture():
+		var semi: String = GameState.colture[nome].semi
+		if GameState.risorse.get(semi, 0.0) > 0.0:
+			return "Vicino al falò cresce %s selvatico: ne abbiamo raccolto %d semi per il primo campo." % [GameState.colture[nome].nome.to_lower(), int(GameState.risorse[semi])]
+	return ""
 
 
 func _colonna() -> VBoxContainer:

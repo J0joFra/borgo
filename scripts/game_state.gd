@@ -11,7 +11,7 @@ signal message(testo: String)
 signal game_ended(vittoria: bool, motivo: String)
 signal capo_scelto(indice: int)
 signal consiglio(famiglia: int, testo: String)
-signal terreno_cambiato(celle: Array)  # celle di bosco abbattute
+signal terreno_cambiato(celle: Array)  # celle cambiate: bosco abbattuto o ricresciuto, piantine, strade
 
 const PRIMAVERA := 0
 const ESTATE := 1
@@ -19,15 +19,20 @@ const AUTUNNO := 2
 const INVERNO := 3
 const STAGIONI := ["Primavera", "Estate", "Autunno", "Inverno"]
 const CHIAVI_STAGIONI := ["primavera", "estate", "autunno", "inverno"]
-const RISORSE := ["legna", "pietra", "cibo", "ferro", "utensili", "oro", "grano", "farina"]
+const RISORSE := ["legna", "pietra", "cibo", "ferro", "utensili", "oro", "grano", "farina",
+	"orzo", "rape", "semi_orzo", "semi_grano", "semi_rape"]
+## Cosa si mangia, nell'ordine: prima il cibo pronto, poi le rape, l'orzo e per ultimo il grano (che serve al pane).
+const CIBI := ["cibo", "rape", "orzo", "grano"]
 ## Le risorse mostrate nella barra in alto (grano e farina restano nascosti).
-const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "grano", "ferro", "utensili", "oro"]
+const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "grano", "orzo", "rape", "ferro", "utensili", "oro"]
 const SAVE_PATH := "user://save.json"
-const VERSIONE_SALVATAGGIO := 3
+const VERSIONE_SALVATAGGIO := 4
 
 var edifici: Dictionary = {}  # tipo -> definizione (data/edifici.json)
 var bil: Dictionary = {}      # data/bilanciamento.json
 var dati_famiglie: Dictionary = {}  # data/famiglie.json
+var colture: Dictionary = {}  # data/colture.json
+var mercato: Mercato
 
 var risorse: Dictionary = {}
 var ultimo_delta: Dictionary = {}  # variazione di ogni risorsa nell'ultimo tick
@@ -54,6 +59,10 @@ var capo: int = -1            # indice in famiglie della casata che guida; -1 = 
 var ultimi_consigli: Dictionary = {}  # famiglia -> ultimo consiglio mostrato
 var _tick_dall_ultimo_consiglio := 0
 var _tagli_da_applicare: Array = []  # tagli del bosco letti dal salvataggio, applicati da avvia()
+var _terreno_salvato: Dictionary = {}  # strade, piantine e boschi nuovi letti dal salvataggio
+var _rng := RandomNumberGenerator.new()  # arrivi di nuove persone
+var _tick_scontento := 0
+var attrattiva := 0.0  # quanto il villaggio attira gente nuova (0..1), per il pannello Info
 
 var _prossimo_id: int = 1
 var _accumulo: float = 0.0
@@ -67,6 +76,7 @@ func _ready() -> void:
 	edifici = (load("res://data/edifici.json") as JSON).data
 	bil = (load("res://data/bilanciamento.json") as JSON).data
 	dati_famiglie = (load("res://data/famiglie.json") as JSON).data
+	colture = (load("res://data/colture.json") as JSON).data
 
 
 # --- Partita -----------------------------------------------------------------
@@ -81,11 +91,17 @@ func avvia() -> void:
 		nuova_partita()
 	terreno = TerrenoFeudo.new(seme_mappa)
 	terreno.applica_tagli(_tagli_da_applicare)
+	terreno.applica_salvataggio(_terreno_salvato)
 	_tagli_da_applicare = []
+	_terreno_salvato = {}
 	for b in buildings:
 		terreno.occupa(b)
 	if not caricata:
 		_prepara_accampamento()
+		# si parte con i semi della pianta selvatica più vicina all'accampamento
+		var vicina := terreno.selvatica_piu_vicina(TerrenoFeudo.centro_feudo())
+		if vicina != "":
+			risorse[colture[vicina].semi] = float(colture.semi_iniziali)
 		salva()
 	in_corso = true
 
@@ -137,9 +153,39 @@ func scegli_capo(indice: int) -> void:
 		else:
 			famiglie[i].colore = colori[prossimo % colori.size()]
 			prossimo += 1
+	_costruisci_dimora(indice)
 	capo_scelto.emit(indice)
 	changed.emit()
 	salva()
+
+
+## La tenda della famiglia che guida diventa la dimora del signore, attaccata al falò:
+## una torre a forma di castello che segna il centro del feudo.
+func _costruisci_dimora(indice: int) -> void:
+	if terreno == null:
+		return
+	var tenda := {}
+	var falo := {}
+	for b in buildings:
+		if b.tipo == "tenda" and b.get("famiglia", -1) == indice:
+			tenda = b
+		if b.tipo == "falo":
+			falo = b
+	if tenda.is_empty() or falo.is_empty():
+		return
+	terreno.libera(tenda)
+	buildings.erase(tenda)
+	building_removed.emit(tenda.id)
+	var posto := Vector2i(-1, -1)
+	for spostamento in [Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2), Vector2i(2, -2), Vector2i(-2, 2)]:
+		if terreno.posizione_valida("dimora", falo.cella + spostamento):
+			posto = falo.cella + spostamento
+			break
+	if posto.x < 0:
+		posto = terreno.trova_posto("dimora", falo.cella)
+	if posto.x >= 0:
+		var dimora := aggiungi_gratis("dimora", posto, 1.0)
+		dimora.famiglia = indice
 
 
 func consiglieri() -> Array[int]:
@@ -187,6 +233,11 @@ func nuova_partita(seme: int = -1) -> void:
 	ultimi_consigli = {}
 	_tick_dall_ultimo_consiglio = 0
 	_tagli_da_applicare = []
+	_terreno_salvato = {}
+	_rng.seed = seme_mappa + 17
+	_tick_scontento = 0
+	attrattiva = 0.0
+	mercato = Mercato.new(seme_mappa)
 	_scegli_famiglie()
 	buildings = []
 	finita = false
@@ -271,8 +322,10 @@ func resa_di(b: Dictionary) -> float:
 
 ## Quanto produrrebbe un edificio qui, a pieno regime, con la spiegazione della zona.
 ## Es. "Resa: 36 legna a stagione · 24 celle di bosco".
-func stima_produzione(tipo: String, cella: Vector2i, livello_b := 1) -> String:
+func stima_produzione(tipo: String, cella: Vector2i, livello_b := 1, coltura := "") -> String:
 	var d := def_di({"tipo": tipo, "livello": livello_b})
+	if d.get("coltura", false) and terreno:
+		return _stima_campo(d, cella, coltura if coltura != "" else coltura_iniziale(cella))
 	var produce: Dictionary = d.get("produce", {})
 	if produce.is_empty() or not d.has("zona") or terreno == null:
 		return ""
@@ -286,6 +339,18 @@ func stima_produzione(tipo: String, cella: Vector2i, livello_b := 1) -> String:
 		parti.append("%d %s" % [roundi(valore), r])
 	var quando := "al raccolto d'autunno" if raccolto else "a stagione"
 	return "Resa: %s %s · %s" % [", ".join(parti), quando, info.testo]
+
+
+func _stima_campo(d: Dictionary, cella: Vector2i, nome: String) -> String:
+	var c: Dictionary = colture[nome]
+	var info := terreno.info_zona("campo", cella, stagione)
+	var t := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
+	var selvatico := terreno.selvatica_sotto(cella, t) == nome
+	var valore := float(c.resa) * float(info.resa) * float(d.get("produzione", 1.0)) * bonus_guida(c.risorsa)
+	if selvatico:
+		valore *= float(colture.bonus_selvatico)
+	var semi := "%s selvatico qui: niente semi" % c.nome.to_lower() if selvatico else "semina con %d semi (ne hai %d)" % [int(c.semi_per_semina), int(risorse[c.semi])]
+	return "Resa: %d %s a stagione in %s · %s · %s" % [roundi(valore), c.risorsa, " e ".join(c.stagioni), info.testo, semi]
 
 
 func sbloccato(tipo: String) -> bool:
@@ -307,6 +372,8 @@ func piazza(tipo: String, cella: Vector2i, bonus: float) -> Dictionary:
 	for r in costo:
 		risorse[r] -= costo[r]
 	var b := _aggiungi(tipo, cella, bonus, 0.0)
+	if edifici[tipo].get("coltura", false):
+		b.coltura = coltura_iniziale(cella)
 	changed.emit()
 	return b
 
@@ -512,6 +579,9 @@ func _tick() -> void:
 		var molt := 1.0 if max_l == 0 else float(b.lavoratori) / max_l
 		molt *= float(b.bonus) * float(d.get("stagioni", {}).get(CHIAVI_STAGIONI[stagione], 1.0))
 		molt *= resa_di(b) * float(d.get("produzione", 1.0))
+		if d.get("coltura", false):
+			_lavora_campo(b, molt, cap, tps)
+			continue
 		if molt <= 0.0:
 			continue
 		# Se manca un ingrediente, l'edificio lavora solo per la parte disponibile.
@@ -527,10 +597,14 @@ func _tick() -> void:
 		var produce: Dictionary = d.get("produce", {})
 		for r in produce:
 			risorse[r] = minf(cap, risorse[r] + produce[r] / tps * molt * bonus_guida(r))
-		if produce.has("cibo"):
-			tipi_cibo[b.tipo] = true
+		if b.tipo == "raccoglitore":
+			_raccogli_semi(b, molt, cap, tps)
 		if d.get("pane", false):
 			_pane = true
+	# cibo vario: quanti cibi diversi ci sono in dispensa
+	for r in CIBI:
+		if risorse[r] >= 1.0:
+			tipi_cibo[r] = true
 	_tipi_cibo = tipi_cibo.size()
 
 	# Riscaldamento d'inverno.
@@ -546,17 +620,33 @@ func _tick() -> void:
 
 	# Cibo per gli abitanti.
 	# Si mangia prima il cibo; se non basta, il grano dei campi (non macinato, ma sfama).
-	var cibo_serve: float = abitanti * bil.cibo_per_abitante_tick
-	var dal_cibo := minf(risorse.cibo, cibo_serve)
-	risorse.cibo -= dal_cibo
-	var manca := cibo_serve - dal_cibo
-	if manca > 0.0 and bil.get("mangiare_grano", false):
-		var dal_grano := minf(risorse.grano, manca)
-		risorse.grano -= dal_grano
-		manca -= dal_grano
+	var manca: float = abitanti * bil.cibo_per_abitante_tick
+	for r in CIBI:
+		var preso := minf(risorse[r], manca)
+		risorse[r] -= preso
+		manca -= preso
 	_fame = manca > 0.0001
+	var c: Dictionary = bil.crescita
+	# Con la fame la felicità scende piano (vedi fattori) e ogni tanto qualcuno se ne va.
 	if _fame:
 		tick_fame += 1
+		if tick_fame % int(c.fame_partenza_ogni) == 0:
+			_togli_abitanti(1)
+			message.emit("Una persona se n'è andata: qui si patisce la fame")
+	else:
+		tick_fame = 0
+	if felicita < float(c.soglia_partenze):
+		_tick_scontento += 1
+		if _tick_scontento % int(c.scontenti_partenza_ogni) == 0:
+			_togli_abitanti(1)
+			message.emit("Una persona scontenta ha lasciato il villaggio")
+	else:
+		_tick_scontento = 0
+	if abitanti <= 0:
+		_fine(false, "Il villaggio è rimasto vuoto.")
+		return
+	if (tick_in_stagione + 1) % int(c.controllo_ogni) == 0:
+		_arrivi()
 
 	var obiettivo := 0.0
 	for v in fattori_felicita().values():
@@ -575,6 +665,184 @@ func _tick() -> void:
 		_tick_dall_ultimo_consiglio = 0
 		_aggiorna_consigli()
 	changed.emit()
+
+
+# --- Campi e colture -----------------------------------------------------------
+
+func coltura_di(b: Dictionary) -> Dictionary:
+	return colture.get(b.get("coltura", ""), {})
+
+
+## Vero se il campo sta (almeno in parte) sulla zona selvatica della sua coltura:
+## lì la pianta cresce da sé, quindi non servono semi e rende un po' di più.
+func campo_selvatico(b: Dictionary) -> bool:
+	if terreno == null:
+		return false
+	var t: Array = edifici[b.tipo].taglia
+	return terreno.selvatica_sotto(b.cella, Vector2i(int(t[0]), int(t[1]))) == b.get("coltura", "")
+
+
+## La coltura con cui partire su un campo nuovo: quella selvatica sotto, altrimenti
+## quella di cui si hanno più semi.
+func coltura_iniziale(cella: Vector2i) -> String:
+	if terreno:
+		var t: Array = edifici.campo.taglia
+		var selvatica := terreno.selvatica_sotto(cella, Vector2i(int(t[0]), int(t[1])))
+		if selvatica != "":
+			return selvatica
+	var migliore := "orzo"
+	var semi := -1.0
+	for nome in colture:
+		if colture[nome] is Dictionary and risorse.get(colture[nome].semi, 0.0) > semi:
+			semi = risorse[colture[nome].semi]
+			migliore = nome
+	return migliore
+
+
+func cambia_coltura(id: int, nome: String) -> void:
+	var b := trova(id)
+	if b.is_empty() or not colture.has(nome) or b.get("coltura", "") == nome:
+		return
+	b.coltura = nome
+	b.seminato = false
+	changed.emit()
+
+
+## Semina all'inizio della prima stagione della coltura (servono semi, tranne sulla zona
+## selvatica), poi produce nelle sue stagioni.
+func _lavora_campo(b: Dictionary, molt: float, cap: float, tps: float) -> void:
+	var c := coltura_di(b)
+	if c.is_empty():
+		return
+	var chiave: String = CHIAVI_STAGIONI[stagione]
+	var attiva: bool = chiave in c.stagioni
+	if not b.get("seminato", false):
+		if chiave == c.stagioni[0] and tick_in_stagione < tps / 2.0 and b.lavoratori > 0:
+			var selvatico := campo_selvatico(b)
+			if selvatico or risorse[c.semi] >= float(c.semi_per_semina):
+				if not selvatico:
+					risorse[c.semi] -= float(c.semi_per_semina)
+				b.seminato = true
+				b.senza_semi = false
+			elif not b.get("senza_semi", false):
+				b.senza_semi = true
+				message.emit("Il campo resta fermo: mancano %d semi di %s" % [int(c.semi_per_semina), c.nome.to_lower()])
+		return
+	if attiva and molt > 0.0:
+		var extra := float(colture.bonus_selvatico) if campo_selvatico(b) else 1.0
+		var r: String = c.risorsa
+		risorse[r] = minf(cap, risorse[r] + float(c.resa) / tps * molt * extra * bonus_guida(r))
+
+
+## Fine stagione: i campi arrivati all'ultima stagione della coltura raccolgono e tengono dei semi.
+func _fine_colture() -> void:
+	for b in buildings:
+		var c := coltura_di(b)
+		if c.is_empty() or not b.get("seminato", false):
+			continue
+		if CHIAVI_STAGIONI[stagione] == c.stagioni[c.stagioni.size() - 1]:
+			b.seminato = false
+			var quota := 1.0 if int(def_di(b).lavoratori) == 0 else float(b.lavoratori) / int(def_di(b).lavoratori)
+			risorse[c.semi] = minf(capacita(), risorse[c.semi] + float(c.semi_al_raccolto) * quota)
+
+
+func nomi_colture() -> Array:
+	return colture.keys().filter(func(k): return colture[k] is Dictionary)
+
+
+# --- Forestale ------------------------------------------------------------------
+
+## Fine stagione: le piantine crescono (in un anno diventano bosco) e i forestali
+## al lavoro piantano alberelli nelle radure e sui prati attorno.
+func _lavora_forestali() -> void:
+	if terreno == null:
+		return
+	var cambiate: Array = terreno.cresci_piantine()
+	for b in buildings:
+		var d := def_di(b)
+		if not d.has("pianta") or b.progresso < 1.0 or b.lavoratori == 0:
+			continue
+		if float(d.get("stagioni", {}).get(CHIAVI_STAGIONI[stagione], 1.0)) <= 0.0:
+			continue  # d'inverno non si pianta
+		var quota := float(b.lavoratori) / int(d.lavoratori)
+		var n := maxi(1, roundi(float(d.pianta) * quota * float(d.get("produzione", 1.0))))
+		var t := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
+		cambiate.append_array(terreno.pianta(b.cella, t, int(d.zona.raggio), n, int(bil.piantine.stagioni_per_crescere)))
+	if not cambiate.is_empty():
+		terreno_cambiato.emit(cambiate)
+
+
+# --- Strade ---------------------------------------------------------------------
+
+## Costo in pietra di una strada lungo queste celle (1 in piano, 2 in salita); -1 se non si può.
+func costo_strada(celle: Array) -> int:
+	if terreno == null:
+		return -1
+	return terreno.costo_strada(celle)
+
+
+func costruisci_strada(celle: Array) -> bool:
+	var costo := costo_strada(celle)
+	if costo < 0 or risorse.pietra < costo:
+		return false
+	risorse.pietra -= costo
+	var nuove := terreno.aggiungi_strada(celle)
+	terreno_cambiato.emit(nuove)
+	changed.emit()
+	return true
+
+
+func rimuovi_strada(cella: Vector2i) -> void:
+	if terreno and terreno.rimuovi_strada(cella):
+		terreno_cambiato.emit([cella])
+		changed.emit()
+
+
+# --- Mercato --------------------------------------------------------------------
+
+func ha_mercato() -> bool:
+	return conta_completati("mercato") > 0
+
+
+func costo_lotto(r: String) -> int:
+	return mercato.costo_lotto(r, stagione, ha_mercato())
+
+
+func ricavo_lotto(r: String) -> int:
+	return mercato.ricavo_lotto(r, stagione, ha_mercato())
+
+
+func compra(r: String) -> bool:
+	var costo := costo_lotto(r)
+	if risorse.oro < costo or risorse[r] + mercato.lotto() > capacita():
+		return false
+	risorse.oro -= costo
+	risorse[r] += mercato.lotto()
+	mercato.saturazione[r] = int(mercato.saturazione.get(r, 0)) + 1
+	changed.emit()
+	return true
+
+
+func vendi(r: String) -> bool:
+	if risorse[r] < mercato.lotto():
+		return false
+	risorse[r] -= mercato.lotto()
+	risorse.oro = minf(capacita(), risorse.oro + ricavo_lotto(r))
+	mercato.saturazione[r] = int(mercato.saturazione.get(r, 0)) - 1
+	changed.emit()
+	return true
+
+
+## Il raccoglitore vicino alle piante selvatiche porta a casa anche i loro semi.
+func _raccogli_semi(b: Dictionary, molt: float, cap: float, tps: float) -> void:
+	if terreno == null:
+		return
+	var d: Dictionary = edifici[b.tipo]
+	var t := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
+	var conteggio := terreno.selvatiche_attorno(b.cella, t, int(d.zona.raggio))
+	for nome in conteggio:
+		var semi: String = colture[nome].semi
+		risorse[semi] = minf(cap, risorse[semi] + conteggio[nome] * float(colture.semi_raccolti_per_cella) / tps * molt)
 
 
 ## Ogni tanto i consiglieri guardano il villaggio; se uno ha un consiglio nuovo, lo dice.
@@ -611,16 +879,8 @@ func _disbosca() -> void:
 
 func _fine_stagione() -> void:
 	_disbosca()
-	var c: Dictionary = bil.crescita
-	if tick_fame >= int(bil.tick_per_stagione):
-		var morti := ceili(abitanti * c.quota_morti_fame)
-		_togli_abitanti(morti)
-		message.emit("La fame ha ucciso %d abitanti" % morti)
-	elif felicita < c.soglia_partenze:
-		var partiti := ceili(abitanti * c.quota_partenze)
-		_togli_abitanti(partiti)
-		message.emit("%d abitanti scontenti se ne sono andati" % partiti)
-
+	_fine_colture()
+	_lavora_forestali()
 	if stagione == AUTUNNO:
 		_riscuoti_tasse()
 	if finita:
@@ -631,10 +891,11 @@ func _fine_stagione() -> void:
 
 	stagione = (stagione + 1) % 4
 	tick_in_stagione = 0
-	tick_fame = 0
 	if stagione == PRIMAVERA:
 		anno += 1
-		_arrivi()
+	mercato.nuova_stagione(seme_mappa, anno, stagione)
+	if not mercato.evento.is_empty():
+		message.emit("Dal mercato: " + mercato.evento.testo)
 	_controlla_livello()
 	season_changed.emit(stagione, anno)
 	salva()
@@ -657,14 +918,41 @@ func _riscuoti_tasse() -> void:
 		message.emit("Non hai %d oro per il re! Al prossimo autunno perdi il villaggio" % dovuto)
 
 
+## Gente nuova arriva un po' alla volta, se c'è posto: più il villaggio è felice e
+## pieno di scorte (e di legna prima dell'inverno), più è probabile che arrivi qualcuno.
 func _arrivi() -> void:
 	var c: Dictionary = bil.crescita
-	if felicita < c.soglia_arrivi:
+	attrattiva = calcola_attrattiva()
+	var posti := alloggi() - abitanti
+	if posti <= 0 or attrattiva <= 0.0:
 		return
-	var famiglie := int((alloggi() - abitanti) / c.famiglia)
-	if famiglie > 0:
-		abitanti += famiglie * int(c.famiglia)
-		message.emit("Sono arrivate %d nuove famiglie" % famiglie)
+	if _rng.randf() < attrattiva * float(c.probabilita_massima):
+		var n := _rng.randi_range(1, mini(int(c.massimo_per_volta), posti))
+		abitanti += n
+		message.emit("%s arrivat%s al villaggio: si parla bene di noi" % ["È" if n == 1 else "Sono", "a una persona" if n == 1 else "e %d persone" % n])
+
+
+## 0..1: felicità sopra la soglia per abbondanza di scorte di cibo (e di legna d'inverno).
+func calcola_attrattiva() -> float:
+	var c: Dictionary = bil.crescita
+	var consumo_stagione := maxf(1.0, abitanti * float(bil.cibo_per_abitante_tick) * float(bil.tick_per_stagione))
+	var scorte := 0.0
+	for r in CIBI:
+		scorte += risorse[r]
+	var abbondanza := clampf(scorte / consumo_stagione, 0.0, 2.0) / 2.0
+	if stagione in [AUTUNNO, INVERNO] and risorse.legna < riscaldamento_invernale():
+		abbondanza *= 0.5
+	var soglia := float(c.soglia_arrivi)
+	return clampf((felicita - soglia) / (100.0 - soglia), 0.0, 1.0) * abbondanza
+
+
+## Legna che serve per scaldare tutto il villaggio per un inverno.
+func riscaldamento_invernale() -> float:
+	var totale := 0.0
+	for b in buildings:
+		if b.progresso >= 1.0:
+			totale += float(def_di(b).get("riscaldamento", 0))
+	return totale
 
 
 func _controlla_livello() -> void:
@@ -718,10 +1006,13 @@ func salva() -> void:
 			"lavoratori": b.lavoratori, "progresso": b.progresso, "bonus": b.bonus,
 			"famiglia": b.get("famiglia", -1), "livello": b.get("livello", 1),
 			"bosco_iniziale": b.get("bosco_iniziale", 0),
+			"coltura": b.get("coltura", ""), "seminato": b.get("seminato", false),
 		})
 	var dati := {
 		"versione": VERSIONE_SALVATAGGIO, "famiglie": famiglie, "capo": capo, "risorse": risorse,
-		"tagliati": Array(terreno.tagliati) if terreno else [], "abitanti": abitanti, "felicita": felicita,
+		"tagliati": Array(terreno.tagliati) if terreno else [],
+		"terreno": terreno.salva() if terreno else {},
+		"mercato": mercato.salva(), "abitanti": abitanti, "felicita": felicita,
 		"stagione": stagione, "anno": anno, "tick_in_stagione": tick_in_stagione,
 		"livello": livello, "tasse": tasse, "tasse_non_pagate": tasse_non_pagate,
 		"seme_mappa": seme_mappa, "prossimo_id": _prossimo_id, "buildings": lista,
@@ -744,6 +1035,8 @@ func carica() -> bool:
 		f.membri = int(f.membri)
 	capo = int(dati.capo)
 	_tagli_da_applicare = dati.get("tagliati", [])
+	_terreno_salvato = dati.get("terreno", {})
+	mercato.carica(dati.get("mercato", {}))
 	for r in dati.risorse:
 		risorse[r] = float(dati.risorse[r])
 	abitanti = int(dati.abitanti)
@@ -767,6 +1060,9 @@ func carica() -> bool:
 		b.livello = int(x.get("livello", 1))
 		if int(x.get("bosco_iniziale", 0)) > 0:
 			b.bosco_iniziale = int(x.bosco_iniziale)
+		if str(x.get("coltura", "")) != "":
+			b.coltura = x.coltura
+			b.seminato = bool(x.get("seminato", false))
 		buildings.append(b)
 	return true
 

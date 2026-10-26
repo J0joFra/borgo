@@ -65,8 +65,8 @@ static func attivi() -> Array:
 		lista.append(_c("case", 85, "%d dei nostri dormono all'aperto: servono tende o case." % (gs.abitanti - gs.alloggi())))
 	if gs.conta_completati("tenda") > 0 and gs.conta_completati("casa") == 0:
 		lista.append(_c("case", 60, "Le tende sono fredde e scontentano la gente. Una casa vera ospita 4 persone."))
-	if gs.felicita >= float(gs.bil.crescita.soglia_arrivi) and gs.alloggi() - gs.abitanti < int(gs.bil.crescita.famiglia):
-		lista.append(_c("case", 40, "La gente è contenta e altre famiglie verrebbero in primavera, ma non c'è posto."))
+	if gs.calcola_attrattiva() > 0.3 and gs.alloggi() - gs.abitanti <= 0:
+		lista.append(_c("case", 40, "La voce gira: altra gente verrebbe a vivere qui, ma non c'è nemmeno un posto letto libero."))
 
 	# Lavoro
 	var posti_liberi := 0
@@ -88,6 +88,30 @@ static func attivi() -> Array:
 		lista.append(_c("cibo", 55, "Seminiamo un campo dove la terra è scura e fertile, vicino all'acqua: in autunno darà grano per l'inverno."))
 	if gs.stagione == gs.AUTUNNO and _esiste(["pescatore"]):
 		lista.append(_c("cibo", 58, "D'inverno il lago gela e i pescatori prenderanno poco: il fiume invece scorre sempre."))
+
+	# Forestale: il legno non deve finire
+	if _esiste(["taglialegna"]) and not _esiste(["forestale"]) and gs.terreno and gs.terreno.tagliati.size() > 15:
+		lista.append(_c("legna", 70, "Abbiamo tagliato %d celle di bosco. Un forestale ripianterebbe gli alberi: in un anno tornano bosco." % gs.terreno.tagliati.size()))
+
+	# Semi e colture
+	for b in gs.buildings:
+		if b.get("senza_semi", false):
+			var c := gs.coltura_di(b)
+			lista.append(_c("cibo", 78, "Un campo è fermo: mancano i semi di %s. Si comprano al mercato, o li raccoglie un raccoglitore vicino alle piante selvatiche." % c.get("nome", "").to_lower()))
+			break
+	if not _esiste(["campo"]) and gs.stagione == gs.ESTATE:
+		lista.append(_c("cibo", 50, "Le rape si seminano in autunno e crescono anche d'inverno: un campo ci terrebbe in vita fino alla primavera."))
+
+	# Mercato
+	var m := gs.mercato
+	if m and not m.evento.is_empty():
+		lista.append(_c("oro", 42, "Notizie dal mercato: %s. Conviene guardare i prezzi." % m.evento.testo))
+	if gs.risorse.oro >= 40.0 and gs.risorse.cibo < 20.0:
+		lista.append(_c("oro", 72, "Abbiamo oro ma poco cibo: al mercato se ne può comprare."))
+
+	# Strade
+	if gs.terreno and gs.terreno.strade.is_empty() and gs.buildings.size() >= 8:
+		lista.append(_c("case", 35, "Il villaggio cresce disordinato: qualche strada in pietra lo terrebbe in ordine, e si cammina più svelti."))
 
 	# Felicità
 	if gs.felicita < 40.0:

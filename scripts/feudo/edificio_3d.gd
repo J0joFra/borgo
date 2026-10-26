@@ -27,6 +27,7 @@ var _luce: OmniLight3D
 var _bandiera: Node3D
 var _oggetti: Array[Node3D] = []  # casse, barili, cataste: crescono con i miglioramenti
 var _livello_mostrato := 1
+var _stato_campo := ""
 var _pale: MeshInstance3D
 var _barra: MeshInstance3D
 var _avviso: MeshInstance3D
@@ -59,7 +60,8 @@ func _process(delta: float) -> void:
 	_tempo += delta
 	var completo: bool = b.progresso >= 1.0
 	var fase := _fase_cantiere()
-	var campo_da_ridisegnare := _stagione != GameState.stagione and _ha_forma("campo") and not _modello
+	var stato_campo := "%s|%s|%d" % [b.get("coltura", ""), b.get("seminato", false), GameState.stagione]
+	var campo_da_ridisegnare := _ha_forma("campo") and not _modello and stato_campo != _stato_campo
 	var migliorato := int(b.get("livello", 1)) != _livello_mostrato
 	if migliorato and completo and _completo:
 		_costruisci()
@@ -113,6 +115,7 @@ func _costruisci() -> void:
 	_stagione = GameState.stagione
 	_fase = _fase_cantiere()
 	_livello_mostrato = int(b.get("livello", 1))
+	_stato_campo = "%s|%s|%d" % [b.get("coltura", ""), b.get("seminato", false), GameState.stagione]
 	_parti_che_girano.clear()
 	for o in _oggetti:
 		o.queue_free()
@@ -135,7 +138,7 @@ func _costruisci() -> void:
 	if _completo and _ha_forma("falo"):
 		_falo(k)
 	elif _completo:
-		_modello = CatalogoModelli.istanzia(b.tipo, _larghezza, _profondita)
+		_modello = CatalogoModelli.istanzia(b.tipo, _larghezza, _profondita, int(b.get("livello", 1)))
 	else:
 		_modello = CatalogoModelli.istanzia_cantiere(b.progresso, _larghezza, _profondita)
 	if _modello:
@@ -329,15 +332,29 @@ func _mucchio(k: LowPoly.Costruttore, risorsa: String) -> void:
 	k.forma(LowPoly.cubo(Vector3(0.4, 0.3, 0.4)), LowPoly.t(Vector3(x + 0.1, 0.5, z - 0.05), Vector3.ONE, 0.4), colore.lightened(0.1))
 
 
+## Il campo mostra la sua coltura: solchi di terra se non è seminato, file colorate
+## che crescono nelle stagioni della coltura, neve d'inverno (tranne sulle rape, che ci crescono).
 func _campo(k: LowPoly.Costruttore) -> void:
-	var colture := [Color("7cb84f"), Color("b8b04a"), Color("e0b84a"), Color("e6ecef")]
 	var ww := _larghezza - 0.3
 	var dd := _profondita - 0.3
 	k.forma(LowPoly.cubo(Vector3(ww, 0.12, dd)), LowPoly.t(Vector3(0, 0.06, 0)), Color("7a5a36"))
-	var alt := 0.05 if GameState.stagione == GameState.INVERNO else 0.3
+	var c := GameState.coltura_di(b)
+	var seminato: bool = b.get("seminato", false) and not c.is_empty()
+	var inverno := GameState.stagione == GameState.INVERNO
+	var colore := Color("5e4228")
+	var alt := 0.06
+	if seminato:
+		# più avanti nella coltura, più alte le piante
+		var posizione: int = c.stagioni.find(GameState.CHIAVI_STAGIONI[GameState.stagione])
+		var crescita := 0.5 if posizione <= 0 else 1.0
+		colore = Color(c.colore).lerp(Color("6aa040"), 0.5 * (1.0 - crescita))
+		alt = 0.15 + 0.25 * crescita
+	if inverno and not (seminato and "inverno" in c.stagioni):
+		colore = Color("e6ecef")
+		alt = 0.05
 	var z := -dd / 2 + 0.45
 	while z < dd / 2 - 0.2:
-		k.forma(LowPoly.cubo(Vector3(ww - 0.5, alt, 0.28)), LowPoly.t(Vector3(0, 0.12 + alt / 2, z)), colture[GameState.stagione])
+		k.forma(LowPoly.cubo(Vector3(ww - 0.5, alt, 0.28)), LowPoly.t(Vector3(0, 0.12 + alt / 2, z)), colore)
 		z += 0.6
 
 

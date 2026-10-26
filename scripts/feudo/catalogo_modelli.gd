@@ -21,7 +21,13 @@ static func percorso(tipo: String) -> String:
 
 
 ## Il modello di un edificio adattato all'area (in metri), o null se non c'è.
-static func istanzia(tipo: String, larghezza: float, profondita: float) -> Node3D:
+## Con "per_livello" in modelli.json un edificio migliorato può cambiare modello.
+static func istanzia(tipo: String, larghezza: float, profondita: float, livello := 1) -> Node3D:
+	var per_livello: Dictionary = _config.get("per_livello", {}).get(tipo, {})
+	if per_livello.has(str(livello)):
+		var file := _percorso_per(per_livello[str(livello)])
+		if file != "":
+			return _istanzia_file(file, larghezza, profondita)
 	return _istanzia_file(percorso(tipo), larghezza, profondita)
 
 

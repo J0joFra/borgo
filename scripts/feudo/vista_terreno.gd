@@ -11,6 +11,8 @@ const ERBA := [Color("6fae47"), Color("8db24a"), Color("b39a48"), Color("e6ecef"
 const ACQUA := [Color("4a90c8"), Color("4a90c8"), Color("4a86b8"), Color("b8d8ea")]
 const FIUME := [Color("5aa6dc"), Color("5aa6dc"), Color("5a9cd0"), Color("7aaccc")]  # d'inverno non gela
 const RADURA := Color("8a7a4a")  # dove il bosco è stato tagliato
+const STRADA := [Color("b09468"), Color("b09468"), Color("a88c64"), Color("d8d0c4")]
+const MASSIMO_PIANTATI := 600
 const ROCCIA_SUOLO := [Color("9a978d"), Color("9a978d"), Color("968f80"), Color("dfe5e8")]
 const CHIOMA_TONDA := [Color("4a9a3e"), Color("5aa035"), Color("d0782c"), Color("8a7a68")]
 const CHIOMA_PINO := [Color("2f6b40"), Color("2f6b40"), Color("2f6b40"), Color("c4d6d0")]
@@ -38,6 +40,15 @@ var _tronchi: MultiMeshInstance3D
 var _alberi_cella: Dictionary = {}  # indice cella -> [[tipo 0 tondo / 1 pino, indice chioma, indice tronco], ...]
 var _tagliate: Dictionary = {}      # indice cella -> true, celle di bosco abbattute
 var _zona: MeshInstance3D           # celle colorate mentre si sceglie dove costruire
+var _orig_tondi: Array[Transform3D] = []   # forma originale di ogni albero (per ricrescere)
+var _orig_pini: Array[Transform3D] = []
+var _orig_tronchi: Array[Transform3D] = []
+var _pool_chiome: MultiMeshInstance3D       # alberi piantati dal forestale sui prati
+var _pool_tronchi: MultiMeshInstance3D
+var _orig_pool: Array[Transform3D] = []
+var _ciuffi: MultiMeshInstance3D
+var _ciuffi_orig: Array[Transform3D] = []
+var _ciuffi_cella: Dictionary = {}  # indice cella -> indici dei ciuffi
 
 
 func costruisci(t: TerrenoFeudo) -> void:
@@ -45,6 +56,7 @@ func costruisci(t: TerrenoFeudo) -> void:
 	_suolo = MeshInstance3D.new()
 	add_child(_suolo)
 	_crea_alberi()
+	_crea_ciuffi()
 	_crea_rocce()
 	_crea_confine()
 	applica_stagione(GameState.stagione)
@@ -58,6 +70,8 @@ func applica_stagione(stagione: int) -> void:
 		_tondi.multimesh.set_instance_color(i, CHIOMA_TONDA[stagione].lightened(_variazioni_tondi[i]))
 	for i in _pini.multimesh.instance_count:
 		_pini.multimesh.set_instance_color(i, CHIOMA_PINO[stagione].lightened(_variazioni_pini[i]))
+	for i in _pool_chiome.multimesh.visible_instance_count:
+		_pool_chiome.multimesh.set_instance_color(i, CHIOMA_TONDA[stagione].lightened(((i % 16) - 8) / 100.0))
 
 
 # --- Coordinate --------------------------------------------------------------
@@ -92,6 +106,8 @@ func _interseca(o: Vector3, d: Vector3, quota: float) -> Vector2i:
 # --- Suolo -------------------------------------------------------------------
 
 func _colore_cella(c: Vector2i, stagione: int) -> Color:
+	if terreno.strada_a(c):
+		return STRADA[stagione]
 	var base: Color
 	match terreno.tipo_a(c):
 		TerrenoFeudo.Tipo.ACQUA:
@@ -248,16 +264,21 @@ func _crea_alberi() -> void:
 	var pini: Array[Transform3D] = []
 	for i in terreno.tagliati:
 		_tagliate[i] = true
+	var nati_dopo := {}  # boschi piantati dal forestale: non fanno parte del bosco originale
+	for i in terreno.nuovo_bosco:
+		nati_dopo[i] = true
 	for y in TerrenoFeudo.LATO:
 		for x in TerrenoFeudo.LATO:
 			var c := Vector2i(x, y)
 			var indice := y * TerrenoFeudo.LATO + x
 			var tipo := terreno.tipo_a(c)
 			var quanti := 0
-			# le celle tagliate contano come bosco, così gli alberi restano gli stessi e diventano ceppi
-			if tipo == TerrenoFeudo.Tipo.BOSCO or _tagliate.has(indice):
+			# conta il bosco com'era all'inizio (anche le celle tagliate), così gli alberi sono
+			# sempre gli stessi: diventano ceppi, poi ricrescono
+			var bosco_originale := (tipo == TerrenoFeudo.Tipo.BOSCO and not nati_dopo.has(indice)) or _tagliate.has(indice)
+			if bosco_originale:
 				quanti = 2 if rng.randf() < 0.45 else 1
-			elif tipo == TerrenoFeudo.Tipo.ERBA and rng.randf() < 0.012:
+			elif (tipo == TerrenoFeudo.Tipo.ERBA or nati_dopo.has(indice)) and rng.randf() < 0.012:
 				quanti = 1
 			for i in quanti:
 				var pos := Vector3((x + rng.randf_range(0.2, 0.8)) * CELLA, terreno.altezza(c), (y + rng.randf_range(0.2, 0.8)) * CELLA)
@@ -285,6 +306,9 @@ func _crea_alberi() -> void:
 	for elenco in _alberi_cella.values():
 		for albero in elenco:
 			albero[2] = albero[1] if albero[0] == 0 else tondi.size() + albero[1]
+	_orig_tondi = tondi
+	_orig_pini = pini
+	_orig_tronchi = tutti
 	_tronchi = _multimesh(tronco, tutti, false)
 	_tondi = _multimesh(chioma_tonda, tondi, true)
 	_pini = _multimesh(chioma_pino, pini, true)
@@ -292,28 +316,145 @@ func _crea_alberi() -> void:
 		_variazioni_tondi.append(rng.randf_range(-0.08, 0.08))
 	for i in pini.size():
 		_variazioni_pini.append(rng.randf_range(-0.08, 0.08))
-	for indice in _tagliate:
-		_a_ceppo(indice)
+
+	# scorta di alberi per i prati dove il forestale pianta (lì all'inizio non c'era bosco)
+	_pool_chiome = _multimesh(chioma_tonda, [] as Array[Transform3D], true, MASSIMO_PIANTATI)
+	_pool_tronchi = _multimesh(tronco, [] as Array[Transform3D], false, MASSIMO_PIANTATI)
+	_pool_chiome.multimesh.visible_instance_count = 0
+	_pool_tronchi.multimesh.visible_instance_count = 0
+
+	var da_sistemare := {}
+	for i in _tagliate:
+		da_sistemare[i] = true
+	for i in terreno.piantine:
+		da_sistemare[i] = true
+	for i in nati_dopo:
+		da_sistemare[i] = true
+	for i in da_sistemare:
+		_aggiorna_alberi(i)
 
 
-## Il bosco di queste celle è stato tagliato: alberi a ceppi e suolo a radura.
-func taglia(celle: Array) -> void:
+## Le celle sono cambiate (bosco tagliato o ricresciuto, piantine, strade): alberi e suolo si aggiornano.
+func aggiorna_celle(celle: Array) -> void:
 	for c in celle:
-		var indice: int = c.y * TerrenoFeudo.LATO + c.x
-		_tagliate[indice] = true
-		_a_ceppo(indice)
+		_aggiorna_alberi(c.y * TerrenoFeudo.LATO + c.x)
 	_suoli_pronti.clear()
 	applica_stagione(GameState.stagione)
 
 
+func _aggiorna_alberi(indice: int) -> void:
+	var tipo: int = terreno.celle[indice]
+	if tipo == TerrenoFeudo.Tipo.BOSCO:
+		_tagliate.erase(indice)
+		if not _alberi_cella.has(indice):
+			_prendi_dalla_scorta(indice)
+		_scala_alberi(indice, 1.0)
+	elif terreno.piantine.has(indice):
+		if not _alberi_cella.has(indice):
+			_prendi_dalla_scorta(indice)
+		# l'alberello cresce stagione dopo stagione
+		var totale := float(GameState.bil.piantine.stagioni_per_crescere)
+		var fatto := 1.0 - float(terreno.piantine[indice]) / totale
+		_scala_alberi(indice, 0.25 + 0.55 * fatto)
+	elif _alberi_cella.has(indice):
+		_tagliate[indice] = true
+		_a_ceppo(indice)
+
+
+## Un albero in più dalla scorta, in una posizione fissa per quella cella.
+func _prendi_dalla_scorta(indice: int) -> void:
+	var n := _pool_chiome.multimesh.visible_instance_count
+	if n >= MASSIMO_PIANTATI:
+		return
+	var c := Vector2i(indice % TerrenoFeudo.LATO, indice / TerrenoFeudo.LATO)
+	var h := absi(hash(indice))
+	var pos := Vector3((c.x + 0.3 + (h % 40) / 100.0) * CELLA, terreno.altezza(c), (c.y + 0.3 + (h / 40 % 40) / 100.0) * CELLA)
+	var tr := LowPoly.t(pos, Vector3.ONE * (0.85 + (h % 30) / 100.0), float(h % 628) / 100.0)
+	_orig_pool.append(tr)
+	_pool_chiome.multimesh.set_instance_transform(n, tr)
+	_pool_tronchi.multimesh.set_instance_transform(n, tr)
+	_pool_chiome.multimesh.set_instance_color(n, CHIOMA_TONDA[GameState.stagione])
+	_pool_chiome.multimesh.visible_instance_count = n + 1
+	_pool_tronchi.multimesh.visible_instance_count = n + 1
+	_alberi_cella[indice] = [[2, n, n]]
+
+
+## Alberi della cella a una certa grandezza (1 = adulto), partendo dalla loro forma originale.
+func _scala_alberi(indice: int, k: float) -> void:
+	for albero in _alberi_cella.get(indice, []):
+		var orig_chioma: Transform3D = _orig_della_chioma(albero)
+		var orig_tronco: Transform3D = _orig_pool[albero[2]] if albero[0] == 2 else _orig_tronchi[albero[2]]
+		_chiome_di(albero).set_instance_transform(albero[1], Transform3D(orig_chioma.basis * Basis.from_scale(Vector3.ONE * k), orig_chioma.origin))
+		_tronchi_di(albero).set_instance_transform(albero[2], Transform3D(orig_tronco.basis * Basis.from_scale(Vector3.ONE * k), orig_tronco.origin))
+
+
 func _a_ceppo(indice: int) -> void:
 	for albero in _alberi_cella.get(indice, []):
-		var chiome: MultiMesh = _tondi.multimesh if albero[0] == 0 else _pini.multimesh
-		var tr := chiome.get_instance_transform(albero[1])
-		chiome.set_instance_transform(albero[1], Transform3D(Basis.from_scale(Vector3.ONE * 0.001), tr.origin))
-		var tronco := _tronchi.multimesh.get_instance_transform(albero[2])
-		var basso := Transform3D(tronco.basis * Basis.from_scale(Vector3(1.3, 0.25, 1.3)), tronco.origin)
-		_tronchi.multimesh.set_instance_transform(albero[2], basso)
+		var orig_chioma: Transform3D = _orig_della_chioma(albero)
+		var orig_tronco: Transform3D = _orig_pool[albero[2]] if albero[0] == 2 else _orig_tronchi[albero[2]]
+		_chiome_di(albero).set_instance_transform(albero[1], Transform3D(Basis.from_scale(Vector3.ONE * 0.001), orig_chioma.origin))
+		_tronchi_di(albero).set_instance_transform(albero[2], Transform3D(orig_tronco.basis * Basis.from_scale(Vector3(1.3, 0.25, 1.3)), orig_tronco.origin))
+
+
+func _orig_della_chioma(albero: Array) -> Transform3D:
+	match int(albero[0]):
+		0:
+			return _orig_tondi[albero[1]]
+		1:
+			return _orig_pini[albero[1]]
+		_:
+			return _orig_pool[albero[1]]
+
+
+func _chiome_di(albero: Array) -> MultiMesh:
+	match int(albero[0]):
+		0:
+			return _tondi.multimesh
+		1:
+			return _pini.multimesh
+		_:
+			return _pool_chiome.multimesh
+
+
+func _tronchi_di(albero: Array) -> MultiMesh:
+	return _pool_tronchi.multimesh if int(albero[0]) == 2 else _tronchi.multimesh
+
+
+# --- Piante selvatiche ------------------------------------------------------------
+
+## Ciuffi colorati dove crescono orzo, grano e rape selvatici.
+func _crea_ciuffi() -> void:
+	var trasformazioni: Array[Transform3D] = []
+	var colori: Array[Color] = []
+	for i in terreno.selvatiche:
+		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		var colore := Color(GameState.colture[terreno.selvatiche[i]].colore)
+		for k in 4:
+			var h := absi(hash(i * 7 + k))
+			var pos := Vector3((c.x + 0.15 + (h % 70) / 100.0) * CELLA, terreno.altezza(c), (c.y + 0.15 + (h / 70 % 70) / 100.0) * CELLA)
+			trasformazioni.append(LowPoly.t(pos, Vector3.ONE * (0.8 + (h % 40) / 100.0), float(h % 628) / 100.0))
+			colori.append(colore.lightened(((h % 20) - 10) / 100.0))
+			_ciuffi_cella[i] = _ciuffi_cella.get(i, []) + [trasformazioni.size() - 1]
+	var ciuffo := LowPoly.Costruttore.new() \
+		.forma(LowPoly.cilindro(0.18, 0.0, 0.7, 4), LowPoly.t(Vector3(0, 0.35, 0)), Color.WHITE) \
+		.forma(LowPoly.cilindro(0.14, 0.0, 0.55, 4), LowPoly.t(Vector3(0.18, 0.27, 0.06)), Color.WHITE) \
+		.forma(LowPoly.cilindro(0.14, 0.0, 0.5, 4), LowPoly.t(Vector3(-0.15, 0.25, -0.08)), Color.WHITE).mesh()
+	_ciuffi = _multimesh(ciuffo, trasformazioni, true)
+	_ciuffi_orig = trasformazioni
+	for n in colori.size():
+		_ciuffi.multimesh.set_instance_color(n, colori[n])
+
+
+## Dove c'è un edificio (es. un campo sopra le piante selvatiche) i ciuffi non si vedono.
+func aggiorna_ciuffi() -> void:
+	if _ciuffi == null:
+		return
+	for i in _ciuffi_cella:
+		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		var nascosto := terreno.edificio_a(c) >= 0 or terreno.strada_a(c)
+		for n in _ciuffi_cella[i]:
+			var tr: Transform3D = _ciuffi_orig[n]
+			_ciuffi.multimesh.set_instance_transform(n, Transform3D(Basis.from_scale(Vector3.ONE * 0.001), tr.origin) if nascosto else tr)
 
 
 # --- Zona dell'edificio da piazzare -------------------------------------------------
@@ -325,14 +466,27 @@ func mostra_zona(tipo: String, cella: Vector2i) -> void:
 		nascondi_zona()
 		return
 	var fertilita: bool = GameState.edifici[tipo].zona.tipo == "fertilita"
-	var k := LowPoly.Costruttore.new()
+	var colorate := []
 	for coppia in celle:
-		var c: Vector2i = coppia[0]
 		var valore: float = coppia[1]
-		var colore := Color(1.0, 0.92, 0.35, 0.45)
+		var colore := Color(1.0, 0.92, 0.35, 0.3 + 0.3 * valore)
 		if fertilita:
 			colore = Color(0.85, 0.25, 0.15).lerp(Color(0.25, 0.85, 0.25), valore)
 			colore.a = 0.45
+		colorate.append([coppia[0], colore])
+	_disegna_celle(colorate)
+
+
+## Colora un elenco di celle tutte dello stesso colore (es. il percorso di una strada).
+func mostra_celle(celle: Array, colore: Color) -> void:
+	_disegna_celle(celle.map(func(c): return [c, colore]))
+
+
+func _disegna_celle(colorate: Array) -> void:
+	var k := LowPoly.Costruttore.new()
+	for coppia in colorate:
+		var c: Vector2i = coppia[0]
+		var colore: Color = coppia[1]
 		var h := terreno.altezza(c) + 0.06
 		var x0 := c.x * CELLA + 0.15
 		var z0 := c.y * CELLA + 0.15
@@ -359,12 +513,12 @@ func nascondi_zona() -> void:
 		_zona.visible = false
 
 
-func _multimesh(mesh: Mesh, trasformazioni: Array[Transform3D], colori: bool) -> MultiMeshInstance3D:
+func _multimesh(mesh: Mesh, trasformazioni: Array[Transform3D], colori: bool, quante := -1) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = colori
 	mm.mesh = mesh
-	mm.instance_count = trasformazioni.size()
+	mm.instance_count = trasformazioni.size() if quante < 0 else quante
 	for i in trasformazioni.size():
 		mm.set_instance_transform(i, trasformazioni[i])
 	var nodo := MultiMeshInstance3D.new()

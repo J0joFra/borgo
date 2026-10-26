@@ -22,6 +22,10 @@ var seme: int
 var celle := PackedByteArray()
 var fertilita := PackedFloat32Array()  # 0..1 per cella: quanto rende un campo
 var tagliati := PackedInt32Array()     # celle di bosco abbattute dai taglialegna (si salvano)
+var selvatiche: Dictionary = {}  # indice cella -> coltura che ci cresce da sola (orzo, grano, rape)
+var piantine: Dictionary = {}    # indice cella -> stagioni che mancano perché diventi bosco
+var nuovo_bosco := PackedInt32Array()  # celle di prato diventate bosco grazie al forestale
+var strade: Dictionary = {}      # indice cella -> true
 var _occupato: Dictionary = {}  # Vector2i -> id edificio
 
 
@@ -68,6 +72,21 @@ func _genera() -> void:
 	_macchia(centro, 5.0, Tipo.ERBA)
 	_traccia_fiume(rng)
 	_calcola_fertilita()
+	_semina_selvatiche(rng)
+
+
+## Una macchia di piante selvatiche per ogni coltura, a 7-15 celle dall'accampamento.
+func _semina_selvatiche(rng: RandomNumberGenerator) -> void:
+	var centro := Vector2(FEUDO.get_center())
+	var nomi: Array = GameState.nomi_colture() if GameState.colture.size() > 0 else []
+	var angolo := rng.randf() * TAU
+	for i in nomi.size():
+		var dove := centro + Vector2.from_angle(angolo + TAU * i / nomi.size()) * rng.randf_range(7.0, 15.0)
+		for y in range(int(dove.y) - 2, int(dove.y) + 3):
+			for x in range(int(dove.x) - 2, int(dove.x) + 3):
+				var c := Vector2i(x, y)
+				if nel_feudo(c) and tipo_a(c) in [Tipo.ERBA, Tipo.ERBA_FIORI] and dove.distance_to(Vector2(x, y)) <= 1.9:
+					selvatiche[y * LATO + x] = nomi[i]
 
 
 ## Un fiume largo due celle che attraversa tutto il mondo e passa nel feudo,
@@ -175,7 +194,8 @@ func posizione_valida(tipo: String, cella: Vector2i) -> bool:
 		for x in int(d.taglia[0]):
 			var c := cella + Vector2i(x, y)
 			var t := tipo_a(c)
-			if not nel_feudo(c) or _occupato.has(c) or altezza(c) != quota:
+			var i := c.y * LATO + c.x
+			if not nel_feudo(c) or _occupato.has(c) or altezza(c) != quota or strade.has(i) or piantine.has(i):
 				return false
 			if richiesto >= 0 and t != richiesto:
 				return false
@@ -226,6 +246,9 @@ func info_zona(tipo: String, cella: Vector2i, stagione: int) -> Dictionary:
 			if stagione == GameState.INVERNO and lago > 0:
 				testo += " (lago ghiacciato)"
 			return {"resa": r, "testo": testo}
+		"radura":
+			var n := candidati_piantine(cella, taglia, int(z.raggio)).size()
+			return {"resa": 1.0, "testo": "%d celle dove ripiantare" % n}
 		_:
 			var cercato: int = PER_NOME[z.tipo]
 			var n := conta_attorno(cella, taglia, int(z.raggio), cercato)
@@ -260,6 +283,10 @@ func celle_zona(tipo: String, cella: Vector2i) -> Array:
 					risultato.append([c, fertilita_a(c)])
 		return risultato
 	var r := int(z.raggio)
+	if z.tipo == "radura":
+		for c in candidati_piantine(cella, taglia, r):
+			risultato.append([c, 1.0 if tagliati.has(c.y * LATO + c.x) else 0.5])
+		return risultato
 	var cercati := [Tipo.ACQUA, Tipo.FIUME] if z.tipo == "acqua" else [PER_NOME[z.tipo]]
 	for y in range(cella.y - r, cella.y + taglia.y + r):
 		for x in range(cella.x - r, cella.x + taglia.x + r):
@@ -289,6 +316,163 @@ func taglia_bosco(cella: Vector2i, taglia: Vector2i, raggio: int, n: int) -> Arr
 		tagliati.append(c.y * LATO + c.x)
 		tagliate.append(c)
 	return tagliate
+
+
+# --- Piante selvatiche ----------------------------------------------------------
+
+## La coltura selvatica che cresce sotto un'area (la prima trovata), oppure "".
+func selvatica_sotto(cella: Vector2i, taglia: Vector2i) -> String:
+	for y in taglia.y:
+		for x in taglia.x:
+			var c := cella + Vector2i(x, y)
+			var i := c.y * LATO + c.x
+			if dentro(c) and selvatiche.has(i):
+				return selvatiche[i]
+	return ""
+
+
+## Quante celle selvatiche di ogni coltura ci sono entro un raggio: {orzo: 5, ...}
+func selvatiche_attorno(cella: Vector2i, taglia: Vector2i, raggio: int) -> Dictionary:
+	var conteggio := {}
+	for y in range(cella.y - raggio, cella.y + taglia.y + raggio):
+		for x in range(cella.x - raggio, cella.x + taglia.x + raggio):
+			var i := y * LATO + x
+			if dentro(Vector2i(x, y)) and selvatiche.has(i):
+				conteggio[selvatiche[i]] = conteggio.get(selvatiche[i], 0) + 1
+	return conteggio
+
+
+func selvatica_piu_vicina(da: Vector2i) -> String:
+	var migliore := ""
+	var distanza := INF
+	for i in selvatiche:
+		var d := Vector2(da).distance_squared_to(Vector2(i % LATO, i / LATO))
+		if d < distanza:
+			distanza = d
+			migliore = selvatiche[i]
+	return migliore
+
+
+# --- Piantine del forestale ------------------------------------------------------
+
+## Dove il forestale può piantare: prima le radure lasciate dai taglialegna, poi i prati liberi.
+func candidati_piantine(cella: Vector2i, taglia: Vector2i, raggio: int) -> Array[Vector2i]:
+	var centro := Vector2(cella) + Vector2(taglia) / 2.0
+	var radure: Array[Vector2i] = []
+	var prati: Array[Vector2i] = []
+	for y in range(cella.y - raggio, cella.y + taglia.y + raggio):
+		for x in range(cella.x - raggio, cella.x + taglia.x + raggio):
+			var c := Vector2i(x, y)
+			var i := y * LATO + x
+			if not nel_feudo(c) or _occupato.has(c) or strade.has(i) or piantine.has(i) or selvatiche.has(i):
+				continue
+			if not tipo_a(c) in [Tipo.ERBA, Tipo.ERBA_FIORI]:
+				continue
+			if tagliati.has(i):
+				radure.append(c)
+			else:
+				prati.append(c)
+	var vicino := func(a: Vector2i, b: Vector2i) -> bool:
+		return centro.distance_squared_to(Vector2(a)) < centro.distance_squared_to(Vector2(b))
+	radure.sort_custom(vicino)
+	prati.sort_custom(vicino)
+	return radure + prati
+
+
+## Pianta n alberelli; diventano bosco dopo "stagioni" stagioni. Restituisce le celle piantate.
+func pianta(cella: Vector2i, taglia: Vector2i, raggio: int, n: int, stagioni: int) -> Array:
+	var piantate := []
+	for c in candidati_piantine(cella, taglia, raggio).slice(0, n):
+		piantine[c.y * LATO + c.x] = stagioni
+		piantate.append(c)
+	return piantate
+
+
+## Fa crescere tutte le piantine di una stagione; quelle pronte diventano bosco.
+## Restituisce tutte le celle cambiate (anche quelle solo cresciute un po').
+func cresci_piantine() -> Array:
+	var cambiate := []
+	for i in piantine.keys():
+		piantine[i] -= 1
+		var c := Vector2i(i % LATO, i / LATO)
+		cambiate.append(c)
+		if piantine[i] <= 0:
+			piantine.erase(i)
+			celle[i] = Tipo.BOSCO
+			var t := tagliati.find(i)
+			if t >= 0:
+				tagliati.remove_at(t)
+			else:
+				nuovo_bosco.append(i)
+	return cambiate
+
+
+# --- Strade -------------------------------------------------------------------
+
+## Il percorso a L tra due celle: prima in orizzontale, poi in verticale.
+static func percorso(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
+	var celle_p: Array[Vector2i] = []
+	var passo_x := 1 if a.x >= da.x else -1
+	var passo_y := 1 if a.y >= da.y else -1
+	for x in range(da.x, a.x + passo_x, passo_x):
+		celle_p.append(Vector2i(x, da.y))
+	for y in range(da.y + passo_y, a.y + passo_y, passo_y):
+		celle_p.append(Vector2i(a.x, y))
+	return celle_p
+
+
+## Pietra necessaria: 1 per cella in piano, 2 in salita (collina o cambio di quota);
+## le celle già strada non costano. -1 se una cella non si può usare.
+func costo_strada(celle_s: Array) -> int:
+	var costo := 0
+	var quota_prima := NAN
+	for c in celle_s:
+		var i: int = c.y * LATO + c.x
+		if not nel_feudo(c) or _occupato.has(c) or piantine.has(i):
+			return -1
+		if not tipo_a(c) in [Tipo.ERBA, Tipo.ERBA_FIORI, Tipo.COLLINA, Tipo.SENTIERO]:
+			return -1
+		var quota := altezza(c)
+		if not strade.has(i):
+			var salita := tipo_a(c) == Tipo.COLLINA or (not is_nan(quota_prima) and quota != quota_prima)
+			costo += 2 if salita else 1
+		quota_prima = quota
+	return costo
+
+
+func aggiungi_strada(celle_s: Array) -> Array:
+	var nuove := []
+	for c in celle_s:
+		var i: int = c.y * LATO + c.x
+		if not strade.has(i):
+			strade[i] = true
+			nuove.append(c)
+	return nuove
+
+
+func rimuovi_strada(c: Vector2i) -> bool:
+	return strade.erase(c.y * LATO + c.x)
+
+
+func strada_a(c: Vector2i) -> bool:
+	return strade.has(c.y * LATO + c.x)
+
+
+# --- Salvataggio ---------------------------------------------------------------
+
+func salva() -> Dictionary:
+	return {"strade": strade.keys(), "piantine": piantine, "nuovo_bosco": Array(nuovo_bosco)}
+
+
+func applica_salvataggio(d: Dictionary) -> void:
+	for i in d.get("strade", []):
+		strade[int(i)] = true
+	for i in d.get("nuovo_bosco", []):
+		celle[int(i)] = Tipo.BOSCO
+		nuovo_bosco.append(int(i))
+	var p: Dictionary = d.get("piantine", {})
+	for k in p:
+		piantine[int(k)] = int(p[k])
 
 
 ## Rimette i tagli di un salvataggio.

@@ -2,7 +2,7 @@ extends Node3D
 ## Scena del feudo: crea luce, terreno, edifici, telecamera e interfaccia,
 ## e gestisce i gesti (trascinare, pizzicare, toccare) con il dito o con il mouse.
 
-enum Modo { NORMALE, PIAZZA }
+enum Modo { NORMALE, PIAZZA, STRADA }
 
 const SOGLIA_TOCCO := 6.0  # oltre questa distanza un tocco diventa trascinamento
 const COLORI_LUCE := [Color("fff6e8"), Color("fff0d0"), Color("ffd6a8"), Color("dfe8ff")]
@@ -18,6 +18,9 @@ var _anteprima: MeshInstance3D
 var _tipo := ""
 var _cella := Vector2i.ZERO
 var _selezionato := -1
+var _strada_da := Vector2i(-1, -1)  # inizio della strada che si sta tracciando
+var _strada_celle: Array[Vector2i] = []
+var _strada_toccata := Vector2i(-1, -1)  # strada esistente selezionata
 
 var _dita: Dictionary = {}  # indice -> posizione
 var _inizio := Vector2.ZERO
@@ -61,6 +64,9 @@ func _ready() -> void:
 	hud.cambia_lavoratori.connect(_cambia_lavoratori)
 	hud.demolisci.connect(GameState.demolisci)
 	hud.migliora.connect(GameState.migliora)
+	hud.coltura.connect(GameState.cambia_coltura)
+	hud.strade.connect(_inizia_strada)
+	hud.rimuovi_strada.connect(_rimuovi_strada)
 	hud.chiudi_pannello.connect(_seleziona.bind(-1))
 	hud.ruota.connect(camera.ruota)
 	hud.vai_al_regno.connect(_vai_al_regno)
@@ -71,7 +77,9 @@ func _ready() -> void:
 	GameState.season_changed.connect(_cambia_stagione)
 	GameState.changed.connect(_aggiorna_edifici)
 	GameState.game_ended.connect(_partita_finita)
-	GameState.terreno_cambiato.connect(vista.taglia)
+	GameState.terreno_cambiato.connect(_terreno_cambiato)
+	GameState.building_added.connect(_su_edificio_aggiunto)
+	vista.aggiorna_ciuffi()
 	GameState.changed.emit()  # l'HUD è pronto: rinfresca i numeri
 	if GameState.capo < 0:
 		_inizia_prologo()
@@ -130,7 +138,17 @@ func _crea_edificio(b: Dictionary) -> void:
 	_edifici[b.id] = e
 
 
+func _su_edificio_aggiunto(_b: Dictionary) -> void:
+	vista.aggiorna_ciuffi()
+
+
+func _terreno_cambiato(celle: Array) -> void:
+	vista.aggiorna_celle(celle)
+	vista.aggiorna_ciuffi()
+
+
 func _rimuovi_edificio(id: int) -> void:
+	vista.aggiorna_ciuffi.call_deferred()
 	if _edifici.has(id):
 		_edifici[id].queue_free()
 		_edifici.erase(id)
@@ -178,7 +196,51 @@ func _sposta_anteprima(centro: Vector2i) -> void:
 	hud.mostra_piazzamento(_tipo, valida, stima)
 
 
+# --- Strade ---------------------------------------------------------------------
+
+## Modalità strada: un tocco fissa l'inizio, i tocchi dopo la fine (percorso a L).
+func _inizia_strada() -> void:
+	_termina_piazzamento()
+	_seleziona(-1)
+	modo = Modo.STRADA
+	_strada_da = Vector2i(-1, -1)
+	_strada_celle = []
+	hud.mostra_strada("Tocca dove inizia la strada, poi dove finisce. 1 pietra per cella in piano, 2 in salita.", false)
+
+
+func _tocco_strada(cella: Vector2i) -> void:
+	if _strada_da.x < 0:
+		_strada_da = cella
+	_strada_celle = TerrenoFeudo.percorso(_strada_da, cella)
+	var costo := GameState.costo_strada(_strada_celle)
+	var valida := costo >= 0
+	var colore := Color(0.9, 0.75, 0.45, 0.6) if valida else Color(0.95, 0.25, 0.2, 0.5)
+	vista.mostra_celle(_strada_celle, colore)
+	if not valida:
+		hud.mostra_strada("Il percorso passa su acqua, bosco, rocce o edifici: scegli un'altra fine.", false)
+	else:
+		var basta: bool = GameState.risorse.pietra >= costo
+		hud.mostra_strada("%d celle · %d pietra%s" % [_strada_celle.size(), costo, "" if basta else " (non basta)"], basta and costo > 0)
+
+
+func _costruisci_strada() -> void:
+	if GameState.costruisci_strada(_strada_celle):
+		_strada_da = Vector2i(-1, -1)
+		_strada_celle = []
+		vista.nascondi_zona()
+		hud.mostra_strada("Strada fatta. Tocca per iniziarne un'altra, o Annulla.", false)
+
+
+func _rimuovi_strada() -> void:
+	GameState.rimuovi_strada(_strada_toccata)
+	_strada_toccata = Vector2i(-1, -1)
+	hud.nascondi_pannello()
+
+
 func _conferma_piazzamento() -> void:
+	if modo == Modo.STRADA:
+		_costruisci_strada()
+		return
 	if modo != Modo.PIAZZA or not GameState.terreno.posizione_valida(_tipo, _cella):
 		return
 	var b := GameState.piazza(_tipo, _cella, 1.0)
@@ -236,8 +298,14 @@ func _tocco(posizione: Vector2) -> void:
 	var cella := _cella_sotto(posizione)
 	if modo == Modo.PIAZZA:
 		_sposta_anteprima(cella)
+	elif modo == Modo.STRADA:
+		_tocco_strada(cella)
 	else:
-		_seleziona(GameState.terreno.edificio_a(cella))
+		var id := GameState.terreno.edificio_a(cella)
+		_seleziona(id)
+		if id < 0 and GameState.terreno.strada_a(cella):
+			_strada_toccata = cella
+			hud.mostra_strada_esistente()
 
 
 func _cella_sotto(posizione: Vector2) -> Vector2i:

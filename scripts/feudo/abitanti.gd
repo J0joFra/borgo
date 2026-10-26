@@ -82,7 +82,8 @@ func _process(delta: float) -> void:
 			continue
 		var verso: Vector3 = p.destinazione - nodo.position
 		verso.y = 0.0
-		var passo := VELOCITA * dt
+		var sulla_strada := vista.terreno.strada_a(Vector2i(floori(nodo.position.x / VistaTerreno.CELLA), floori(nodo.position.z / VistaTerreno.CELLA)))
+		var passo := VELOCITA * dt * (1.6 if sulla_strada else 1.0)  # sulle strade si cammina più svelti
 		if verso.length() <= passo:
 			nodo.position = Vector3(p.destinazione.x, _quota(p.destinazione), p.destinazione.z)
 			p.attesa = _sosta(p)

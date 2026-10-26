@@ -11,6 +11,9 @@ signal annulla_piazzamento
 signal cambia_lavoratori(id: int, delta: int)
 signal demolisci(id: int)
 signal migliora(id: int)
+signal coltura(id: int, nome: String)
+signal strade
+signal rimuovi_strada
 signal chiudi_pannello
 signal ruota(direzione: int)
 signal vai_al_regno
@@ -19,14 +22,29 @@ signal nuova_partita
 const CATEGORIE := [["Case", "case"], ["Risorse", "risorse"], ["Cibo", "cibo"], ["Servizi", "servizi"]]
 const COLORI := {
 	"legna": Color("8b5a2b"), "pietra": Color("9a9a9a"), "cibo": Color("c0392b"), "grano": Color("e0b84a"),
+	"orzo": Color("d8c070"), "rape": Color("8a5a9a"),
 	"ferro": Color("4a5568"), "utensili": Color("c8ccd0"), "oro": Color("e5b53a"),
 	"abitanti": Color("e8c39e"), "felicita": Color("f2d24b"),
+}
+const NOMI_RISORSE := {
+	"legna": "Legna", "pietra": "Pietra", "cibo": "Cibo", "grano": "Grano", "orzo": "Orzo", "rape": "Rape",
+	"semi_orzo": "Semi d'orzo", "semi_grano": "Semi di grano", "semi_rape": "Semi di rapa",
+	"ferro": "Ferro", "utensili": "Utensili", "oro": "Oro",
 }
 const TESTO := Color("f3e3c3")
 const TESTO_ALLARME := Color("ff6b5b")
 
 var _radice: Control
 var _numeri: Dictionary = {}  # chiave -> Label nella barra in alto
+var _icone: Dictionary = {}   # chiave -> icona nella barra in alto
+var _mercato: PanelContainer
+var _mercato_notizia: Label
+var _mercato_righe: Dictionary = {}  # risorsa -> [scorta, tendenza, compra, vendi]
+var _mercato_nota: Label
+var _btn_colture: Dictionary = {}  # coltura -> Button
+var _strada := ""  # "nuova" mentre si traccia una strada, "esistente" se ne è toccata una
+var _strada_testo := ""
+var _strada_valida := false
 var _tempo: Label
 var _velocita: Array[Button] = []
 var _menu: PanelContainer
@@ -67,11 +85,12 @@ func _ready() -> void:
 	add_child(_radice)
 	_crea_barra()
 	_crea_lati()
+	_crea_avviso()  # prima dei pannelli, così gli avvisi stanno sotto di loro
 	_crea_menu()
 	_crea_pannello()
 	_crea_info()
 	_crea_consiglio()
-	_crea_avviso()
+	_crea_mercato()
 	_crea_fine()
 	GameState.changed.connect(_aggiorna)
 	GameState.season_changed.connect(func(_s, _a): _aggiorna())
@@ -94,6 +113,7 @@ func _process(delta: float) -> void:
 # --- API usata da main.gd ----------------------------------------------------
 
 func mostra_edificio(id: int) -> void:
+	_strada = ""
 	_edificio = id
 	_piazzamento = ""
 	_chiudi_menu()
@@ -101,6 +121,7 @@ func mostra_edificio(id: int) -> void:
 
 
 func mostra_piazzamento(tipo: String, valido: bool, stima := "") -> void:
+	_strada = ""
 	_piazzamento = tipo
 	_piazzamento_valido = valido
 	_stima_piazzamento = stima
@@ -108,7 +129,26 @@ func mostra_piazzamento(tipo: String, valido: bool, stima := "") -> void:
 	_aggiorna_pannello()
 
 
+## Mentre si traccia una strada: quante celle, quanta pietra, se si può.
+func mostra_strada(testo: String, valido: bool) -> void:
+	_strada = "nuova"
+	_strada_testo = testo
+	_strada_valida = valido
+	_piazzamento = ""
+	_edificio = -1
+	_aggiorna_pannello()
+
+
+## Una strada già fatta: si può togliere.
+func mostra_strada_esistente() -> void:
+	_strada = "esistente"
+	_piazzamento = ""
+	_edificio = -1
+	_aggiorna_pannello()
+
+
 func nascondi_pannello() -> void:
+	_strada = ""
 	_edificio = -1
 	_piazzamento = ""
 	_pannello.visible = false
@@ -175,7 +215,9 @@ func _crea_barra() -> void:
 	var riga := HBoxContainer.new()
 	barra.add_child(riga)
 	for chiave in GameState.RISORSE_VISIBILI + ["abitanti", "felicita"]:
-		riga.add_child(_icona(COLORI[chiave]))
+		var icona := _icona(COLORI[chiave])
+		_icone[chiave] = icona
+		riga.add_child(icona)
 		var l := Label.new()
 		l.custom_minimum_size.x = 22 if chiave != "abitanti" else 30
 		riga.add_child(l)
@@ -201,6 +243,9 @@ func _crea_lati() -> void:
 		var b := _bottone(c[0], 46, 30)
 		b.pressed.connect(_apri_categoria.bind(c[1]))
 		sinistra.add_child(b)
+	var strada := _bottone("Strade", 46, 30)
+	strada.pressed.connect(func(): _chiudi_menu(); strade.emit())
+	sinistra.add_child(strada)
 
 	var destra := VBoxContainer.new()
 	destra.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -217,6 +262,9 @@ func _crea_lati() -> void:
 	var consiglio := _bottone("Consiglio", 46, 30)
 	consiglio.pressed.connect(func(): _consiglio.visible = not _consiglio.visible; _info.visible = false; _aggiorna())
 	destra.add_child(consiglio)
+	var mercato := _bottone("Mercato", 46, 30)
+	mercato.pressed.connect(func(): _mercato.visible = not _mercato.visible; _info.visible = false; _consiglio.visible = false; _aggiorna())
+	destra.add_child(mercato)
 	var giro := HBoxContainer.new()
 	giro.add_theme_constant_override("separation", 2)
 	destra.add_child(giro)
@@ -268,7 +316,11 @@ func _crea_pannello() -> void:
 	_btn_piu = _bottone("+", 18, 18)
 	_btn_piu.pressed.connect(func(): cambia_lavoratori.emit(_edificio, 1))
 	_btn_demolisci = _bottone("Demolisci", 0, 18)
-	_btn_demolisci.pressed.connect(func(): demolisci.emit(_edificio))
+	_btn_demolisci.pressed.connect(func():
+		if _strada == "esistente":
+			rimuovi_strada.emit()
+		else:
+			demolisci.emit(_edificio))
 	_btn_migliora = _bottone("Migliora", 0, 18)
 	_btn_migliora.pressed.connect(func(): migliora.emit(_edificio))
 	_btn_ok = _bottone("Costruisci", 0, 18)
@@ -279,6 +331,12 @@ func _crea_pannello() -> void:
 	_btn_chiudi.pressed.connect(func(): chiudi_pannello.emit())
 	_btn_chiudi.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	sopra.add_child(_btn_chiudi)
+	for nome in GameState.nomi_colture():
+		var bc := _bottone(GameState.colture[nome].nome, 0, 18)
+		bc.toggle_mode = true
+		bc.pressed.connect(func(): coltura.emit(_edificio, nome))
+		_btn_colture[nome] = bc
+		riga.add_child(bc)
 	for b in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ok, _btn_annulla]:
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		riga.add_child(b)
@@ -354,6 +412,70 @@ func _aggiorna_consiglio() -> void:
 	_consiglio_testo.text = "\n".join(righe)
 
 
+func _crea_mercato() -> void:
+	_mercato = PanelContainer.new()
+	_mercato.set_anchors_preset(Control.PRESET_CENTER)
+	_mercato.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_mercato.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_mercato.visible = false
+	_radice.add_child(_mercato)
+	var col := VBoxContainer.new()
+	_mercato.add_child(col)
+	_mercato_notizia = Label.new()
+	_mercato_notizia.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_mercato_notizia.custom_minimum_size.x = 330
+	col.add_child(_mercato_notizia)
+	var griglia := GridContainer.new()
+	griglia.columns = 5
+	griglia.add_theme_constant_override("h_separation", 4)
+	griglia.add_theme_constant_override("v_separation", 1)
+	col.add_child(griglia)
+	for r in GameState.mercato.risorse() if GameState.mercato else []:
+		var nome := Label.new()
+		nome.text = NOMI_RISORSE.get(r, r)
+		nome.custom_minimum_size.x = 64
+		griglia.add_child(nome)
+		var scorta := Label.new()
+		scorta.custom_minimum_size.x = 28
+		griglia.add_child(scorta)
+		var tendenza := Label.new()
+		tendenza.custom_minimum_size.x = 30
+		griglia.add_child(tendenza)
+		var compra := _bottone("", 100, 14)
+		compra.pressed.connect(func(): GameState.compra(r))
+		griglia.add_child(compra)
+		var vendi := _bottone("", 100, 14)
+		vendi.pressed.connect(func(): GameState.vendi(r))
+		griglia.add_child(vendi)
+		_mercato_righe[r] = [scorta, tendenza, compra, vendi]
+	_mercato_nota = Label.new()
+	_mercato_nota.modulate = Color(1, 1, 1, 0.75)
+	col.add_child(_mercato_nota)
+	var chiudi := _bottone("Chiudi")
+	chiudi.pressed.connect(func(): _mercato.visible = false)
+	col.add_child(chiudi)
+
+
+func _aggiorna_mercato() -> void:
+	var m := GameState.mercato
+	_mercato_notizia.text = "Mercato del regno · %s" % m.notizia()
+	var lotto := m.lotto()
+	for r in _mercato_righe:
+		var riga: Array = _mercato_righe[r]
+		riga[0].text = str(int(GameState.risorse.get(r, 0.0)))
+		var t := m.tendenza(r, GameState.stagione)
+		riga[1].text = "sale" if t > 0 else ("scende" if t < 0 else "")
+		riga[1].add_theme_color_override("font_color", TESTO_ALLARME if t > 0 else Color("9fd18b"))
+		var costo := GameState.costo_lotto(r)
+		var ricavo := GameState.ricavo_lotto(r)
+		riga[2].text = "Compra %d · %d oro" % [lotto, costo]
+		riga[2].disabled = GameState.risorse.oro < costo or GameState.risorse[r] + lotto > GameState.capacita()
+		riga[3].text = "Vendi %d · %d oro" % [lotto, ricavo]
+		riga[3].disabled = GameState.risorse[r] < lotto
+	_mercato_nota.text = "Hai %d oro. Con un mercato costruito si compra e si vende a prezzi migliori." % int(GameState.risorse.oro) \
+		if not GameState.ha_mercato() else "Hai %d oro. Il tuo mercato ti fa avere prezzi migliori." % int(GameState.risorse.oro)
+
+
 func _nuovo_consiglio(famiglia: int, testo: String) -> void:
 	mostra_avviso("%s: %s" % [GameState.famiglie[famiglia].capo, testo], 7.0)
 
@@ -399,6 +521,9 @@ func _crea_fine() -> void:
 func _aggiorna() -> void:
 	var tps: float = GameState.bil.tick_per_stagione
 	for r in GameState.RISORSE_VISIBILI:
+		var mostra := _da_mostrare(r)
+		_numeri[r].visible = mostra
+		_icone[r].visible = mostra
 		var valore: float = GameState.risorse.get(r, 0.0)
 		var delta: float = GameState.ultimo_delta.get(r, 0.0)
 		_numeri[r].text = str(int(valore))
@@ -420,6 +545,23 @@ func _aggiorna() -> void:
 		_aggiorna_info()
 	if _consiglio.visible:
 		_aggiorna_consiglio()
+	if _mercato.visible:
+		_aggiorna_mercato()
+
+
+## Nella barra in alto solo ciò che conta adesso: le risorse di base sempre,
+## i raccolti se ne hai o li coltivi, ferro e attrezzi dal Borgo in poi.
+func _da_mostrare(r: String) -> bool:
+	if r in ["legna", "pietra", "cibo", "oro"]:
+		return true
+	if GameState.risorse.get(r, 0.0) >= 1.0:
+		return true
+	if r in ["ferro", "utensili"]:
+		return GameState.livello >= 1
+	for b in GameState.buildings:
+		if GameState.coltura_di(b).get("risorsa", "") == r:
+			return true
+	return false
 
 
 func _imposta_velocita(v: int) -> void:
@@ -474,8 +616,23 @@ func _scegli_dal_menu(b: Button) -> void:
 
 
 func _aggiorna_pannello() -> void:
-	for x in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ok, _btn_annulla, _btn_chiudi]:
+	for x in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ok, _btn_annulla, _btn_chiudi] + _btn_colture.values():
 		x.visible = false
+	if _strada != "":
+		_pannello.visible = true
+		_titolo.text = "Strada"
+		if _strada == "esistente":
+			_dettagli.text = "Le strade tengono ordinato il villaggio e la gente ci cammina più svelta."
+			_btn_demolisci.text = "Rimuovi"
+			_btn_demolisci.visible = true
+			_btn_chiudi.visible = true
+		else:
+			_dettagli.text = _strada_testo
+			_btn_ok.visible = true
+			_btn_ok.disabled = not _strada_valida
+			_btn_annulla.visible = true
+		return
+	_btn_demolisci.text = "Demolisci"
 	if _piazzamento != "":
 		var d: Dictionary = GameState.edifici[_piazzamento]
 		_titolo.text = "%s  ·  %s" % [d.nome, GameState.testo_costo(_piazzamento)]
@@ -503,11 +660,18 @@ func _aggiorna_pannello() -> void:
 	var stima := GameState.stima_produzione(b.tipo, b.cella, int(b.get("livello", 1)))
 	if stima != "":
 		testo = stima
+	if d.get("coltura", false):
+		testo = GameState.stima_produzione(b.tipo, b.cella, int(b.get("livello", 1)), b.get("coltura", ""))
+		testo += "\n" + _stato_campo(b)
+		for nome in _btn_colture:
+			_btn_colture[nome].visible = true
+			_btn_colture[nome].set_pressed_no_signal(nome == b.get("coltura", ""))
 	var prossimo := GameState.prossimo_miglioramento(b)
 	if not prossimo.is_empty():
 		_btn_migliora.visible = true
-		_btn_migliora.text = "Migliora: %s (%s)" % [prossimo.nome, GameState._elenco(prossimo.costo)]
+		_btn_migliora.text = "Migliora (%s)" % GameState._elenco(prossimo.costo)
 		_btn_migliora.disabled = not GameState.puo_migliorare(b)
+		testo += "\nProssimo livello: %s" % prossimo.nome
 	_titolo.text = d.nome
 	if int(d.lavoratori) > 0:
 		_titolo.text += "  ·  %d/%d lavoratori" % [b.lavoratori, d.lavoratori]
@@ -516,6 +680,17 @@ func _aggiorna_pannello() -> void:
 		_btn_piu.visible = true
 		_btn_piu.disabled = b.lavoratori >= int(d.lavoratori) or GameState.disoccupati() == 0
 	_dettagli.text = testo
+
+
+func _stato_campo(b: Dictionary) -> String:
+	var c := GameState.coltura_di(b)
+	if c.is_empty():
+		return ""
+	if b.get("seminato", false):
+		return "Seminato a %s: si raccoglie a fine %s." % [c.nome.to_lower(), c.stagioni[c.stagioni.size() - 1]]
+	if b.get("senza_semi", false):
+		return "Fermo: mancano i semi di %s (si comprano al mercato)." % c.nome.to_lower()
+	return "Si semina all'inizio della %s." % c.stagioni[0]
 
 
 func _aggiorna_info() -> void:
@@ -532,6 +707,8 @@ func _aggiorna_info() -> void:
 	for k in fattori:
 		voci.append("%s %+d" % [k, fattori[k]])
 	righe.append("Felicità %d → %s" % [int(GameState.felicita), ", ".join(voci)])
+	righe.append("Nuovi arrivi: attrattiva %d%% (felicità sopra %d e scorte abbondanti, posti liberi %d)" % [
+		int(GameState.calcola_attrattiva() * 100), int(GameState.bil.crescita.soglia_arrivi), maxi(0, GameState.alloggi() - GameState.abitanti)])
 	righe.append("Tasse al re in autunno: %d oro · capacità magazzino %d" % [GameState.tassa_del_re(), GameState.capacita()])
 	_info_testo.text = "\n".join(righe)
 	for i in _tasse.size():

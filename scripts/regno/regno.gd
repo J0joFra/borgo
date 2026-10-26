@@ -37,52 +37,10 @@ func _ready() -> void:
 
 
 func _genera() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = GameState.seme_mappa + 99
-	var n := int(_dati.numero)
-	# punti ben distanziati: si scartano quelli troppo vicini agli altri
-	while _siti.size() < n:
-		var p := Vector2(rng.randf_range(0.06, 0.94), rng.randf_range(0.08, 0.92))
-		var ok := true
-		for q in _siti:
-			if p.distance_to(q) < 0.18:
-				ok = false
-				break
-		if ok:
-			_siti.append(p)
-	# la regione del giocatore è quella più vicina al centro
-	var migliore := 9.0
-	for i in n:
-		var d := _siti[i].distance_to(Vector2(0.5, 0.5))
-		if d < migliore:
-			migliore = d
-			_mia = i
-	var nomi: Array = _dati.nomi.duplicate()
-	_mescola(nomi, rng)
-	for i in n:
-		var r := {"nome": nomi[i], "risorsa": _dati.risorse[rng.randi() % _dati.risorse.size()]}
-		var proprietario: Dictionary
-		if i == _mia:
-			proprietario = _dati.giocatore
-		else:
-			var x := rng.randf()
-			if x < 0.6:
-				proprietario = _dati.signori[rng.randi() % _dati.signori.size()]
-			elif x < 0.8:
-				proprietario = _dati.banditi
-			else:
-				proprietario = _dati.libera
-		r.signore = proprietario.nome
-		r.colore = Color(proprietario.colore)
-		_regioni.append(r)
-
-
-func _mescola(a: Array, rng: RandomNumberGenerator) -> void:
-	for i in range(a.size() - 1, 0, -1):
-		var j := rng.randi_range(0, i)
-		var tmp = a[i]
-		a[i] = a[j]
-		a[j] = tmp
+	var g := Regioni.genera(GameState.seme_mappa)
+	_siti = g.siti
+	_regioni = g.regioni
+	_mia = g.mia
 
 
 func _area() -> Rect2:

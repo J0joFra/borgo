@@ -1,0 +1,20 @@
+{
+	"orzo": {
+		"nome": "Orzo", "risorsa": "orzo", "semi": "semi_orzo",
+		"stagioni": ["primavera", "estate"], "resa": 50,
+		"semi_per_semina": 8, "semi_al_raccolto": 12, "colore": "d8c070"
+	},
+	"grano": {
+		"nome": "Grano", "risorsa": "grano", "semi": "semi_grano",
+		"stagioni": ["estate", "autunno"], "resa": 55,
+		"semi_per_semina": 8, "semi_al_raccolto": 12, "colore": "e0b84a"
+	},
+	"rape": {
+		"nome": "Rape", "risorsa": "rape", "semi": "semi_rape",
+		"stagioni": ["autunno", "inverno"], "resa": 40,
+		"semi_per_semina": 6, "semi_al_raccolto": 10, "colore": "8a5a9a"
+	},
+	"semi_iniziali": 16,
+	"bonus_selvatico": 1.2,
+	"semi_raccolti_per_cella": 0.5
+}

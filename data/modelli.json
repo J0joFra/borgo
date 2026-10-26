@@ -16,12 +16,15 @@
 		"raccoglitore": ["building_home_b"],
 		"pescatore": ["building_home_b"],
 		"cacciatore": ["building_archeryrange"],
-		"campo": ["building_grain"],
+		"campo": [],
 		"mulino": ["building_windmill"],
 		"forno": ["building_home_b"],
 		"taverna": ["building_tavern"],
 		"mercato": ["building_market"],
 		"chiesa": ["building_church"],
-		"maniero": ["building_castle"]
-	}
+		"maniero": ["building_castle"],
+		"dimora": ["building_tower_a"],
+		"forestale": ["building_home_b"]
+	},
+	"per_livello": {"dimora": {"2": ["building_tower_b"]}}
 }

@@ -26,9 +26,13 @@ func _ready() -> void:
 	for i in 3:
 		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
 	GameState.risorse.cibo = 0.0
-	for i in 60:
+	var felicita_prima := GameState.felicita
+	for i in 10:
 		GameState._tick()
-	_verifica(GameState.abitanti == 8, "fame: 10 -> 8 abitanti (era %d)" % GameState.abitanti)
+	_verifica(GameState.abitanti == 9, "fame: dopo 10 tick se ne va una persona (%d)" % GameState.abitanti)
+	_verifica(GameState.felicita < felicita_prima and GameState.felicita > felicita_prima - 15, "fame: la felicità scende piano")
+	for i in 50:
+		GameState._tick()
 	_verifica(GameState.stagione == GameState.ESTATE, "dopo 60 tick è estate")
 
 	# Produzione: raccoglitore con 2 lavoratori = 40 cibo a stagione.
@@ -265,7 +269,8 @@ func _ready() -> void:
 	var inverno := tz.resa("pescatore", posto_pesca, GameState.INVERNO)
 	_verifica(estate > 0.0 and inverno < estate, "pesca: d'inverno il lago ghiacciato rende meno (%.2f -> %.2f)" % [estate, inverno])
 	_verifica(GameState.stima_produzione("taglialegna", bosco_vicino).begins_with("Resa:"), "la stima della resa si legge")
-	_verifica("al raccolto" in GameState.stima_produzione("campo", tz.trova_posto("campo", cb)), "il campo rende al raccolto, non a ogni stagione")
+	var stima_campo := GameState.stima_produzione("campo", tz.trova_posto("campo", cb), 1, "rape")
+	_verifica("rape a stagione in autunno e inverno" in stima_campo, "il campo dice coltura e stagioni (%s)" % stima_campo)
 
 	# Disboscamento: in 3 anni (12 stagioni) il bosco attorno sparisce.
 	var tl3 := GameState.aggiungi_gratis("taglialegna", bosco_vicino, 1.0)
@@ -329,6 +334,154 @@ func _ready() -> void:
 	var ricaricata: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "tenda")[0]
 	_verifica(int(ricaricata.livello) == 3, "il livello degli edifici si salva")
 	_verifica(GameState.terreno.tagliati.size() == tagli and tagli == 5, "i tagli del bosco si salvano")
+	GameState.cancella_salvataggio()
+
+	# Dimora del signore: la tenda della guida diventa una torre attaccata al falò.
+	GameState.ricomincia()
+	GameState.avvia()
+	GameState.scegli_capo(0)
+	var dimore := GameState.buildings.filter(func(b): return b.tipo == "dimora")
+	var falo_b: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "falo")[0]
+	_verifica(dimore.size() == 1 and int(dimore[0].famiglia) == 0, "la guida vive nella dimora del signore")
+	_verifica(GameState.buildings.filter(func(b): return b.tipo == "tenda").size() == 2, "le altre due famiglie restano in tenda")
+	var dist: Vector2i = (dimore[0].cella - falo_b.cella).abs()
+	_verifica(dist.x + dist.y <= 2 and (dist.x == 2 or dist.y == 2), "la dimora è attaccata al falò")
+	_verifica(GameState.alloggi() >= GameState.abitanti, "con la dimora c'è posto per tutti")
+	var semi_tot := 0.0
+	for nome in GameState.nomi_colture():
+		semi_tot += GameState.risorse[GameState.colture[nome].semi]
+	_verifica(semi_tot == float(GameState.colture.semi_iniziali), "si parte con i semi della pianta selvatica vicina")
+
+	# Popolazione: arrivano persone se si è felici e pieni di scorte, e c'è posto.
+	GameState.nuova_partita(3)
+	GameState.abitanti = 4
+	GameState.aggiungi_gratis("casa", Vector2i(0, 0), 1.0)
+	GameState.aggiungi_gratis("casa", Vector2i(3, 0), 1.0)
+	GameState.felicita = 90.0
+	GameState.risorse.cibo = 100.0
+	_verifica(GameState.calcola_attrattiva() > 0.5, "felici e pieni di cibo: il villaggio attira (%.2f)" % GameState.calcola_attrattiva())
+	for i in 40:
+		GameState._arrivi()
+	_verifica(GameState.abitanti > 4 and GameState.abitanti <= 8, "arriva gente ma solo finché c'è posto (%d)" % GameState.abitanti)
+	GameState.risorse.cibo = 0.0
+	_verifica(GameState.calcola_attrattiva() == 0.0, "senza scorte non arriva nessuno")
+	GameState.risorse.cibo = 100.0
+	GameState.felicita = 40.0
+	_verifica(GameState.calcola_attrattiva() == 0.0, "scontenti: non arriva nessuno")
+
+	# Forestale: pianta nelle radure, in un anno torna bosco.
+	var tf := TerrenoFeudo.new(21)
+	var cf := TerrenoFeudo.centro_feudo() + Vector2i(0, 3)
+	var tagliate_f := tf.taglia_bosco(cf, Vector2i(2, 2), 12, 6)
+	var piantate := tf.pianta(cf, Vector2i(2, 2), 12, 4, 4)
+	_verifica(piantate.size() == 4 and piantate.all(func(c): return tagliate_f.has(c)), "il forestale ripianta prima le radure")
+	_verifica(not tf.posizione_valida("tenda", piantate[0]), "sulle piantine non si costruisce")
+	for st in 3:
+		tf.cresci_piantine()
+	_verifica(tf.tipo_a(piantate[0]) != TerrenoFeudo.Tipo.BOSCO, "dopo 3 stagioni non è ancora bosco")
+	tf.cresci_piantine()
+	_verifica(piantate.all(func(c): return tf.tipo_a(c) == TerrenoFeudo.Tipo.BOSCO), "dopo un anno le piantine sono bosco")
+	_verifica(tf.tagliati.size() == 2, "le radure ripiantate non sono più radure")
+
+	# Colture: semi, stagioni, zona selvatica.
+	GameState.nuova_partita(9)
+	GameState.terreno = null
+	var campo := GameState.aggiungi_gratis("campo", Vector2i(0, 0), 1.0)
+	campo.coltura = "rape"
+	campo.lavoratori = 2
+	GameState.abitanti = 1  # un villaggio vuoto chiude la partita: serve almeno una persona
+	GameState.risorse.cibo = 1000.0
+	GameState.risorse.semi_rape = 6.0
+	GameState.stagione = GameState.ESTATE
+	for i in 60:
+		GameState._tick()
+	_verifica(not campo.get("seminato", false) and GameState.risorse.rape < 0.01, "le rape non si seminano d'estate")
+	for i in 10:
+		GameState._tick()
+	_verifica(campo.get("seminato", false) and GameState.risorse.semi_rape < 0.01, "in autunno si seminano, consumando i semi")
+	for i in 50 + 60:
+		GameState._tick()
+	_verifica(GameState.risorse.rape > 70.0, "le rape crescono in autunno e inverno (%.0f)" % GameState.risorse.rape)
+	_verifica(not campo.get("seminato", false) and GameState.risorse.semi_rape >= 9.9, "al raccolto si tengono dei semi")
+	var campo2 := GameState.aggiungi_gratis("campo", Vector2i(5, 0), 1.0)
+	campo2.coltura = "orzo"
+	campo2.lavoratori = 2
+	GameState.risorse.semi_orzo = 0.0
+	for i in 10:
+		GameState._tick()
+	_verifica(not campo2.get("seminato", false) and campo2.get("senza_semi", false), "senza semi il campo resta fermo")
+	var tw := TerrenoFeudo.new(9)
+	var una_selvatica: int = tw.selvatiche.keys()[0]
+	var cs := Vector2i(una_selvatica % TerrenoFeudo.LATO, una_selvatica / TerrenoFeudo.LATO)
+	_verifica(tw.selvatiche.size() > 0 and tw.selvatica_sotto(cs, Vector2i.ONE) != "", "sulla mappa ci sono piante selvatiche")
+
+	# Mercato: prezzi, compravendita, effetto delle regioni.
+	GameState.nuova_partita(4)
+	var mc := GameState.mercato
+	var g := Regioni.genera(4)
+	_verifica(mc.costo_lotto("legna", 0, false) > mc.ricavo_lotto("legna", 0, false), "si compra più caro di quanto si vende")
+	_verifica(mc.costo_lotto("legna", 0, true) <= mc.costo_lotto("legna", 0, false), "con un mercato costruito si paga meno")
+	GameState.risorse.oro = 100.0
+	GameState.risorse.pietra = 0.0
+	var prima_oro: float = GameState.risorse.oro
+	_verifica(GameState.compra("pietra") and GameState.risorse.pietra == 10.0 and GameState.risorse.oro < prima_oro, "comprare 10 pietra costa oro")
+	var prezzo_dopo := mc.prezzo("pietra", 0)
+	GameState.compra("pietra")
+	_verifica(mc.prezzo("pietra", 0) > prezzo_dopo, "comprare tanto fa salire il prezzo")
+	_verifica(GameState.vendi("pietra") and GameState.risorse.pietra == 10.0, "vendere 10 pietra")
+	_verifica(mc.prezzo("cibo", GameState.INVERNO) > mc.prezzo("cibo", GameState.ESTATE), "d'inverno il cibo costa di più")
+	var eventi := 0
+	for anno in 10:
+		for st in 4:
+			mc.nuova_stagione(4, anno, st)
+			if not mc.evento.is_empty():
+				eventi += 1
+	_verifica(eventi > 5 and eventi < 40, "ogni tanto succede qualcosa nel regno (%d eventi in 40 stagioni)" % eventi)
+	_verifica(g.regioni.size() == 10, "il mercato conosce le regioni della mappa")
+
+	# Strade: 1 pietra in piano, 2 in salita; non si costruisce sopra.
+	var ts := TerrenoFeudo.new(13)
+	var piano := ts.trova_posto("casa", TerrenoFeudo.centro_feudo())
+	var percorso := TerrenoFeudo.percorso(piano, piano + Vector2i(1, 0))
+	_verifica(ts.costo_strada(percorso) == 2, "due celle in piano: 2 pietra")
+	var collina_s := Vector2i(-1, -1)
+	for i in ts.celle.size():
+		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		if ts.celle[i] == TerrenoFeudo.Tipo.COLLINA and ts.nel_feudo(c):
+			collina_s = c
+			break
+	_verifica(ts.costo_strada([collina_s]) == 2, "in salita costa 2 pietra")
+	ts.aggiungi_strada(percorso)
+	_verifica(not ts.posizione_valida("casa", piano), "non si costruisce sulle strade")
+	_verifica(ts.costo_strada(percorso) == 0, "una strada già fatta non costa")
+	var acqua_c := Vector2i(-1, -1)
+	for i in ts.celle.size():
+		if ts.celle[i] == TerrenoFeudo.Tipo.FIUME and ts.nel_feudo(Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)):
+			acqua_c = Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+			break
+	_verifica(ts.costo_strada([acqua_c]) == -1, "niente strade sull'acqua")
+
+	# Salvataggio della versione 4: strade, piantine, colture, mercato.
+	GameState.ricomincia()
+	GameState.avvia()
+	var c0 := TerrenoFeudo.centro_feudo() + Vector2i(6, 6)
+	GameState.risorse.pietra = 50.0
+	var strada_ok := GameState.costruisci_strada(TerrenoFeudo.percorso(GameState.terreno.trova_posto("casa", c0), GameState.terreno.trova_posto("casa", c0)))
+	GameState.terreno.taglia_bosco(TerrenoFeudo.centro_feudo(), Vector2i.ONE, 15, 3)
+	GameState.terreno.pianta(TerrenoFeudo.centro_feudo(), Vector2i.ONE, 15, 2, 4)
+	var cmp := GameState.aggiungi_gratis("campo", GameState.terreno.trova_posto("campo", c0 + Vector2i(4, 0)), 1.0)
+	cmp.coltura = "grano"
+	cmp.seminato = true
+	GameState.mercato.fattori.legna = 1.37
+	var n_strade := GameState.terreno.strade.size()
+	GameState.salva()
+	GameState.in_corso = false
+	GameState.avvia()
+	_verifica(strada_ok and GameState.terreno.strade.size() == n_strade and n_strade > 0, "le strade si salvano")
+	_verifica(GameState.terreno.piantine.size() == 2, "le piantine si salvano")
+	var cmp2: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "campo")[0]
+	_verifica(cmp2.coltura == "grano" and cmp2.seminato, "coltura e semina si salvano")
+	_verifica(is_equal_approx(GameState.mercato.fattori.legna, 1.37), "i prezzi del mercato si salvano")
 	GameState.cancella_salvataggio()
 
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])

@@ -30,7 +30,7 @@ func _via() -> void:
 	await _scatta("3_consiglio_presentato")
 	prologo.finito.emit()
 	prologo.queue_free()
-	await _attendi(1.0)
+	await _attendi(1.5)
 	await _scatta("4_falo")
 
 	# un po' di vita: taglialegna nel bosco più fitto, raccoglitore e campo, poi il tempo scorre
@@ -82,6 +82,47 @@ func _via() -> void:
 	await _attendi(0.3)
 	await _scatta("9b_pannello_taglialegna")
 	f._seleziona(-1)
+
+	# il forestale ripianta: alberelli che crescono
+	var fo := GameState.piazza("forestale", t.trova_posto("forestale", bosco + Vector2i(0, 3)), 1.0)
+	fo.progresso = 1.0
+	fo.lavoratori = 1
+	await _attendi(1.0)
+	for st in 2:
+		GameState._lavora_forestali()
+	await _attendi(1.0)
+	await _scatta("12_forestale_piantine")
+	for st in 3:
+		GameState._lavora_forestali()
+	await _attendi(1.0)
+	await _scatta("13_bosco_ricresciuto")
+
+	# strada a L dal falò, campo con coltura, mercato
+	var pf2: Vector3 = f.vista.centro_area(falo.cella, Vector2i(2, 2))
+	f.camera.position = Vector3(pf2.x, 0, pf2.z)
+	f._inizia_strada()
+	f._tocco_strada(falo.cella + Vector2i(-1, 3))
+	f._tocco_strada(falo.cella + Vector2i(6, 7))
+	await _attendi(0.5)
+	await _scatta("14_strada_anteprima")
+	f._conferma_piazzamento()
+	f._termina_piazzamento()
+	var cmp := GameState.piazza("campo", _posto_migliore("campo", c), 1.0)
+	cmp.progresso = 1.0
+	cmp.lavoratori = 2
+	cmp.seminato = true
+	await _attendi(1.0)
+	var pc: Vector3 = f.vista.centro_area(cmp.cella, Vector2i(3, 3))
+	f.camera.position = Vector3(pc.x, 0, pc.z)
+	f._seleziona(cmp.id)
+	await _attendi(0.5)
+	await _scatta("15_campo_coltura")
+	f._seleziona(-1)
+	f.hud._mercato.visible = true
+	f.hud._aggiorna()
+	await _attendi(0.3)
+	await _scatta("16_mercato")
+	f.hud._mercato.visible = false
 
 	f.camera.cambia_zoom(-1)
 	await _attendi(1.0)
