@@ -1,7 +1,7 @@
 class_name Edificio3D
 extends Node3D
-## Un edificio del feudo, costruito con forme low-poly provvisorie.
-## Per usare un modello vero: carica il .glb in _costruisci() al posto delle forme.
+## Un edificio del feudo. Se in art/models c'è un modello vero (vedi CatalogoModelli)
+## lo usa; altrimenti lo costruisce con forme low-poly provvisorie.
 
 const LEGNO := Color("9b6a3f")
 const LEGNO_SCURO := Color("5a3a22")
@@ -18,6 +18,8 @@ var b: Dictionary
 var vista: VistaTerreno
 
 var _corpo: MeshInstance3D
+var _modello: Node3D  # modello vero, se trovato
+var _altezza_modello := 0.0
 var _pale: MeshInstance3D
 var _barra: MeshInstance3D
 var _avviso: MeshInstance3D
@@ -52,8 +54,9 @@ func _process(delta: float) -> void:
 		_costruisci()
 		if appena_finito:
 			# l'edificio "sale" dal terreno con un piccolo rimbalzo
-			_corpo.scale = Vector3(1, 0.05, 1)
-			create_tween().tween_property(_corpo, "scale", Vector3.ONE, 0.5) \
+			var corpo: Node3D = _modello if _modello else _corpo
+			corpo.scale = Vector3(1, 0.05, 1)
+			create_tween().tween_property(corpo, "scale", Vector3.ONE, 0.5) \
 				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	if not completo and _barra:
 		var p: float = maxf(b.progresso, 0.02)
@@ -90,8 +93,16 @@ func _costruisci() -> void:
 	if _barra:
 		_barra.queue_free()
 		_barra = null
+	if _modello:
+		_modello.queue_free()
+		_modello = null
 	var k := LowPoly.Costruttore.new()
-	if not _completo:
+	if _completo:
+		_modello = CatalogoModelli.istanzia(b.tipo, _larghezza, _profondita)
+	if _modello:
+		add_child(_modello)
+		_altezza_modello = CatalogoModelli._ingombro(_modello, Transform3D.IDENTITY).end.y
+	elif not _completo:
 		_cantiere(k)
 	else:
 		var d: Dictionary = GameState.edifici[b.tipo]
@@ -121,6 +132,8 @@ func _altezza_muri() -> float:
 
 
 func _altezza_tetto() -> float:
+	if _modello:
+		return _altezza_modello
 	return 0.25 + _altezza_muri() + 0.5 * minf(_larghezza, _profondita)
 
 

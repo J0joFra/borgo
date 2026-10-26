@@ -50,12 +50,25 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 
 La logica di gioco lavora su una griglia 2D di celle; il 3D è solo la sua rappresentazione.
 
-### Mettere i modelli veri
+### Mettere i modelli veri (KayKit)
 
-I modelli provvisori sono costruiti in codice in `edificio_3d.gd` (`_costruisci()`), con un solo materiale e i colori nei vertici.
-Per usare modelli `.glb` (ad esempio KayKit, Quaternius o Kenney, tutti CC0): mettili in `art/models/`,
-poi in `_costruisci()` carica la scena del modello (`load("res://art/models/casa.glb").instantiate()`) e aggiungila come figlio
-al posto della mesh. Una cella misura 2×2 metri; una casa occupa 2×2 celle.
+Il gioco cerca da solo i modelli in `art/models/` e li usa al posto delle forme provvisorie.
+Ogni modello viene centrato, appoggiato a terra e scalato per stare nell'area dell'edificio.
+
+1. Scarica gratis **KayKit Medieval Hexagon Pack** da <https://kaylousberg.itch.io/kaykit-medieval-hexagon>
+   ("Download Now", poi "No thanks, just take me to the downloads"). Licenza CC0.
+2. Scompatta lo zip e copia la cartella dei modelli `gltf` (quella con le sottocartelle `buildings`, `decoration`…)
+   dentro `art/models/` del progetto, ad esempio `art/models/kaykit/`.
+3. Apri il progetto in Godot: importa i file da solo (la prima volta ci mette un po'). Premi F5.
+
+Quale file va a quale edificio lo decide `data/modelli.json`: per ogni edificio c'è un elenco di parole
+cercate nel nome del file, in ordine (es. la chiesa cerca `church`). `colore_preferito` sceglie la variante
+di colore della fazione (`red`, `blue`, `green`, `yellow`). Se un edificio non trova nulla resta la forma
+provvisoria, quindi puoi aggiungere modelli un po' alla volta. Il campo resta sempre provvisorio,
+perché cambia colore con le stagioni.
+
+Se un modello è girato dalla parte sbagliata, cambia `rotazione` (in gradi); se è troppo grande o piccolo,
+`riempimento` (0,9 = occupa il 90% dell'area).
 
 ## Test
 

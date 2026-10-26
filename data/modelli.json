@@ -1,0 +1,24 @@
+{
+	"cartella": "res://art/models",
+	"colore_preferito": "red",
+	"riempimento": 0.9,
+	"rotazione": 0,
+	"edifici": {
+		"casa": ["building_home_a", "home_a", "house"],
+		"magazzino": ["storage", "warehouse", "building_home_b"],
+		"taglialegna": ["lumbermill", "sawmill", "lumber"],
+		"cava": ["quarry", "building_mine"],
+		"miniera": ["building_mine", "mine"],
+		"fabbro": ["blacksmith", "forge"],
+		"raccoglitore": ["building_home_b", "hut"],
+		"pescatore": ["docks", "dock", "fishing"],
+		"cacciatore": ["archeryrange", "archery", "tent"],
+		"campo": [],
+		"mulino": ["windmill", "watermill", "mill"],
+		"forno": ["building_home_b", "bakery"],
+		"taverna": ["tavern"],
+		"mercato": ["market"],
+		"chiesa": ["church"],
+		"maniero": ["castle"]
+	}
+}
