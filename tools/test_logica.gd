@@ -444,50 +444,92 @@ func _ready() -> void:
 	_verifica(eventi > 5 and eventi < 40, "ogni tanto succede qualcosa nel regno (%d eventi in 40 stagioni)" % eventi)
 	_verifica(g.regioni.size() == 10, "il mercato conosce le regioni della mappa")
 
-	# Strade: 1 pietra in piano, 2 in salita; non si costruisce sopra.
+	# Strade sui bordi delle celle: 1 pietra per tratto in piano, 2 in salita.
 	var ts := TerrenoFeudo.new(13)
-	var piano := ts.trova_posto("casa", TerrenoFeudo.centro_feudo())
-	var percorso := TerrenoFeudo.percorso(piano, piano + Vector2i(1, 0))
-	_verifica(ts.costo_strada(percorso) == 2, "due celle in piano: 2 pietra")
+	var piano := Vector2i(-1, -1)
+	for y in range(TerrenoFeudo.FEUDO.position.y + 2, TerrenoFeudo.FEUDO.end.y - 2):
+		for x in range(TerrenoFeudo.FEUDO.position.x + 2, TerrenoFeudo.FEUDO.end.x - 3):
+			var tutte := true
+			for dy in range(-2, 2):
+				for dx in 3:
+					if ts.tipo_a(Vector2i(x + dx, y + dy)) != TerrenoFeudo.Tipo.ERBA:
+						tutte = false
+			if tutte and piano.x < 0:
+				piano = Vector2i(x, y)
+	var percorso := TerrenoFeudo.percorso(piano, piano + Vector2i(2, 0))
+	_verifica(ts.costo_strada(percorso) == 2, "due tratti in piano: 2 pietra")
 	var collina_s := Vector2i(-1, -1)
 	for i in ts.celle.size():
 		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
-		if ts.celle[i] == TerrenoFeudo.Tipo.COLLINA and ts.nel_feudo(c):
+		if ts.celle[i] == TerrenoFeudo.Tipo.COLLINA and ts.nel_feudo(c) and ts.nel_feudo(c - Vector2i(0, 1)):
 			collina_s = c
 			break
-	_verifica(ts.costo_strada([collina_s]) == 2, "in salita costa 2 pietra")
+	_verifica(ts.costo_strada([collina_s, collina_s + Vector2i(1, 0)]) == 2, "in salita costa 2 pietra")
+	var casa_sopra := piano - Vector2i(0, 1)
+	_verifica(ts.posizione_valida("casa", casa_sopra), "prima della strada la casa ci sta")
 	ts.aggiungi_strada(percorso)
-	_verifica(not ts.posizione_valida("casa", piano), "non si costruisce sulle strade")
+	_verifica(not ts.posizione_valida("casa", casa_sopra), "una strada non può passare dentro una casa")
+	_verifica(ts.posizione_valida("casa", piano) and ts.posizione_valida("casa", piano - Vector2i(0, 2)), "ma le case si accostano alla strada da tutti e due i lati")
 	_verifica(ts.costo_strada(percorso) == 0, "una strada già fatta non costa")
-	var acqua_c := Vector2i(-1, -1)
+	_verifica(ts.vertice_su_strada(piano + Vector2i(1, 0)) and ts.lato_vicino(Vector2(piano) + Vector2(0.5, 0.1)) == TerrenoFeudo.lato(piano, piano + Vector2i(1, 0)), "si trova il tratto di strada toccato")
+	# ponti sul fiume
+	var sul_fiume := -1
 	for i in ts.celle.size():
-		if ts.celle[i] == TerrenoFeudo.Tipo.FIUME and ts.nel_feudo(Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)):
-			acqua_c = Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		var v := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		if not ts.nel_feudo(v) or not ts.nel_feudo(v - Vector2i(1, 0)):
+			continue
+		var k := TerrenoFeudo.lato(v, v + Vector2i(0, 1))
+		if ts.tipo_lato(k) == "ponte":
+			sul_fiume = k
 			break
-	var vp := ts.verifica_strada([acqua_c])
-	_verifica(vp.ok and vp.ponti == 1 and vp.legna == 3 and vp.pietra == 2, "sul fiume la strada diventa un ponte (3 legna, 2 pietra)")
-	_verifica(not ts.percorribile(acqua_c), "il fiume senza ponte non si attraversa")
-	ts.aggiungi_strada([acqua_c])
-	_verifica(ts.percorribile(acqua_c) and ts.ponte_a(acqua_c) == "ponte", "col ponte sì")
-	# passerelle sul lago: al massimo 3 celle di fila
+	var ef := TerrenoFeudo.estremi(sul_fiume)
+	var vp := ts.verifica_strada(ef)
+	_verifica(vp.ok and vp.ponti == 1 and vp.legna == 3 and vp.pietra == 2, "fra due celle di fiume la strada è un ponte (3 legna, 2 pietra)")
+	var cella_fiume: Vector2i = TerrenoFeudo.celle_del_lato(sul_fiume)[1]
+	_verifica(not ts.percorribile(cella_fiume), "il fiume senza ponte non si attraversa")
+	ts.aggiungi_strada(ef)
+	_verifica(ts.percorribile(cella_fiume) and ts.tipo_lato(sul_fiume) == "ponte", "col ponte sì")
+	# passerelle sul lago: al massimo 3 tratti di fila
 	var fila := Vector2i(-1, -1)
-	for y in range(TerrenoFeudo.FEUDO.position.y, TerrenoFeudo.FEUDO.end.y):
+	for y in range(TerrenoFeudo.FEUDO.position.y + 1, TerrenoFeudo.FEUDO.end.y):
 		for x in range(TerrenoFeudo.FEUDO.position.x, TerrenoFeudo.FEUDO.end.x - 6):
 			var tutte := true
 			for k in 6:
-				if ts.tipo_a(Vector2i(x + k, y)) != TerrenoFeudo.Tipo.ACQUA or ts.tipo_a(Vector2i(x + k, y - 1)) == TerrenoFeudo.Tipo.ACQUA and ts.strada_a(Vector2i(x + k, y - 1)):
+				if ts.tipo_a(Vector2i(x + k, y)) != TerrenoFeudo.Tipo.ACQUA or ts.tipo_a(Vector2i(x + k, y - 1)) != TerrenoFeudo.Tipo.ACQUA:
 					tutte = false
 			if tutte and fila.x < 0:
 				fila = Vector2i(x, y)
 	_verifica(fila.x >= 0, "c'è un lago abbastanza largo")
 	if fila.x >= 0:
-		var tre := TerrenoFeudo.percorso(fila, fila + Vector2i(2, 0))
-		var quattro := TerrenoFeudo.percorso(fila, fila + Vector2i(3, 0))
+		var tre := TerrenoFeudo.percorso(fila, fila + Vector2i(3, 0))
+		var quattro := TerrenoFeudo.percorso(fila, fila + Vector2i(4, 0))
 		var v3 := ts.verifica_strada(tre)
-		_verifica(v3.ok and v3.passerelle == 3 and v3.legna == 9 and v3.pietra == 0, "passerella di 3 celle: 9 legna")
-		_verifica(not ts.verifica_strada(quattro).ok, "4 celle di lago: troppo lunga")
+		_verifica(v3.ok and v3.passerelle == 3 and v3.legna == 9 and v3.pietra == 0, "passerella di 3 tratti: 9 legna")
+		_verifica(not ts.verifica_strada(quattro).ok, "4 tratti sul lago: troppo lunga")
 		ts.aggiungi_strada(tre)
-		_verifica(ts.ponte_a(fila) == "passerella" and not ts.verifica_strada([fila + Vector2i(3, 0)]).ok, "non si allunga una passerella già di 3")
+		_verifica(not ts.verifica_strada([fila + Vector2i(3, 0), fila + Vector2i(4, 0)]).ok, "non si allunga una passerella già di 3")
+
+	# Mura in pietra: cella per cella, porte dove passa una strada.
+	var tm := TerrenoFeudo.new(13)
+	var vm := tm.verifica_mura([piano, piano + Vector2i(1, 0)])
+	_verifica(vm.ok and vm.pietra == 2 * TerrenoFeudo.COSTO_MURA, "mura: %d pietra per cella" % TerrenoFeudo.COSTO_MURA)
+	tm.aggiungi_mura([piano - Vector2i(0, 1), piano])
+	_verifica(not tm.posizione_valida("casa", piano) and not tm.percorribile(piano), "sulle mura non si costruisce e non si passa")
+	var porta := tm.verifica_strada([piano, piano + Vector2i(1, 0)])
+	_verifica(porta.ok and porta.porte == 1, "una strada fra due celle di mura apre una porta")
+	_verifica(not tm.verifica_mura([piano]).ok or tm.verifica_mura([piano]).celle == 0, "le mura già fatte non costano")
+
+	# Rotazione: gli edifici rettangolari si girano.
+	_verifica(GameState.taglia_tipo("magazzino", 1) == Vector2i(2, 3) and GameState.taglia_tipo("magazzino", 2) == Vector2i(3, 2), "girato di 90° il magazzino è 2x3")
+	GameState.nuova_partita(13)
+	GameState.terreno = TerrenoFeudo.new(13)
+	GameState.risorse.legna = 100.0
+	GameState.risorse.pietra = 100.0
+	var posto_g := GameState.terreno.trova_posto("magazzino", TerrenoFeudo.centro_feudo(), 1)
+	var mag_g := GameState.piazza("magazzino", posto_g, 1.0, 1)
+	_verifica(int(mag_g.rot) == 1 and GameState.terreno.edificio_a(posto_g + Vector2i(1, 2)) == mag_g.id and GameState.terreno.edificio_a(posto_g + Vector2i(2, 0)) != mag_g.id,
+		"il magazzino girato occupa 2x3 celle")
+	GameState.terreno = null
 
 	# Esercito: formazioni in caserma, cibo al mese, difesa.
 	GameState.nuova_partita(30)
@@ -570,7 +612,25 @@ func _ready() -> void:
 		GameState._avanza_missioni()
 	_verifica(not GameState.regni[forte].conquistato and GameState.soldati < 5, "troppo pochi contro un signore forte: sconfitta")
 
-	# Salvataggio della versione 7: esercito, regni, missioni, ponti.
+	# Vassalli: tributo, lealtà, ribellione.
+	var chiave_v := libera
+	_verifica(GameState.regni[chiave_v].conquistato and int(GameState.regni[chiave_v].lealta) >= int(GameState.bil.vassalli.lealta_consigliere), "il consigliere vassallo parte leale")
+	var tributo_normale := GameState.tributo_di(chiave_v)
+	GameState.imposta_tributo(chiave_v, "alto")
+	_verifica(int(GameState.tributo_di(chiave_v).oro) > int(tributo_normale.oro), "un tributo alto manda più oro")
+	var leale_prima := int(GameState.regni[chiave_v].lealta)
+	GameState._riscuoti_tributi()
+	_verifica(int(GameState.regni[chiave_v].lealta) < leale_prima, "ma la lealtà scende")
+	var vassallo_v := int(GameState.regni[chiave_v].vassallo)
+	_verifica(GameState.forza_esercito(5) > 5 * float(GameState.bil.esercito.forza_per_soldato), "il vassallo manda truppe in battaglia")
+	_verifica(GameState.difesa().vassalli > 0.0, "e contro i banditi")
+	GameState.regni[chiave_v].lealta = 0
+	for i in 20:
+		if GameState.regni[chiave_v].conquistato:
+			GameState._riscuoti_tributi()
+	_verifica(not GameState.regni[chiave_v].conquistato and not vassallo_v in GameState.consiglieri(), "con lealtà a zero il vassallo si ribella e lascia il consiglio")
+
+	# Salvataggio della versione 8: esercito, regni, missioni, ponti, mura, rotazione.
 	GameState.ricomincia()
 	GameState.avvia()
 	GameState.scegli_capo(0)
@@ -591,7 +651,8 @@ func _ready() -> void:
 	GameState.avvia()
 	var c0 := TerrenoFeudo.centro_feudo() + Vector2i(6, 6)
 	GameState.risorse.pietra = 50.0
-	var strada_ok := GameState.costruisci_strada(TerrenoFeudo.percorso(GameState.terreno.trova_posto("casa", c0), GameState.terreno.trova_posto("casa", c0)))
+	var inizio_s := GameState.terreno.trova_posto("casa", c0)
+	var strada_ok := GameState.costruisci_strada(TerrenoFeudo.percorso(inizio_s, inizio_s + Vector2i(2, 0)))
 	GameState.terreno.taglia_bosco(TerrenoFeudo.centro_feudo(), Vector2i.ONE, 15, 3)
 	GameState.terreno.pianta(TerrenoFeudo.centro_feudo(), Vector2i.ONE, 15, 2, 4)
 	var cmp := GameState.aggiungi_gratis("campo", GameState.terreno.trova_posto("campo", c0 + Vector2i(4, 0)), 1.0)
@@ -615,8 +676,8 @@ func _ready() -> void:
 	GameState.scegli_capo(1)
 	var dimora: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "dimora")[0]
 	var tocca := false
-	for c in GameState._bordo(dimora):
-		tocca = tocca or GameState.terreno.strada_a(c)
+	for v in GameState._bordo(dimora):
+		tocca = tocca or GameState.terreno.vertice_su_strada(v)
 	_verifica(GameState.terreno.strade.size() == int(GameState.bil.strade.strada_iniziale) and tocca, "dalla dimora parte una strada corta")
 	var tende_prima := GameState.buildings.filter(func(b): return b.tipo == "tenda").size()
 	GameState.abitanti = 4
@@ -780,22 +841,19 @@ func _ready() -> void:
 	_verifica(GameState.calcola_attrattiva() > attr_dopo, "da Borgo in poi si cresce più piano")
 
 	# Raccoglitori vicino alle piante selvatiche: nella loro stagione, 2 raccolti su 3.
-	GameState.ricomincia()
-	GameState.avvia()
-	GameState.cancella_salvataggio()
-	var tr := GameState.terreno
+	var tr: TerrenoFeudo
 	var posto_r := Vector2i(-1, -1)
 	var pianta := ""
-	for i in tr.selvatiche:
-		var cella_s := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
-		var cand := tr.trova_posto("raccoglitore", cella_s)
-		if cand.x < 0:
-			continue
-		var vicine := tr.selvatiche_attorno(cand, Vector2i(2, 2), 4)
-		if vicine.size() == 1 and int(vicine.values()[0]) >= 2:
-			posto_r = cand
-			pianta = vicine.keys()[0]
+	for prova in 6:
+		if posto_r.x >= 0:
 			break
+		GameState.ricomincia()
+		GameState.avvia()
+		GameState.cancella_salvataggio()
+		tr = GameState.terreno
+		posto_r = _posto_selvatico(tr)
+		if posto_r.x >= 0:
+			pianta = tr.selvatiche_attorno(posto_r, Vector2i(2, 2), 4).keys()[0]
 	_verifica(posto_r.x >= 0, "c'è un posto vicino a un solo tipo di pianta selvatica")
 	if posto_r.x >= 0:
 		var rac := GameState.aggiungi_gratis("raccoglitore", posto_r, 1.0)
@@ -833,13 +891,17 @@ func _ready() -> void:
 		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
 	var d0 := GameState.difesa()
 	_verifica(is_equal_approx(d0.totale, 3.0), "senza difese c'è solo la milizia: 10 x 0,3 = 3")
-	var torre := GameState.aggiungi_gratis("torre_guardia", Vector2i(0, 4), 1.0)
-	torre.lavoratori = 2
+	var lontana := GameState.aggiungi_gratis("torre_guardia", Vector2i(0, 4), 1.0)
+	_verifica(int(lontana.arcieri) == 2 and lontana.lavoratori == 0, "la torre nasce con 2 arcieri, senza togliere lavoratori")
+	_verifica(GameState.difesa().arcieri == 0, "una torre lontana dal centro non combatte nella battaglia")
+	GameState.buildings.erase(lontana)
+	var centro_b := GameState._cella_centro()
+	var torre := GameState.aggiungi_gratis("torre_guardia", centro_b + Vector2i(1, 1), 1.0)
 	GameState.aggiungi_gratis("palizzata", Vector2i(4, 4), 1.0)
 	GameState.aggiungi_gratis("palizzata", Vector2i(5, 4), 1.0)
-	_verifica(is_equal_approx(GameState.difesa().totale, 8 * 0.3 + 12.0 + 3.0), "torre con 2 guardie (+12, non più milizia) e 2 palizzate (+3)")
+	_verifica(is_equal_approx(GameState.difesa().totale, 3.0 + 12.0 + 3.0), "torre vicina con 2 arcieri (+12) e 2 palizzate (+3)")
 	GameState.risorse.armi = 2.0
-	_verifica(is_equal_approx(GameState.difesa().forza_guardie, 18.0), "guardie armate: x1,5")
+	_verifica(is_equal_approx(GameState.difesa().forza_arcieri, 18.0), "arcieri armati: x1,5")
 	GameState._avvista_banditi()
 	var bd: Dictionary = GameState.banditi
 	_verifica(not bd.is_empty() and TerrenoFeudo.FEUDO.has_point(bd.entrata) and int(bd.mancano) == int(GameState.bil.banditi.preavviso_con_torre),
@@ -854,7 +916,7 @@ func _ready() -> void:
 		GameState._tick()
 	_verifica(esiti.size() == 1 and esiti[0].vinto and GameState.banditi.is_empty(), "arrivati i banditi, la difesa li respinge")
 	_verifica(GameState.felicita > fel_b, "una vittoria fa piacere")
-	torre.lavoratori = 0
+	GameState.buildings.erase(torre)
 	GameState.risorse.armi = 0.0
 	GameState.risorse.oro = 100.0
 	GameState.risorse.legna = 100.0
@@ -868,6 +930,30 @@ func _ready() -> void:
 	_verifica(e2.bruciato >= 0 and GameState.trova(e2.bruciato).tipo == "rovine", "molto più deboli: bruciano un edificio")
 	GameState.demolisci(e2.bruciato)
 	_verifica(GameState.trova(e2.bruciato).is_empty(), "le rovine si sgomberano")
+	# gli arcieri tirano ai banditi che passano nel raggio, e i banditi rispondono
+	var torre_t := GameState.aggiungi_gratis("torre_guardia", Vector2i(10, 10), 1.0)
+	GameState._avvista_banditi()
+	var strada_b: Array = []
+	for x in range(0, 24):
+		strada_b.append(Vector2i(x, 11))
+	GameState.banditi.percorso = strada_b
+	GameState.banditi.totale = 24
+	GameState.banditi.mancano = 24
+	GameState.banditi.forza = 30.0
+	GameState.bil.arcieri.probabilita_colpo = 1.0
+	for i in 23:
+		GameState.banditi.mancano -= 1
+		GameState._tiro_arcieri()
+	_verifica(float(GameState.banditi.forza) < 30.0 and float(GameState.banditi.colpiti) > 0.0, "le frecce indeboliscono la banda (%.1f)" % float(GameState.banditi.forza))
+	_verifica(int(torre_t.arcieri) < 2, "e i loro arcieri possono uccidere i nostri")
+	GameState.bil.arcieri.probabilita_colpo = 0.03
+	_verifica(not GameState.in_tiro(torre_t, Vector2i(10, 20)) and GameState.in_tiro(torre_t, Vector2i(14, 14)), "raggio di 3 celle per lato")
+	GameState._nuovi_arcieri()
+	_verifica(int(torre_t.arcieri) >= 1, "a ogni stagione sale un nuovo arciere")
+	GameState.banditi.forza = 0.4
+	GameState.banditi.mancano = 12
+	GameState._tiro_arcieri()
+	_verifica(GameState.banditi.is_empty() and esiti[esiti.size() - 1].fuggiti, "se le frecce bastano, i banditi scappano prima di arrivare")
 	var uscite := 0
 	for i in 40:
 		GameState._programma_banditi()
@@ -890,6 +976,19 @@ func _ready() -> void:
 
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])
 	get_tree().quit(1 if _errori > 0 else 0)
+
+
+## Un posto per un raccoglitore vicino a un solo tipo di pianta selvatica (almeno 2 celle).
+func _posto_selvatico(tr: TerrenoFeudo) -> Vector2i:
+	for i in tr.selvatiche:
+		var cella_s := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		var cand := tr.trova_posto("raccoglitore", cella_s)
+		if cand.x < 0:
+			continue
+		var vicine := tr.selvatiche_attorno(cand, Vector2i(2, 2), 4)
+		if vicine.size() == 1 and int(vicine.values()[0]) >= 2:
+			return cand
+	return Vector2i(-1, -1)
 
 
 func _verifica(condizione: bool, descrizione: String) -> void:

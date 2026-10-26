@@ -3,6 +3,9 @@ extends RefCounted
 ## Logica del terreno: tipo e altezza di ogni cella, celle occupate, regole di piazzamento.
 ## Il mondo è più grande del feudo: attorno ci sono le terre dei vicini, che si vedono
 ## ma dove non si costruisce. Nessuna grafica: la disegna VistaTerreno.
+## Le strade non occupano celle: corrono lungo i bordi fra una cella e l'altra, da un vertice
+## della griglia al vicino (i vertici vanno da 0 a LATO). Così gli edifici si possono accostare
+## e la strada passa loro accanto. Le mura invece occupano le loro celle.
 ## Ogni cella ha anche una fertilità (0..1) per i campi. Gli edifici che raccolgono
 ## dalla natura rendono in base alla loro "zona": celle di bosco, roccia, lago o fiume
 ## attorno, oppure fertilità sotto il campo. I taglialegna consumano il bosco.
@@ -25,7 +28,8 @@ var tagliati := PackedInt32Array()     # celle di bosco abbattute dai taglialegn
 var selvatiche: Dictionary = {}  # indice cella -> coltura che ci cresce da sola (orzo, grano, rape)
 var piantine: Dictionary = {}    # indice cella -> stagioni che mancano perché diventi bosco
 var nuovo_bosco := PackedInt32Array()  # celle di prato diventate bosco grazie al forestale
-var strade: Dictionary = {}      # indice cella -> true
+var strade: Dictionary = {}      # chiave del lato (vedi lato) -> true: le strade corrono sui bordi delle celle
+var mura: Dictionary = {}        # indice cella -> true: mura in pietra (occupano la cella)
 var _occupato: Dictionary = {}  # Vector2i -> id edificio
 
 
@@ -172,9 +176,9 @@ func edificio_a(c: Vector2i) -> int:
 # --- Occupazione -------------------------------------------------------------
 
 func occupa(b: Dictionary) -> void:
-	var taglia: Array = GameState.edifici[b.tipo].taglia
-	for y in int(taglia[1]):
-		for x in int(taglia[0]):
+	var taglia := GameState.taglia_di(b)
+	for y in taglia.y:
+		for x in taglia.x:
 			_occupato[b.cella + Vector2i(x, y)] = b.id
 
 
@@ -186,20 +190,28 @@ func libera(b: Dictionary) -> void:
 
 # --- Regole di piazzamento ---------------------------------------------------
 
-func posizione_valida(tipo: String, cella: Vector2i) -> bool:
+## rot: rotazione di 90° in 90° (0..3); con 1 e 3 larghezza e profondità si scambiano.
+## Le strade sul bordo non danno fastidio; una strada che passerebbe dentro l'edificio sì.
+func posizione_valida(tipo: String, cella: Vector2i, rot := 0) -> bool:
 	var d: Dictionary = GameState.edifici[tipo]
 	var richiesto: int = PER_NOME.get(d.get("su", ""), -1)
 	var quota := altezza(cella)
-	for y in int(d.taglia[1]):
-		for x in int(d.taglia[0]):
+	var taglia := GameState.taglia_tipo(tipo, rot)
+	for y in taglia.y:
+		for x in taglia.x:
 			var c := cella + Vector2i(x, y)
 			var t := tipo_a(c)
 			var i := c.y * LATO + c.x
-			if not nel_feudo(c) or _occupato.has(c) or altezza(c) != quota or strade.has(i) or piantine.has(i):
+			if not nel_feudo(c) or _occupato.has(c) or altezza(c) != quota or mura.has(i) or piantine.has(i):
 				return false
 			if richiesto >= 0 and t != richiesto:
 				return false
 			if richiesto < 0 and not t in COSTRUIBILE:
+				return false
+			# i lati interni (fra due celle dell'edificio) non devono avere strade
+			if x > 0 and lato_strada(c, c + Vector2i(0, 1)):
+				return false
+			if y > 0 and lato_strada(c, c + Vector2i(1, 0)):
 				return false
 	return true
 
@@ -364,7 +376,7 @@ func candidati_piantine(cella: Vector2i, taglia: Vector2i, raggio: int) -> Array
 		for x in range(cella.x - raggio, cella.x + taglia.x + raggio):
 			var c := Vector2i(x, y)
 			var i := y * LATO + x
-			if not nel_feudo(c) or _occupato.has(c) or strade.has(i) or piantine.has(i) or selvatiche.has(i):
+			if not nel_feudo(c) or _occupato.has(c) or mura.has(i) or piantine.has(i) or selvatiche.has(i):
 				continue
 			if not tipo_a(c) in [Tipo.ERBA, Tipo.ERBA_FIORI]:
 				continue
@@ -407,82 +419,140 @@ func cresci_piantine() -> Array:
 	return cambiate
 
 
-# --- Strade -------------------------------------------------------------------
+# --- Strade (sui lati delle celle) ---------------------------------------------------
 
-## Il percorso a L tra due celle: prima in orizzontale, poi in verticale.
-static func percorso(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
-	var celle_p: Array[Vector2i] = []
-	var passo_x := 1 if a.x >= da.x else -1
-	var passo_y := 1 if a.y >= da.y else -1
-	for x in range(da.x, a.x + passo_x, passo_x):
-		celle_p.append(Vector2i(x, da.y))
-	for y in range(da.y + passo_y, a.y + passo_y, passo_y):
-		celle_p.append(Vector2i(a.x, y))
-	return celle_p
-
-
-## Costi e regole di una strada lungo queste celle:
-## - sulla terra: 1 pietra per cella in piano, 2 in salita (collina o cambio di quota);
-## - sul fiume diventa un ponte: legna e pietra per cella (COSTO_PONTE);
-## - sul lago una passerella di legno (COSTO_PASSERELLA), lunga al massimo MAX_PASSERELLA celle
-##   di fila, contando anche le passerelle già fatte che tocca.
-## Le celle già strada non costano. {ok, pietra, legna, ponti, passerelle, motivo}.
+const LATO_V := LATO + 1  # vertici per riga
 const COSTO_PONTE := {"legna": 3, "pietra": 2}
 const COSTO_PASSERELLA := {"legna": 3, "pietra": 0}
 const MAX_PASSERELLA := 3
+const DIREZIONI := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
 
-func verifica_strada(celle_s: Array) -> Dictionary:
-	var v := {"ok": true, "pietra": 0, "legna": 0, "ponti": 0, "passerelle": 0, "motivo": ""}
-	var quota_prima := NAN
-	var lago: Array[Vector2i] = []
-	for c in celle_s:
-		var i: int = c.y * LATO + c.x
-		if not nel_feudo(c) or _occupato.has(c) or piantine.has(i):
-			return _no(v, "il percorso passa su edifici, alberelli o fuori dal feudo")
-		var t := tipo_a(c)
-		var gia := strade.has(i)
-		if t == Tipo.FIUME:
+## La chiave del lato fra due vertici vicini (orizzontale: pari, verticale: dispari).
+static func lato(a: Vector2i, b: Vector2i) -> int:
+	if a.y == b.y:
+		return (a.y * LATO_V + mini(a.x, b.x)) * 2
+	return (mini(a.y, b.y) * LATO_V + a.x) * 2 + 1
+
+
+## I due vertici di un lato.
+static func estremi(k: int) -> Array[Vector2i]:
+	var base := k / 2
+	var v := Vector2i(base % LATO_V, base / LATO_V)
+	return [v, v + (Vector2i(1, 0) if k % 2 == 0 else Vector2i(0, 1))]
+
+
+## Le due celle che il lato separa (sopra e sotto, oppure a sinistra e a destra).
+static func celle_del_lato(k: int) -> Array[Vector2i]:
+	var v := estremi(k)[0]
+	if k % 2 == 0:
+		return [v + Vector2i(0, -1), v]
+	return [v + Vector2i(-1, 0), v]
+
+
+## Il percorso a L tra due vertici: prima in orizzontale, poi in verticale (elenco di vertici).
+static func percorso(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
+	var vertici: Array[Vector2i] = []
+	var passo_x := 1 if a.x >= da.x else -1
+	var passo_y := 1 if a.y >= da.y else -1
+	for x in range(da.x, a.x + passo_x, passo_x):
+		vertici.append(Vector2i(x, da.y))
+	for y in range(da.y + passo_y, a.y + passo_y, passo_y):
+		vertici.append(Vector2i(a.x, y))
+	return vertici
+
+
+static func lati_di(vertici: Array) -> Array[int]:
+	var lati: Array[int] = []
+	for i in range(1, vertici.size()):
+		lati.append(lato(vertici[i - 1], vertici[i]))
+	return lati
+
+
+func lato_strada(a: Vector2i, b: Vector2i) -> bool:
+	return strade.has(lato(a, b))
+
+
+## C'è una strada che tocca questo vertice?
+func vertice_su_strada(v: Vector2i) -> bool:
+	for d in DIREZIONI:
+		if strade.has(lato(v, v + d)):
+			return true
+	return false
+
+
+func _acqua(c: Vector2i) -> bool:
+	return tipo_a(c) in [Tipo.ACQUA, Tipo.FIUME]
+
+
+## "ponte" se il lato passa sul fiume, "passerella" se sul lago, "" sulla terra.
+func tipo_lato(k: int) -> String:
+	var c := celle_del_lato(k)
+	if not (_acqua(c[0]) and _acqua(c[1])):
+		return ""
+	return "ponte" if tipo_a(c[0]) == Tipo.FIUME or tipo_a(c[1]) == Tipo.FIUME else "passerella"
+
+
+## Costi e regole di una strada lungo questi vertici:
+## - sulla terra 1 pietra per lato in piano, 2 in salita (collina o cambio di quota);
+## - fra due celle di fiume è un ponte (COSTO_PONTE), fra due di lago una passerella
+##   (COSTO_PASSERELLA), lunga al massimo MAX_PASSERELLA lati di fila con quelle che tocca;
+## - non passa dentro un edificio, né su bosco o rocce da entrambi i lati;
+## - fra due celle di mura diventa una porta.
+## I lati già strada non costano. {ok, pietra, legna, ponti, passerelle, porte, lati, motivo}.
+func verifica_strada(vertici: Array) -> Dictionary:
+	var v := {"ok": true, "pietra": 0, "legna": 0, "ponti": 0, "passerelle": 0, "porte": 0, "lati": 0, "motivo": ""}
+	var lago: Array[int] = []
+	for k in lati_di(vertici):
+		v.lati += 1
+		var c := celle_del_lato(k)
+		if not nel_feudo(c[0]) or not nel_feudo(c[1]):
+			return _no(v, "il percorso esce dal feudo")
+		if edificio_a(c[0]) >= 0 and edificio_a(c[0]) == edificio_a(c[1]):
+			return _no(v, "il percorso passa dentro un edificio")
+		var gia := strade.has(k)
+		var tipo := tipo_lato(k)
+		if tipo == "ponte":
 			if not gia:
 				v.legna += COSTO_PONTE.legna
 				v.pietra += COSTO_PONTE.pietra
 				v.ponti += 1
-			quota_prima = NAN
 			continue
-		if t == Tipo.ACQUA:
+		if tipo == "passerella":
 			if not gia:
 				v.legna += COSTO_PASSERELLA.legna
-				v.pietra += COSTO_PASSERELLA.pietra
 				v.passerelle += 1
-			lago.append(c)
-			quota_prima = NAN
+			lago.append(k)
 			continue
-		if not t in [Tipo.ERBA, Tipo.ERBA_FIORI, Tipo.COLLINA, Tipo.SENTIERO]:
-			return _no(v, "il percorso passa su bosco o rocce")
-		var quota := altezza(c)
+		var aperto := func(x: Vector2i) -> bool: return tipo_a(x) in COSTRUIBILE or _acqua(x)
+		if not (aperto.call(c[0]) or aperto.call(c[1])):
+			return _no(v, "il percorso passa in mezzo al bosco o alle rocce")
+		if mura.has(c[0].y * LATO + c[0].x) and mura.has(c[1].y * LATO + c[1].x):
+			v.porte += 1
 		if not gia:
-			var salita := t == Tipo.COLLINA or (not is_nan(quota_prima) and quota != quota_prima)
+			var salita := tipo_a(c[0]) == Tipo.COLLINA or tipo_a(c[1]) == Tipo.COLLINA \
+				or (not _acqua(c[0]) and not _acqua(c[1]) and altezza(c[0]) != altezza(c[1]))
 			v.pietra += 2 if salita else 1
-		quota_prima = quota
-	# ogni passerella (celle di lago di fila, con quelle già fatte attaccate) al massimo 3 celle
+	# ogni passerella (lati di lago di fila, con quelle già fatte attaccate) al massimo 3 lati
 	var nel_percorso := {}
-	for c in lago:
-		nel_percorso[c] = true
+	for k in lago:
+		nel_percorso[k] = true
 	var visti := {}
-	for c in lago:
-		if visti.has(c):
+	for k in lago:
+		if visti.has(k):
 			continue
 		var pezzo := 0
-		var coda: Array[Vector2i] = [c]
-		visti[c] = true
+		var coda: Array[int] = [k]
+		visti[k] = true
 		while not coda.is_empty():
-			var x: Vector2i = coda.pop_back()
+			var x: int = coda.pop_back()
 			pezzo += 1
-			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var y: Vector2i = x + d
-				if not visti.has(y) and tipo_a(y) == Tipo.ACQUA and (nel_percorso.has(y) or strada_a(y)):
-					visti[y] = true
-					coda.append(y)
+			for e in estremi(x):
+				for d in DIREZIONI:
+					var y := lato(e, e + d)
+					if not visti.has(y) and (nel_percorso.has(y) or strade.has(y)) and tipo_lato(y) == "passerella":
+						visti[y] = true
+						coda.append(y)
 		if pezzo > MAX_PASSERELLA:
 			return _no(v, "una passerella sul lago può essere lunga al massimo %d celle" % MAX_PASSERELLA)
 	return v
@@ -495,58 +565,156 @@ func _no(v: Dictionary, motivo: String) -> Dictionary:
 
 
 ## Pietra necessaria per la strada, -1 se non si può fare (vedi verifica_strada).
-func costo_strada(celle_s: Array) -> int:
-	var v := verifica_strada(celle_s)
+func costo_strada(vertici: Array) -> int:
+	var v := verifica_strada(vertici)
 	return int(v.pietra) if v.ok else -1
 
 
-## "ponte" sul fiume, "passerella" sul lago, "" sulla terra o se non è strada.
-func ponte_a(c: Vector2i) -> String:
-	if not strada_a(c):
-		return ""
-	match tipo_a(c):
-		Tipo.FIUME:
-			return "ponte"
-		Tipo.ACQUA:
-			return "passerella"
-	return ""
+## Aggiunge la strada; restituisce le celle accanto ai lati nuovi (per ridisegnare).
+func aggiungi_strada(vertici: Array) -> Array:
+	var toccate := []
+	for k in lati_di(vertici):
+		if not strade.has(k):
+			strade[k] = true
+			toccate.append_array(celle_del_lato(k))
+	return toccate
 
 
-## Si può camminare qui? Terra (anche bosco e rocce), oppure acqua con un ponte o una passerella.
+func rimuovi_lato(k: int) -> bool:
+	return strade.erase(k)
+
+
+## Il lato di strada più vicino a un punto del mondo (in celle, con i decimali), o -1.
+func lato_vicino(p: Vector2, massima := 0.45) -> int:
+	var migliore := -1
+	var dmin := massima
+	var v := Vector2i(roundi(p.x), roundi(p.y))
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var a := v + Vector2i(dx, dy)
+			for d in [Vector2i(1, 0), Vector2i(0, 1)]:
+				var k := lato(a, a + d)
+				if not strade.has(k):
+					continue
+				var m := (Vector2(a) + Vector2(a + d)) / 2.0
+				var dist := Geometry2D.get_closest_point_to_segment(p, Vector2(a), Vector2(a + d)).distance_to(p)
+				if dist < dmin or (is_equal_approx(dist, dmin) and m.distance_to(p) < 0.5):
+					dmin = dist
+					migliore = k
+	return migliore
+
+
+## Una cella d'acqua si attraversa solo se un ponte o una passerella le passa accanto.
+func ponte_vicino(c: Vector2i) -> bool:
+	var vertici := [c, c + Vector2i(1, 0), c + Vector2i(0, 1), c + Vector2i(1, 1)]
+	for k in [lato(vertici[0], vertici[1]), lato(vertici[2], vertici[3]), lato(vertici[0], vertici[2]), lato(vertici[1], vertici[3])]:
+		if strade.has(k) and tipo_lato(k) != "":
+			return true
+	return false
+
+
+## Si può camminare qui (a piedi, fuori dalle strade)? Terra, bosco e rocce sì; l'acqua solo
+## accanto a un ponte o a una passerella; le mura mai (in guerra le porte sono chiuse).
 func percorribile(c: Vector2i) -> bool:
-	if not dentro(c):
+	if not dentro(c) or mura.has(c.y * LATO + c.x):
 		return false
-	var t := tipo_a(c)
-	return not t in [Tipo.ACQUA, Tipo.FIUME] or strada_a(c)
+	return not _acqua(c) or ponte_vicino(c)
 
 
-func aggiungi_strada(celle_s: Array) -> Array:
-	var nuove := []
-	for c in celle_s:
+## Il cammino più corto a piedi fra due celle (anche in diagonale, senza tagliare gli angoli),
+## entro il feudo e un piccolo margine. Se la meta non si raggiunge, si ferma alla cella
+## raggiungibile più vicina. [] solo se si parte da una cella non percorribile.
+func cammino(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
+	var limite := FEUDO.grow(4)
+	var da_dove := {da: da}
+	var coda: Array[Vector2i] = [da]
+	var i := 0
+	var arrivo := da
+	var migliore := INF
+	while i < coda.size():
+		var c := coda[i]
+		i += 1
+		var dist := Vector2(c - a).length()
+		if dist < migliore:
+			migliore = dist
+			arrivo = c
+		if dist <= 1.5:
+			break
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+				Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+			var v: Vector2i = c + d
+			if da_dove.has(v) or not limite.has_point(v) or not percorribile(v):
+				continue
+			if d.x != 0 and d.y != 0 and not (percorribile(c + Vector2i(d.x, 0)) and percorribile(c + Vector2i(0, d.y))):
+				continue
+			da_dove[v] = c
+			coda.append(v)
+	var celle_c: Array[Vector2i] = []
+	var c := arrivo
+	while c != da:
+		celle_c.push_front(c)
+		c = da_dove[c]
+	celle_c.push_front(da)
+	return celle_c
+
+
+## Vero se a piedi da qui non si arriva fino alla meta (per esempio: le mura la chiudono).
+func chiuso_da_mura(da: Vector2i, a: Vector2i) -> bool:
+	var c := cammino(da, a)
+	return c.is_empty() or Vector2(c[c.size() - 1] - a).length() > 1.5
+
+
+# --- Mura in pietra -----------------------------------------------------------------
+
+const COSTO_MURA := 4  # pietra per cella
+
+
+func muro_a(c: Vector2i) -> bool:
+	return mura.has(c.y * LATO + c.x)
+
+
+## Le mura si tracciano come le strade, ma cella per cella: sulla terra libera, non sull'acqua,
+## non sopra edifici o alberelli. {ok, pietra, celle, motivo}.
+func verifica_mura(celle_m: Array) -> Dictionary:
+	var v := {"ok": true, "pietra": 0, "celle": 0, "motivo": ""}
+	for c in celle_m:
 		var i: int = c.y * LATO + c.x
-		if not strade.has(i):
-			strade[i] = true
+		if mura.has(i):
+			continue
+		if not nel_feudo(c) or _occupato.has(c) or piantine.has(i):
+			return _no(v, "le mura passano su edifici, alberelli o fuori dal feudo")
+		if not tipo_a(c) in COSTRUIBILE:
+			return _no(v, "le mura si fanno solo sulla terra libera")
+		v.pietra += COSTO_MURA
+		v.celle += 1
+	return v
+
+
+func aggiungi_mura(celle_m: Array) -> Array:
+	var nuove := []
+	for c in celle_m:
+		var i: int = c.y * LATO + c.x
+		if not mura.has(i):
+			mura[i] = true
 			nuove.append(c)
 	return nuove
 
 
-func rimuovi_strada(c: Vector2i) -> bool:
-	return strade.erase(c.y * LATO + c.x)
-
-
-func strada_a(c: Vector2i) -> bool:
-	return strade.has(c.y * LATO + c.x)
+func rimuovi_muro(c: Vector2i) -> bool:
+	return mura.erase(c.y * LATO + c.x)
 
 
 # --- Salvataggio ---------------------------------------------------------------
 
 func salva() -> Dictionary:
-	return {"strade": strade.keys(), "piantine": piantine, "nuovo_bosco": Array(nuovo_bosco)}
+	return {"strade": strade.keys(), "mura": mura.keys(), "piantine": piantine, "nuovo_bosco": Array(nuovo_bosco)}
 
 
 func applica_salvataggio(d: Dictionary) -> void:
 	for i in d.get("strade", []):
 		strade[int(i)] = true
+	for i in d.get("mura", []):
+		mura[int(i)] = true
 	for i in d.get("nuovo_bosco", []):
 		celle[int(i)] = Tipo.BOSCO
 		nuovo_bosco.append(int(i))
@@ -563,13 +731,13 @@ func applica_tagli(indici: Array) -> void:
 
 
 ## Cerca a spirale il posto valido più vicino a una cella.
-func trova_posto(tipo: String, vicino_a: Vector2i) -> Vector2i:
+func trova_posto(tipo: String, vicino_a: Vector2i, rot := 0) -> Vector2i:
 	for raggio in 20:
 		for y in range(-raggio, raggio + 1):
 			for x in range(-raggio, raggio + 1):
 				if maxi(absi(x), absi(y)) != raggio:
 					continue
 				var c := vicino_a + Vector2i(x, y)
-				if posizione_valida(tipo, c):
+				if posizione_valida(tipo, c, rot):
 					return c
 	return Vector2i(-1, -1)

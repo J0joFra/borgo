@@ -290,11 +290,14 @@
 		"livello": 1,
 		"taglia": [2, 2],
 		"costo": {"legna": 12, "pietra": 18},
-		"lavoratori": 2,
-		"difesa_per_guardia": 6,
+		"lavoratori": 0,
 		"avvista": true,
 		"riscaldamento": 2,
-		"colore": "7a6a5a"
+		"colore": "7a6a5a",
+		"arcieri": 2,
+		"difesa_per_arciere": 6,
+		"raggio_tiro": 3,
+		"radice_strade": true
 	},
 	"palizzata": {
 		"nome": "Palizzata",

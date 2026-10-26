@@ -58,7 +58,7 @@ func _compaiono(dati: Dictionary) -> void:
 	var entrata: Vector2i = dati.entrata
 	_partenza = vista.centro_area(entrata, Vector2i.ONE)
 	_arrivo = _bersaglio()
-	_prepara_cammino(entrata, Vector2i(floori(_arrivo.x / VistaTerreno.CELLA), floori(_arrivo.z / VistaTerreno.CELLA)))
+	_prepara_cammino(dati.get("percorso", []))
 	for i in int(dati.numero):
 		var nodo := MeshInstance3D.new()
 		nodo.mesh = _mesh
@@ -92,8 +92,15 @@ func _process(delta: float) -> void:
 		return
 	var dt := delta * maxi(1, GameState.velocita)
 	_tempo += dt
+	var vivi := GameState.banditi_vivi() if not _in_fuga else _figure.size()
+	if not _in_fuga:
+		_tira_frecce(delta)
 	for i in _figure.size():
 		var f := _figure[i]
+		if not _in_fuga and i >= vivi and f.visible:
+			_cade(f)
+		if not f.visible:
+			continue
 		var meta: Vector3
 		if _in_fuga:
 			# scappano ripercorrendo la strada fatta all'andata
@@ -123,6 +130,8 @@ func _process(delta: float) -> void:
 		_tempo_fuga += dt
 		var arrivati := _tempo_fuga > 40.0
 		for i in _figure.size():
+			if not _figure[i].visible:
+				continue
 			var d := _figure[i].position - (_partenza + _scarti[i])
 			d.y = 0.0
 			if d.length() > 0.3 and _tempo_fuga <= 40.0:
@@ -131,45 +140,21 @@ func _process(delta: float) -> void:
 			_togli_figure()
 
 
-## Il percorso più corto sulla terra (ricerca in ampiezza, anche in diagonale), senza attraversare
-## lago e fiume se non su ponti e passerelle. Se non c'è, vanno dritti.
-func _prepara_cammino(da: Vector2i, a: Vector2i) -> void:
-	var t := vista.terreno
-	var limite := TerrenoFeudo.FEUDO.grow(4)
-	var da_dove := {da: da}
-	var coda: Array[Vector2i] = [da]
-	var i := 0
-	var arrivo := a
-	while i < coda.size():
-		var c := coda[i]
-		i += 1
-		# basta arrivare vicino alla dimora (lei stessa è occupata ma percorribile)
-		if (c - a).length_squared() <= 2:
-			arrivo = c
-			break
-		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
-				Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
-			var v: Vector2i = c + d
-			if da_dove.has(v) or not limite.has_point(v) or not t.percorribile(v):
-				continue
-			if d.x != 0 and d.y != 0 and not (t.percorribile(c + Vector2i(d.x, 0)) and t.percorribile(c + Vector2i(0, d.y))):
-				continue  # niente tagli d'angolo sull'acqua
-			da_dove[v] = c
-			coda.append(v)
+## Il percorso lo calcola GameState (attorno all'acqua e alle mura, lo stesso che usano gli
+## arcieri per sapere quando tirare). Se le mura chiudono il borgo si fermano davanti alle mura.
+func _prepara_cammino(celle: Array) -> void:
 	_cammino.clear()
 	_lunghezze.clear()
-	if not da_dove.has(arrivo) or arrivo == da:
+	if celle.size() < 2:
 		_cammino = [_partenza, _arrivo]
 	else:
-		var celle: Array[Vector2i] = []
-		var c := arrivo
-		while c != da:
-			celle.push_front(c)
-			c = da_dove[c]
-		celle.push_front(da)
 		for cella in celle:
 			_cammino.append(vista.centro_area(cella, Vector2i.ONE))
-		_cammino.append(_arrivo)
+		var ultima: Vector2i = celle[celle.size() - 1]
+		if Vector2(ultima).distance_to(Vector2(_arrivo.x, _arrivo.z) / VistaTerreno.CELLA) < 3.0:
+			_cammino.append(_arrivo)
+		else:
+			_arrivo = _cammino[_cammino.size() - 1]
 	var totale := 0.0
 	_lunghezze.append(0.0)
 	for k in range(1, _cammino.size()):
@@ -203,6 +188,53 @@ func _fatto_da(p: Vector3) -> float:
 	return _lunghezze[migliore] / maxf(0.001, _lunghezze[_lunghezze.size() - 1])
 
 
+## Un bandito colpito dalle frecce cade e sparisce.
+func _cade(f: Node3D) -> void:
+	var tw := create_tween()
+	tw.tween_property(f, "rotation:x", PI / 2.0, 0.3)
+	tw.tween_callback(func(): f.visible = false)
+
+
+var _ricarica := 0.0
+
+
+## Ogni tanto, da ogni torre con arcieri, parte una freccia verso il bandito più vicino nel raggio.
+func _tira_frecce(delta: float) -> void:
+	_ricarica -= delta * maxi(1, GameState.velocita)
+	if _ricarica > 0.0 or GameState.banditi.is_empty():
+		return
+	_ricarica = 0.5
+	for b in GameState.buildings:
+		var n := int(b.get("arcieri", 0))
+		if n <= 0 or b.progresso < 1.0:
+			continue
+		var bersaglio: Node3D = null
+		for f in _figure:
+			var c := Vector2i(floori(f.position.x / VistaTerreno.CELLA), floori(f.position.z / VistaTerreno.CELLA))
+			if f.visible and GameState.in_tiro(b, c):
+				bersaglio = f
+				break
+		if bersaglio == null:
+			continue
+		var da := vista.centro_area(b.cella, GameState.taglia_di(b)) + Vector3(0, 5.5, 0)
+		_freccia(da, bersaglio.position + Vector3(0, 1.0, 0))
+
+
+func _freccia(da: Vector3, a: Vector3) -> void:
+	var f := MeshInstance3D.new()
+	var k := LowPoly.Costruttore.new()
+	k.forma(LowPoly.cubo(Vector3(0.06, 0.06, 0.9)), LowPoly.t(Vector3.ZERO), Color("5a3a1a"))
+	k.forma(LowPoly.cubo(Vector3(0.12, 0.12, 0.15)), LowPoly.t(Vector3(0, 0, 0.45)), Color("c8ccd0"))
+	f.mesh = k.mesh()
+	add_child(f)
+	f.position = da
+	f.look_at_from_position(da, a, Vector3.UP)
+	f.rotate_object_local(Vector3.UP, PI)
+	var tw := create_tween()
+	tw.tween_property(f, "position", a, 0.35)
+	tw.tween_callback(f.queue_free)
+
+
 func _togli_figure() -> void:
 	for f in _figure:
 		f.queue_free()
@@ -212,6 +244,6 @@ func _togli_figure() -> void:
 
 func _quota(p: Vector3) -> float:
 	var c := Vector2i(floori(p.x / VistaTerreno.CELLA), floori(p.z / VistaTerreno.CELLA))
-	if vista.terreno.ponte_a(c) != "":
+	if vista.terreno.tipo_a(c) in [TerrenoFeudo.Tipo.ACQUA, TerrenoFeudo.Tipo.FIUME] and vista.terreno.ponte_vicino(c):
 		return VistaTerreno.QUOTA_PONTE
 	return maxf(vista.terreno.altezza(c), 0.0)

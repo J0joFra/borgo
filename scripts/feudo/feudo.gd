@@ -2,7 +2,7 @@ extends Node3D
 ## Scena del feudo: crea luce, terreno, edifici, telecamera e interfaccia,
 ## e gestisce i gesti (trascinare, pizzicare, toccare) con il dito o con il mouse.
 
-enum Modo { NORMALE, PIAZZA, STRADA }
+enum Modo { NORMALE, PIAZZA, STRADA, MURA }
 
 const SOGLIA_TOCCO := 6.0  # oltre questa distanza un tocco diventa trascinamento
 const COLORI_LUCE := [Color("fff6e8"), Color("fff0d0"), Color("ffd6a8"), Color("dfe8ff")]
@@ -19,9 +19,12 @@ var _anteprima: MeshInstance3D
 var _tipo := ""
 var _cella := Vector2i.ZERO
 var _selezionato := -1
-var _strada_da := Vector2i(-1, -1)  # inizio della strada che si sta tracciando
-var _strada_celle: Array[Vector2i] = []
-var _strada_toccata := Vector2i(-1, -1)  # strada esistente selezionata
+var _rot := 0  # rotazione dell'edificio da piazzare (0..3, di 90° in 90°)
+var _strada_da := Vector2i(-1, -1)  # vertice da cui parte la strada (o cella da cui partono le mura)
+var _strada_vertici: Array[Vector2i] = []
+var _mura_celle: Array[Vector2i] = []
+var _lato_toccato := -1  # lato di strada esistente selezionato
+var _muro_toccato := Vector2i(-1, -1)
 
 var _dita: Dictionary = {}  # indice -> posizione
 var _inizio := Vector2.ZERO
@@ -70,6 +73,8 @@ func _ready() -> void:
 	hud.migliora.connect(GameState.migliora)
 	hud.coltura.connect(GameState.cambia_coltura)
 	hud.strade.connect(_inizia_strada)
+	hud.mura.connect(_inizia_mura)
+	hud.ruota_edificio.connect(_ruota_piazzamento)
 	hud.rimuovi_strada.connect(_rimuovi_strada)
 	hud.chiudi_pannello.connect(_seleziona.bind(-1))
 	hud.ruota.connect(camera.ruota)
@@ -178,13 +183,23 @@ func _inizia_piazzamento(tipo: String) -> void:
 	_seleziona(-1)
 	modo = Modo.PIAZZA
 	_tipo = tipo
+	_rot = 0
 	_sposta_anteprima(_cella_sotto(get_viewport().get_visible_rect().size / 2.0))
+
+
+## Gira di 90° l'edificio da piazzare (tasto R o pulsante Ruota).
+func _ruota_piazzamento() -> void:
+	if modo != Modo.PIAZZA:
+		return
+	var centro := _cella + _taglia(_tipo) / 2
+	_rot = (_rot + 1) % 4
+	_sposta_anteprima(centro)
 
 
 func _sposta_anteprima(centro: Vector2i) -> void:
 	var taglia := _taglia(_tipo)
 	_cella = centro - taglia / 2
-	var valida := GameState.terreno.posizione_valida(_tipo, _cella)
+	var valida := GameState.terreno.posizione_valida(_tipo, _cella, _rot)
 	var box := BoxMesh.new()
 	box.size = Vector3(taglia.x * VistaTerreno.CELLA, 0.3, taglia.y * VistaTerreno.CELLA)
 	var mat := StandardMaterial3D.new()
@@ -195,6 +210,8 @@ func _sposta_anteprima(centro: Vector2i) -> void:
 	_anteprima.mesh = box
 	var dentro := GameState.terreno.dentro(_cella)
 	_anteprima.position = vista.centro_area(_cella if dentro else centro, taglia) + Vector3(0, 0.15, 0)
+	# una freccia sul lato del davanti, per vedere come è girato
+	_anteprima.rotation.y = -_rot * PI / 2.0 if taglia.x == taglia.y else 0.0
 	_anteprima.visible = true
 	# le celle che contano per la resa (bosco, rocce, acqua, fertilità) si colorano
 	vista.mostra_zona(_tipo, _cella if dentro else centro)
@@ -204,32 +221,37 @@ func _sposta_anteprima(centro: Vector2i) -> void:
 
 # --- Strade ---------------------------------------------------------------------
 
-## Modalità strada: un tocco fissa l'inizio, i tocchi dopo la fine (percorso a L).
+## Modalità strada: un tocco fissa il vertice di partenza, i tocchi dopo la fine (percorso a L
+## lungo i bordi delle celle).
 func _inizia_strada() -> void:
 	_termina_piazzamento()
 	_seleziona(-1)
 	modo = Modo.STRADA
 	_strada_da = Vector2i(-1, -1)
-	_strada_celle = []
-	hud.mostra_strada("Tocca dove inizia la strada, poi dove finisce. 1 pietra per cella in piano, 2 in salita; sul fiume un ponte, sul lago una passerella (max 3).", false)
+	_strada_vertici = []
+	hud.mostra_strada("Tocca un angolo da cui parte la strada (dal falò o piazza, dalla dimora o da una torre), poi dove finisce. Le strade corrono fra le celle. 1 pietra per tratto in piano, 2 in salita; sul fiume un ponte, sul lago una passerella (max 3).", false)
 
 
-func _tocco_strada(cella: Vector2i) -> void:
+func _tocco_strada(vertice: Vector2i) -> void:
 	if _strada_da.x < 0:
-		_strada_da = cella
-	_strada_celle = TerrenoFeudo.percorso(_strada_da, cella)
-	var v := GameState.verifica_strada(_strada_celle)
-	var colore := Color(0.9, 0.75, 0.45, 0.6) if v.ok else Color(0.95, 0.25, 0.2, 0.5)
-	vista.mostra_celle(_strada_celle, colore)
-	if not v.ok:
+		_strada_da = vertice
+	_strada_vertici = TerrenoFeudo.percorso(_strada_da, vertice)
+	var v := GameState.verifica_strada(_strada_vertici)
+	var colore := Color(0.95, 0.8, 0.45, 0.85) if v.ok else Color(0.95, 0.25, 0.2, 0.7)
+	vista.mostra_lati(TerrenoFeudo.lati_di(_strada_vertici), colore)
+	if _strada_vertici.size() < 2:
+		hud.mostra_strada("Ora tocca dove finisce la strada.", false)
+	elif not v.ok:
 		hud.mostra_strada("Non si può: %s. Scegli un'altra fine." % v.motivo, false)
 	else:
 		var basta: bool = GameState.risorse.pietra >= v.pietra and GameState.risorse.legna >= v.legna
-		var parti: Array[String] = ["%d celle" % _strada_celle.size()]
+		var parti: Array[String] = ["%d tratti" % v.lati]
 		if v.ponti > 0:
 			parti.append("ponte di %d" % v.ponti)
 		if v.passerelle > 0:
 			parti.append("passerella di %d" % v.passerelle)
+		if v.porte > 0:
+			parti.append("porta nelle mura")
 		var costo: Array[String] = []
 		if v.pietra > 0:
 			costo.append("%d pietra" % v.pietra)
@@ -240,16 +262,51 @@ func _tocco_strada(cella: Vector2i) -> void:
 
 
 func _costruisci_strada() -> void:
-	if GameState.costruisci_strada(_strada_celle):
+	if GameState.costruisci_strada(_strada_vertici):
 		_strada_da = Vector2i(-1, -1)
-		_strada_celle = []
+		_strada_vertici = []
 		vista.nascondi_zona()
 		hud.mostra_strada("Strada fatta. Tocca per iniziarne un'altra, o Annulla.", false)
 
 
+## Modalità mura: come le strade, ma cella per cella.
+func _inizia_mura() -> void:
+	_termina_piazzamento()
+	_seleziona(-1)
+	modo = Modo.MURA
+	_strada_da = Vector2i(-1, -1)
+	_mura_celle = []
+	hud.mostra_strada("Tocca dove iniziano le mura, poi dove finiscono (%d pietra per cella). Chiudi il borgo tutto attorno per difenderlo meglio; dove passa una strada si apre una porta." % TerrenoFeudo.COSTO_MURA, false, "Mura")
+
+
+func _tocco_mura(cella: Vector2i) -> void:
+	if _strada_da.x < 0:
+		_strada_da = cella
+	_mura_celle = TerrenoFeudo.percorso(_strada_da, cella)
+	var v := GameState.verifica_mura(_mura_celle)
+	vista.mostra_celle(_mura_celle, Color(0.75, 0.72, 0.65, 0.7) if v.ok else Color(0.95, 0.25, 0.2, 0.5))
+	if not v.ok:
+		hud.mostra_strada("Non si può: %s." % v.motivo, false, "Mura")
+	else:
+		var basta: bool = GameState.risorse.pietra >= v.pietra
+		hud.mostra_strada("%d celle · %d pietra%s" % [v.celle, v.pietra, "" if basta else " (non basta)"], basta and v.celle > 0, "Mura")
+
+
+func _costruisci_mura() -> void:
+	if GameState.costruisci_mura(_mura_celle):
+		_strada_da = Vector2i(-1, -1)
+		_mura_celle = []
+		vista.nascondi_zona()
+		hud.mostra_strada("Mura fatte. Tocca per continuare, o Annulla.", false, "Mura")
+
+
 func _rimuovi_strada() -> void:
-	GameState.rimuovi_strada(_strada_toccata)
-	_strada_toccata = Vector2i(-1, -1)
+	if _muro_toccato.x >= 0:
+		GameState.demolisci_muro(_muro_toccato)
+	elif _lato_toccato >= 0:
+		GameState.rimuovi_strada(_lato_toccato)
+	_lato_toccato = -1
+	_muro_toccato = Vector2i(-1, -1)
 	hud.nascondi_pannello()
 
 
@@ -257,9 +314,12 @@ func _conferma_piazzamento() -> void:
 	if modo == Modo.STRADA:
 		_costruisci_strada()
 		return
-	if modo != Modo.PIAZZA or not GameState.terreno.posizione_valida(_tipo, _cella):
+	if modo == Modo.MURA:
+		_costruisci_mura()
 		return
-	var b := GameState.piazza(_tipo, _cella, 1.0)
+	if modo != Modo.PIAZZA or not GameState.terreno.posizione_valida(_tipo, _cella, _rot):
+		return
+	var b := GameState.piazza(_tipo, _cella, 1.0, _rot)
 	_termina_piazzamento()
 	if not b.is_empty():
 		_seleziona(b.id)
@@ -280,8 +340,24 @@ func _seleziona(id: int) -> void:
 	if _edifici.has(id):
 		_edifici[id].seleziona(true)
 		hud.mostra_edificio(id)
+		_mostra_tiro(GameState.trova(id))
 	elif modo == Modo.NORMALE:
 		hud.nascondi_pannello()
+		vista.nascondi_zona()
+
+
+## Per una torre di guardia: il riquadro dove arrivano le frecce dei suoi arcieri.
+func _mostra_tiro(b: Dictionary) -> void:
+	var r := int(GameState.edifici[b.tipo].get("raggio_tiro", 0))
+	if r <= 0:
+		vista.nascondi_zona()
+		return
+	var t := GameState.taglia_di(b)
+	var celle := []
+	for y in range(b.cella.y - r, b.cella.y + t.y + r):
+		for x in range(b.cella.x - r, b.cella.x + t.x + r):
+			celle.append(Vector2i(x, y))
+	vista.mostra_celle(celle, Color(1.0, 0.85, 0.3, 0.35))
 
 
 func _cambia_lavoratori(id: int, delta: int) -> void:
@@ -315,12 +391,27 @@ func _tocco(posizione: Vector2) -> void:
 	if modo == Modo.PIAZZA:
 		_sposta_anteprima(cella)
 	elif modo == Modo.STRADA:
-		_tocco_strada(cella)
+		var r := camera.raggio(posizione)
+		_tocco_strada(vista.vertice_da_raggio(r[0], r[1]))
+	elif modo == Modo.MURA:
+		_tocco_mura(cella)
 	else:
 		var id := GameState.terreno.edificio_a(cella)
+		vista.nascondi_zona()
 		_seleziona(id)
-		if id < 0 and GameState.terreno.strada_a(cella):
-			_strada_toccata = cella
+		_lato_toccato = -1
+		_muro_toccato = Vector2i(-1, -1)
+		if id >= 0:
+			return
+		if GameState.terreno.muro_a(cella):
+			_muro_toccato = cella
+			hud.mostra_strada_esistente("Mura")
+			return
+		var r := camera.raggio(posizione)
+		var k := GameState.terreno.lato_vicino(vista.punto_celle(r[0], r[1]))
+		if k >= 0:
+			_lato_toccato = k
+			vista.mostra_lati([k], Color(1.0, 0.85, 0.3, 0.9))
 			hud.mostra_strada_esistente()
 
 
@@ -330,8 +421,7 @@ func _cella_sotto(posizione: Vector2) -> Vector2i:
 
 
 func _taglia(tipo: String) -> Vector2i:
-	var t: Array = GameState.edifici[tipo].taglia
-	return Vector2i(int(t[0]), int(t[1]))
+	return GameState.taglia_tipo(tipo, _rot)
 
 
 # --- Gesti -------------------------------------------------------------------
@@ -387,6 +477,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				camera.ruota(-1)
 			KEY_E:
 				camera.ruota(1)
+			KEY_R:
+				_ruota_piazzamento()
 
 
 func _trascina(posizione: Vector2, relativo: Vector2) -> void:

@@ -127,13 +127,13 @@ static func attivi() -> Array:
 	if not gs.banditi.is_empty():
 		var dif: Dictionary = gs.difesa()
 		if dif.totale < float(gs.banditi.forza):
-			lista.append(_c("costruire", 99, "I banditi arrivano tra %d giorni e siamo più deboli (%d contro %d). Metti guardie nella torre, alza palizzate, compra armi." % [int(gs.banditi.mancano), roundi(dif.totale), roundi(gs.banditi.forza)]))
+			lista.append(_c("costruire", 99, "I banditi arrivano tra %d giorni e siamo più deboli (%d contro %d). Costruisci torri di guardia lungo la loro strada, alza palizzate e mura, compra armi." % [int(gs.banditi.mancano), roundi(dif.totale), roundi(gs.banditi.forza)]))
 		else:
 			lista.append(_c("costruire", 60, "I banditi arrivano tra %d giorni, ma siamo pronti: %d contro %d." % [int(gs.banditi.mancano), roundi(dif.totale), roundi(gs.banditi.forza)]))
 	elif gs.livello >= 1 and not _esiste(["torre_guardia", "palizzata"]):
-		lista.append(_c("costruire", 74, "Ora che siamo un borgo si parla di noi, anche tra i banditi. Una torre di guardia con due guardie e qualche palizzata ci proteggerebbero."))
+		lista.append(_c("costruire", 74, "Ora che siamo un borgo si parla di noi, anche tra i banditi. Una torre di guardia (con due arcieri) e qualche palizzata ci proteggerebbero; con le mura in pietra possiamo chiudere il borgo."))
 	elif gs.livello >= 1 and _esiste(["torre_guardia"]) and not _esiste(["armeria"]) and gs.risorse.armi < 1.0:
-		lista.append(_c("costruire", 34, "Le guardie combattono meglio armate: un'armeria fa armi con ferro e legna."))
+		lista.append(_c("costruire", 34, "Gli arcieri e i soldati combattono meglio armati: un'armeria fa armi con ferro e legna."))
 	if gs.diplomazia_possibile() and gs.missioni.is_empty() and not gs.regni.values().any(func(r): return r.spiato):
 		lista.append(_c("oro", 33, "Ora che siamo un borgo possiamo mandare spie nei regni vicini (dalla mappa del Regno): sapremo chi è forte, chi è amico e dove si può attaccare."))
 	if gs.soldati > 0 and gs.risorse.cibo + gs.risorse.rape + gs.risorse.orzo < gs.cibo_esercito_al_mese():

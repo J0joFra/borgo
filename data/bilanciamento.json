@@ -52,5 +52,15 @@
 		"crescita_forza_per_anno": 0.1,
 		"banditi_dopo_conquista": 0.7,
 		"forza": {"signore": [30, 60], "banditi": [15, 35], "libera": [4, 12]}
+	},
+	"mura": {"dal_livello": 1, "difesa_per_cella": 0.5, "bonus_cinta": 0.5},
+	"arcieri": {"danno_per_tiro": 0.4, "quota_arcieri_banditi": 0.33, "probabilita_colpo": 0.03, "nuovi_per_stagione": 1},
+	"vassalli": {
+		"lealta_consigliere": 80,
+		"lealta_cavaliere": 60,
+		"tributo": {"basso": {"molt": 0.5, "lealta": 4}, "normale": {"molt": 1.0, "lealta": 0}, "alto": {"molt": 1.6, "lealta": -8}},
+		"soglia_ribellione": 30,
+		"bonus_tratto": 5,
+		"leva": 8
 	}
 }

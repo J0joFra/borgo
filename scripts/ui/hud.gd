@@ -13,6 +13,8 @@ signal demolisci(id: int)
 signal migliora(id: int)
 signal coltura(id: int, nome: String)
 signal strade
+signal mura
+signal ruota_edificio
 signal rimuovi_strada
 signal chiudi_pannello
 signal ruota(direzione: int)
@@ -49,6 +51,8 @@ var _btn_colture: Dictionary = {}  # coltura -> Button
 var _strada := ""  # "nuova" mentre si traccia una strada, "esistente" se ne è toccata una
 var _strada_testo := ""
 var _strada_valida := false
+var _strada_titolo := "Strada"  # anche le mura usano questo pannello
+var _btn_ruota: Button
 var _tempo: Label
 var _velocita: Array[Button] = []
 var _menu: PanelContainer
@@ -146,8 +150,9 @@ func mostra_piazzamento(tipo: String, valido: bool, stima := "") -> void:
 
 
 ## Mentre si traccia una strada: quante celle, quanta pietra, se si può.
-func mostra_strada(testo: String, valido: bool) -> void:
+func mostra_strada(testo: String, valido: bool, titolo := "Strada") -> void:
 	_strada = "nuova"
+	_strada_titolo = titolo
 	_strada_testo = testo
 	_strada_valida = valido
 	_piazzamento = ""
@@ -156,8 +161,9 @@ func mostra_strada(testo: String, valido: bool) -> void:
 
 
 ## Una strada già fatta: si può togliere.
-func mostra_strada_esistente() -> void:
+func mostra_strada_esistente(titolo := "Strada") -> void:
 	_strada = "esistente"
+	_strada_titolo = titolo
 	_piazzamento = ""
 	_edificio = -1
 	_aggiorna_pannello()
@@ -401,6 +407,8 @@ func _crea_pannello() -> void:
 			demolisci.emit(_edificio))
 	_btn_migliora = _bottone("Migliora", 0, 18)
 	_btn_migliora.pressed.connect(func(): migliora.emit(_edificio))
+	_btn_ruota = _bottone("Ruota", 0, 18)
+	_btn_ruota.pressed.connect(func(): ruota_edificio.emit())
 	_btn_ok = _bottone("Costruisci", 0, 18)
 	_btn_ok.pressed.connect(func(): conferma_piazzamento.emit())
 	_btn_annulla = _bottone("Annulla", 0, 18)
@@ -415,7 +423,7 @@ func _crea_pannello() -> void:
 		bc.pressed.connect(func(): coltura.emit(_edificio, nome))
 		_btn_colture[nome] = bc
 		riga.add_child(bc)
-	for b in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ok, _btn_annulla]:
+	for b in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla]:
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		riga.add_child(b)
 
@@ -671,7 +679,7 @@ func _da_mostrare(r: String) -> bool:
 		var d: Dictionary = GameState.edifici[b.tipo]
 		if GameState.coltura_di(b).get("risorsa", "") == r or d.get("produce", {}).has(r) or d.get("consuma", {}).has(r):
 			return true
-		if r == "armi" and d.has("difesa_per_guardia"):
+		if r == "armi" and d.has("arcieri"):
 			return true
 	return false
 
@@ -704,6 +712,8 @@ func _riempi_menu() -> void:
 	for tipo in GameState.edifici:
 		if GameState.edifici[tipo].categoria == _categoria_aperta:
 			tipi.append(tipo)
+	if _categoria_aperta == "difese":
+		tipi.append(MURA)  # le mura si tracciano come le strade
 	while _menu_lista.get_child_count() < tipi.size():
 		var b := _bottone("", 150, 16)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -715,8 +725,14 @@ func _riempi_menu() -> void:
 		if not b.visible:
 			continue
 		var tipo := tipi[i]
-		var d: Dictionary = GameState.edifici[tipo]
 		b.set_meta("tipo", tipo)
+		if tipo == MURA:
+			var dal := int(GameState.bil.mura.dal_livello)
+			b.text = "Mura in pietra  ·  %d pietra per cella" % TerrenoFeudo.COSTO_MURA if GameState.livello >= dal \
+				else "Mura in pietra  (serve %s)" % GameState.bil.livelli[dal].nome
+			b.disabled = GameState.livello < dal
+			continue
+		var d: Dictionary = GameState.edifici[tipo]
 		if GameState.sbloccato(tipo):
 			b.text = "%s  ·  %s" % [d.nome, GameState.testo_costo(tipo)]
 			b.disabled = not GameState.puo_permettersi(tipo)
@@ -725,19 +741,29 @@ func _riempi_menu() -> void:
 			b.disabled = true
 
 
+const MURA := "__mura"
+
+
 func _scegli_dal_menu(b: Button) -> void:
 	_chiudi_menu()
-	costruisci.emit(b.get_meta("tipo"))
+	if b.get_meta("tipo") == MURA:
+		mura.emit()
+	else:
+		costruisci.emit(b.get_meta("tipo"))
 
 
 func _aggiorna_pannello() -> void:
-	for x in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ok, _btn_annulla, _btn_chiudi] + _btn_colture.values():
+	for x in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla, _btn_chiudi] + _btn_colture.values():
 		x.visible = false
 	if _strada != "":
 		_pannello.visible = true
-		_titolo.text = "Strada"
+		_titolo.text = _strada_titolo
 		if _strada == "esistente":
-			_dettagli.text = "La gente cammina lungo le strade. Gli edifici che toccano una strada collegata alla piazza non hanno il ritardo del 2%."
+			if _strada_titolo == "Mura":
+				_dettagli.text = "Mura in pietra: difendono il borgo (+%.1f per cella) e se lo chiudono tutto attorno la difesa vale il %d%% in più. In guerra le porte restano chiuse." % [
+					float(GameState.bil.mura.difesa_per_cella), roundi(float(GameState.bil.mura.bonus_cinta) * 100)]
+			else:
+				_dettagli.text = "Le strade corrono sui bordi delle celle e partono da falò o piazza, dimora o torri di guardia. La gente ci cammina; chi non è collegato lavora il 2% in meno."
 			_btn_demolisci.text = "Rimuovi"
 			_btn_demolisci.visible = true
 			_btn_chiudi.visible = true
@@ -756,6 +782,7 @@ func _aggiorna_pannello() -> void:
 			_dettagli.text = _stima_piazzamento
 		_btn_ok.visible = true
 		_btn_ok.disabled = not (_piazzamento_valido and GameState.puo_permettersi(_piazzamento))
+		_btn_ruota.visible = true
 		_btn_annulla.visible = true
 		_pannello.visible = true
 		return
@@ -787,8 +814,9 @@ func _aggiorna_pannello() -> void:
 		_btn_migliora.text = "Migliora (%s)" % GameState._elenco(prossimo.costo)
 		_btn_migliora.disabled = not GameState.puo_migliorare(b)
 		testo += "\nProssimo livello: %s" % prossimo.nome
-	if d.has("difesa_per_guardia"):
-		testo = "Ogni guardia vale %d di difesa (x%.1f con le armi); avvista i banditi prima: più giorni per prepararsi" % [int(d.difesa_per_guardia), float(GameState.bil.banditi.bonus_armi)]
+	if d.has("arcieri"):
+		testo = "Arcieri sulla torre: %d su %d. Tirano ai banditi che passano entro %d celle (riquadro giallo); se il centro del borgo è nel raggio combattono anche lì (%d ciascuno, x%.1f con le armi). Avvistano i banditi prima. Se un arciere muore, ne sale uno nuovo a ogni stagione." % [
+			int(b.get("arcieri", 0)), int(d.arcieri), int(d.raggio_tiro), int(d.difesa_per_arciere), float(GameState.bil.banditi.bonus_armi)]
 	elif d.has("difesa"):
 		testo = "Difesa +%.1f contro i banditi" % float(d.difesa)
 	elif b.tipo == "rovine":
@@ -848,8 +876,9 @@ func _aggiorna_info() -> void:
 		GameState.NOMI_FASCE[v.fascia], roundi(v.risorse * 100), roundi(v.popolazione * 100), roundi(v.gradimento * 100)])
 	righe.append("Tassa al re in autunno: %d oro · capacità magazzino %d" % [GameState.tassa_del_re(), GameState.capacita()])
 	var dif := GameState.difesa()
-	righe.append("Difesa %d: milizia %d, guardie %d (forza %d), soldati %d (forza %d), palizzate %d, alleati %d%s" % [roundi(dif.totale), roundi(dif.milizia),
-		dif.guardie, roundi(dif.forza_guardie), dif.soldati, roundi(dif.forza_soldati), roundi(dif.palizzate), roundi(dif.alleati),
+	righe.append("Difesa %d: milizia %d, arcieri %d (forza %d), soldati %d (forza %d), palizzate %d, mura %d%s, alleati %d, vassalli %d%s" % [roundi(dif.totale), roundi(dif.milizia),
+		dif.arcieri, roundi(dif.forza_arcieri), dif.soldati, roundi(dif.forza_soldati), roundi(dif.palizzate), roundi(dif.mura),
+		" (cinta chiusa: +%d%%)" % roundi(float(GameState.bil.mura.bonus_cinta) * 100) if dif.cinta else "", roundi(dif.alleati), roundi(dif.vassalli),
 		"" if GameState.banditi_possibili() else " · i banditi arriveranno quando saremo un Borgo"])
 	_info_testo.text = "\n".join(righe)
 	for i in _tasse.size():

@@ -165,10 +165,10 @@ func _punto_attorno(id: int) -> Vector3:
 	var b := GameState.trova(id)
 	if b.is_empty():
 		return _punto_falo()
-	var t: Array = GameState.edifici[b.tipo].taglia
-	var w := float(t[0]) * VistaTerreno.CELLA / 2.0 + 0.6
-	var d := float(t[1]) * VistaTerreno.CELLA / 2.0 + 0.6
-	var centro := vista.centro_area(b.cella, Vector2i(int(t[0]), int(t[1])))
+	var t := GameState.taglia_di(b)
+	var w := float(t.x) * VistaTerreno.CELLA / 2.0 + 0.6
+	var d := float(t.y) * VistaTerreno.CELLA / 2.0 + 0.6
+	var centro := vista.centro_area(b.cella, t)
 	var lato := randi() % 4
 	var u := randf_range(-1.0, 1.0)
 	var offset: Vector3 = [Vector3(u * w, 0, d), Vector3(u * w, 0, -d), Vector3(w, 0, u * d), Vector3(-w, 0, u * d)][lato]
@@ -181,20 +181,18 @@ func _cammino(da: Vector3, a: Vector3) -> Array:
 	var terreno := vista.terreno
 	if terreno.strade.is_empty() or not GameState.banditi.is_empty():
 		return [a]  # in guerra si corre dritti, strade o no
-	var cella_da := _cella(da)
-	var cella_a := _cella(a)
-	var inizio := _strada_vicina(cella_da)
-	var fine := _strada_vicina(cella_a)
+	var inizio := _strada_vicina(da)
+	var fine := _strada_vicina(a)
 	if inizio.x < 0 or fine.x < 0 or inizio == fine:
 		return [a]
-	var celle := _percorso_strade(inizio, fine)
+	var vertici := _percorso_strade(inizio, fine)
 	# non vale la pena prendere la strada se allunga troppo il giro
-	var diretto := Vector2(cella_a - cella_da).length()
-	if celle.is_empty() or celle.size() > diretto * 2.5 + 6:
+	var diretto := Vector2(a.x - da.x, a.z - da.z).length() / VistaTerreno.CELLA
+	if vertici.is_empty() or vertici.size() > diretto * 2.5 + 6:
 		return [a]
 	var tappe := []
-	for c in celle:
-		tappe.append(vista.centro_area(c, Vector2i.ONE))
+	for v in vertici:
+		tappe.append(vista.vertice(v))
 	tappe.append(a)
 	return tappe
 
@@ -203,19 +201,22 @@ func _cella(p: Vector3) -> Vector2i:
 	return Vector2i(floori(p.x / VistaTerreno.CELLA), floori(p.z / VistaTerreno.CELLA))
 
 
-func _strada_vicina(c: Vector2i) -> Vector2i:
+## Il vertice di strada più vicino a un punto, entro VICINO_STRADA celle (o (-1, -1)).
+func _strada_vicina(p: Vector3) -> Vector2i:
+	var v0 := Vector2i(roundi(p.x / VistaTerreno.CELLA), roundi(p.z / VistaTerreno.CELLA))
 	var migliore := Vector2i(-1, -1)
 	var dist := 1 << 30
 	for dy in range(-VICINO_STRADA, VICINO_STRADA + 1):
 		for dx in range(-VICINO_STRADA, VICINO_STRADA + 1):
-			var v := c + Vector2i(dx, dy)
-			if vista.terreno.strada_a(v) and dx * dx + dy * dy < dist:
+			var v := v0 + Vector2i(dx, dy)
+			if dx * dx + dy * dy < dist and vista.terreno.vertice_su_strada(v):
 				dist = dx * dx + dy * dy
 				migliore = v
 	return migliore
 
 
-## Il cammino più corto lungo le strade (ricerca in ampiezza), [] se non sono collegate.
+## Il cammino più corto lungo le strade, di vertice in vertice (ricerca in ampiezza), [] se non
+## sono collegate.
 func _percorso_strade(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
 	var da_dove := {da: da}
 	var coda: Array[Vector2i] = [da]
@@ -225,9 +226,9 @@ func _percorso_strade(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
 		i += 1
 		if c == a:
 			break
-		for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		for dir in TerrenoFeudo.DIREZIONI:
 			var v: Vector2i = c + dir
-			if not da_dove.has(v) and vista.terreno.strada_a(v):
+			if not da_dove.has(v) and vista.terreno.lato_strada(c, v):
 				da_dove[v] = c
 				coda.append(v)
 	var cammino: Array[Vector2i] = []
@@ -253,6 +254,6 @@ func _punto_falo() -> Vector3:
 
 func _quota(p: Vector3) -> float:
 	var c := Vector2i(floori(p.x / VistaTerreno.CELLA), floori(p.z / VistaTerreno.CELLA))
-	if vista.terreno.ponte_a(c) != "":
+	if vista.terreno.tipo_a(c) in [TerrenoFeudo.Tipo.ACQUA, TerrenoFeudo.Tipo.FIUME] and vista.terreno.ponte_vicino(c):
 		return VistaTerreno.QUOTA_PONTE  # sopra il ponte o la passerella
 	return maxf(vista.terreno.altezza(c), 0.0)  # sull'acqua camminano sulla riva (niente bagni)

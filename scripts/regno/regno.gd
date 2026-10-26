@@ -24,6 +24,9 @@ var _entrando := false
 var _scheda: PanelContainer
 var _scheda_testo: Label
 var _scheda_bottoni: Dictionary = {}  # azione -> Button
+var _vassallo_box: VBoxContainer   # per le regioni conquistate: vassallo e tributo
+var _btn_tributo: Dictionary = {}  # "basso" | "normale" | "alto" -> Button
+var _btn_vassallo: Button
 var _scelta := ""  # chiave della regione aperta nella scheda
 
 
@@ -138,6 +141,25 @@ func _crea_scheda() -> void:
 		b.pressed.connect(_azione.bind(azione))
 		col.add_child(b)
 		_scheda_bottoni[azione] = b
+	_vassallo_box = VBoxContainer.new()
+	col.add_child(_vassallo_box)
+	var riga := HBoxContainer.new()
+	_vassallo_box.add_child(riga)
+	var l := Label.new()
+	l.text = "Tributo:"
+	riga.add_child(l)
+	for quanto in ["basso", "normale", "alto"]:
+		var b := Button.new()
+		b.text = quanto.capitalize()
+		b.toggle_mode = true
+		b.focus_mode = Control.FOCUS_NONE
+		b.pressed.connect(func(): GameState.imposta_tributo(_scelta, quanto); GameState.salva())
+		riga.add_child(b)
+		_btn_tributo[quanto] = b
+	_btn_vassallo = Button.new()
+	_btn_vassallo.focus_mode = Control.FOCUS_NONE
+	_btn_vassallo.pressed.connect(_cambia_vassallo)
+	_vassallo_box.add_child(_btn_vassallo)
 	var chiudi := Button.new()
 	chiudi.text = "Chiudi"
 	chiudi.focus_mode = Control.FOCUS_NONE
@@ -157,12 +179,25 @@ func _aggiorna_scheda() -> void:
 		return
 	var r: Dictionary = GameState.regni[_scelta]
 	var righe: Array[String] = ["%s · %s" % [r.nome, r.signore], "Risorsa: %s" % r.risorsa]
+	_vassallo_box.visible = r.conquistato
 	if r.conquistato:
 		var v := int(r.vassallo)
-		righe.append("È nostra: ogni stagione manda %d oro e %d %s." % [int(GameState.bil.diplomazia.tributo_oro),
-			int(GameState.bil.diplomazia.tributo_risorsa), GameState.RISORSA_DEL_TRIBUTO.get(r.risorsa, "cibo")])
-		if v >= 0:
-			righe.append("La governa %s, tuo vassallo." % GameState.famiglie[v].capo)
+		var parti: Array[String] = []
+		var t := GameState.tributo_di(_scelta)
+		for ris in t:
+			parti.append("%d %s" % [t[ris], ris])
+		righe.append("È nostra. La governa %s, tuo vassallo%s." % [GameState.nome_vassallo(v),
+			" (casata %s, %s)" % [GameState.famiglie[v].casata, GameState.tratto(v).get("nome", "").to_lower()] if v >= 0 else ""])
+		righe.append("Ogni stagione manda: %s." % ", ".join(parti))
+		righe.append("Lealtà %d%%%s · in battaglia ci manda truppe per %d." % [int(r.lealta),
+			" (a rischio di ribellione!)" if int(r.lealta) < int(GameState.bil.vassalli.soglia_ribellione) else "",
+			roundi(GameState.leva_vassallo(_scelta))])
+		righe.append("Un tributo alto rende di più ma fa perdere lealtà; basso la fa crescere.")
+		for quanto in _btn_tributo:
+			_btn_tributo[quanto].set_pressed_no_signal(quanto == r.tributo)
+		var prossimo := _prossimo_vassallo()
+		_btn_vassallo.text = "Affida a %s" % GameState.nome_vassallo(prossimo)
+		_btn_vassallo.visible = prossimo != v
 	elif r.spiato:
 		righe.append("Forza: %d (il nostro esercito: %d)" % [GameState.forza_regno(_scelta), roundi(GameState.forza_esercito(GameState.soldati_presenti()))])
 		if r.tipo == "signore":
@@ -183,6 +218,22 @@ func _aggiorna_scheda() -> void:
 		b.text = testi[azione] + ("" if perche == "" else "\n(%s)" % perche)
 		b.disabled = perche != ""
 		b.visible = not r.conquistato and not (azione == "alleanza" and r.tipo != "signore")
+
+
+## Il prossimo candidato a vassallo: i consiglieri liberi, poi un cavaliere.
+func _prossimo_vassallo() -> int:
+	var r: Dictionary = GameState.regni[_scelta]
+	var candidati: Array[int] = GameState.consiglieri_liberi()
+	if int(r.vassallo) >= 0:
+		candidati.append(int(r.vassallo))
+	candidati.append(GameState.CAVALIERE)
+	var i := candidati.find(int(r.vassallo))
+	return candidati[(i + 1) % candidati.size()]
+
+
+func _cambia_vassallo() -> void:
+	GameState.nomina_vassallo(_scelta, _prossimo_vassallo())
+	GameState.salva()
 
 
 func _azione(azione: String) -> void:

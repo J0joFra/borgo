@@ -175,7 +175,7 @@ func _via() -> void:
 	var dimora_v: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "dimora")[0]
 	var torre := GameState.piazza("torre_guardia", t.trova_posto("torre_guardia", dimora_v.cella + Vector2i(-4, 3)), 1.0)
 	torre.progresso = 1.0
-	torre.lavoratori = 2
+	GameState._completa(torre)
 	for i in 4:
 		var pal := GameState.piazza("palizzata", t.trova_posto("palizzata", dimora_v.cella + Vector2i(-6 + i, 6)), 1.0)
 		if not pal.is_empty():
@@ -203,6 +203,13 @@ func _via() -> void:
 		f.camera.position = Vector3(pb.x, 0, pb.z).lerp(pd, 0.3)
 	await _attendi(0.5)
 	await _scatta("20_banditi_in_arrivo")
+	# quando passano vicino alla torre gli arcieri tirano
+	var pt: Vector3 = f.vista.centro_area(torre.cella, Vector2i(2, 2))
+	f.camera.position = pt
+	f.camera.cambia_zoom(1)
+	await _attendi(4.0)
+	await _scatta("20b_arcieri")
+	f.camera.cambia_zoom(-1)
 	f.hud._info.visible = true
 	f.hud._aggiorna()
 	await _attendi(0.3)
@@ -258,14 +265,59 @@ func _via() -> void:
 	await _scatta("26_esercito")
 	f.hud._apri_finestra(f.hud._esercito)
 	GameState.risorse.oro = 200.0
+	# mura in pietra che tagliano una strada (lì si apre la porta) e girano l'angolo
+	GameState.risorse.pietra = 300.0
+	var dc: Vector2i = dimora_v.cella
+	var croce := Vector2i(-1, -1)
+	for raggio in range(4, 16):
+		for dy in range(-raggio, raggio + 1):
+			for dx in range(-raggio, raggio + 1):
+				var v := dc + Vector2i(dx, dy)
+				if croce.x >= 0:
+					break
+				var colonna: Array[Vector2i] = []
+				for y in range(v.y - 3, v.y + 3):
+					colonna.append(Vector2i(v.x, y))
+				var riga: Array[Vector2i] = []
+				for x in range(v.x - 4, v.x):
+					riga.append(Vector2i(x, v.y - 3))
+				if GameState.verifica_mura(colonna + riga).ok and GameState.verifica_strada([v - Vector2i(2, 0), v + Vector2i(3, 0)]).ok:
+					croce = v
+	print("MURA ", croce, " ", croce.x >= 0)
+	if croce.x >= 0:
+		GameState.costruisci_strada([croce - Vector2i(2, 0), croce + Vector2i(3, 0)])
+		var tutte: Array[Vector2i] = []
+		for y in range(croce.y - 3, croce.y + 3):
+			tutte.append(Vector2i(croce.x, y))
+		for x in range(croce.x - 4, croce.x):
+			tutte.append(Vector2i(x, croce.y - 3))
+		GameState.costruisci_mura(tutte)
+	var dc_vista := croce if croce.x >= 0 else dc
+	# un magazzino girato
+	var rot_posto := t.trova_posto("magazzino", dc + Vector2i(-6, 0), 1)
+	var mag_r := GameState.piazza("magazzino", rot_posto, 1.0, 1)
+	if not mag_r.is_empty():
+		mag_r.progresso = 1.0
+	GameState._tick_evento = -1
+	f.camera.position = f.vista.centro_area(dc_vista, Vector2i(1, 1))
+	f.camera.cambia_zoom(1)
+	await _attendi(1.5)
+	await _scatta("28_mura")
+	f.camera.cambia_zoom(-1)
+	if not mag_r.is_empty():
+		f.camera.position = f.vista.centro_area(mag_r.cella, Vector2i(2, 3))
+		await _attendi(1.0)
+		await _scatta("30_ruotato")
 	var spiata: String = GameState.regni.keys()[0]
 	GameState.regni[spiata].spiato = true
 	GameState.manda_spia(GameState.regni.keys()[1])
 	GameState.attacca(GameState.regni.keys()[2])
+	var conquistata := ""
 	for k in GameState.regni:
 		if GameState.regni[k].tipo == "libera":
 			GameState.regni[k].conquistato = true
-			GameState.regni[k].vassallo = GameState.consiglieri()[0]
+			GameState.nomina_vassallo(k, GameState.consiglieri()[0])
+			conquistata = k
 			break
 
 	f._vai_al_regno()
@@ -276,53 +328,56 @@ func _via() -> void:
 	mappa._apri_scheda(spiata)
 	await _attendi(0.3)
 	await _scatta("27_scheda_regione")
+	if conquistata != "":
+		mappa._apri_scheda(conquistata)
+		await _attendi(0.3)
+		await _scatta("29_vassallo")
 	get_tree().quit()
 
 
-## Una strada dritta che attraversa l'acqua del tipo dato vicino a una cella: da terra a terra.
-func _attraversamento(tipo: int, vicino: Vector2i, massimo: int) -> Array[Vector2i]:
+## Un ponte dritto sul fiume vicino a una cella: vertici da terra a terra, i tratti in mezzo
+## fra due celle di fiume.
+func _attraversamento(_tipo: int, vicino: Vector2i, massimo: int) -> Array[Vector2i]:
 	var t: TerrenoFeudo = GameState.terreno
 	var migliore: Array[Vector2i] = []
 	var dmin := INF
 	for y in range(vicino.y - 18, vicino.y + 18):
 		for x in range(vicino.x - 18, vicino.x + 18):
 			for dir in [Vector2i(1, 0), Vector2i(0, 1)]:
-				var c := Vector2i(x, y)
-				if t.tipo_a(c) == tipo or not t.nel_feudo(c):
+				var v := Vector2i(x, y)
+				var vertici: Array[Vector2i] = [v, v + dir]
+				if t.tipo_lato(TerrenoFeudo.lato(v, v + dir)) != "":
 					continue
-				var celle: Array[Vector2i] = [c]
 				var k := 1
-				while k <= massimo and t.tipo_a(c + dir * k) == tipo:
-					celle.append(c + dir * k)
+				while k <= massimo and t.tipo_lato(TerrenoFeudo.lato(v + dir * k, v + dir * (k + 1))) == "ponte":
 					k += 1
+					vertici.append(v + dir * k)
 				if k == 1 or k > massimo:
 					continue
-				celle.append(c + dir * k)
-				var v := GameState.verifica_strada(celle)
-				var d := Vector2(c - vicino).length()
-				if v.ok and d < dmin:
+				vertici.append(v + dir * (k + 1))
+				var esito := GameState.verifica_strada(vertici)
+				var d := Vector2(v - vicino).length()
+				if esito.ok and esito.ponti > 0 and d < dmin:
 					dmin = d
-					migliore = celle
+					migliore = vertici
 	return migliore
 
 
-## Un pontile: dalla riva del lago, tre celle dentro l'acqua.
+## Un pontile: dalla riva del lago, tre tratti di passerella nell'acqua.
 func _pontile(vicino: Vector2i) -> Array[Vector2i]:
 	var t: TerrenoFeudo = GameState.terreno
 	var migliore: Array[Vector2i] = []
 	var dmin := INF
 	for y in range(vicino.y - 20, vicino.y + 20):
 		for x in range(vicino.x - 20, vicino.x + 20):
-			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var c := Vector2i(x, y)
-				if t.tipo_a(c) == TerrenoFeudo.Tipo.ACQUA or not t.nel_feudo(c):
-					continue
-				var celle: Array[Vector2i] = [c, c + dir, c + dir * 2, c + dir * 3]
-				var v := GameState.verifica_strada(celle)
-				var d := Vector2(c - vicino).length()
-				if v.ok and v.passerelle == 3 and d < dmin:
+			for dir in TerrenoFeudo.DIREZIONI:
+				var v := Vector2i(x, y)
+				var vertici: Array[Vector2i] = [v, v + dir, v + dir * 2, v + dir * 3, v + dir * 4]
+				var esito := GameState.verifica_strada(vertici)
+				var d := Vector2(v - vicino).length()
+				if esito.ok and esito.passerelle == 3 and d < dmin:
 					dmin = d
-					migliore = celle
+					migliore = vertici
 	return migliore
 
 

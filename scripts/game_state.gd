@@ -30,7 +30,7 @@ const CIBI := ["cibo", "rape", "orzo", "grano"]
 ## Le risorse mostrate nella barra in alto (grano e farina restano nascosti).
 const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "grano", "orzo", "rape", "ferro", "utensili", "armi", "oro"]
 const SAVE_PATH := "user://save.json"
-const VERSIONE_SALVATAGGIO := 7
+const VERSIONE_SALVATAGGIO := 8
 
 var edifici: Dictionary = {}  # tipo -> definizione (data/edifici.json)
 var bil: Dictionary = {}      # data/bilanciamento.json
@@ -77,6 +77,7 @@ var _velocita_prima := 1
 var _evento_da_riprendere := ""
 var _rete_strade: Dictionary = {}  # celle di strada collegate alla piazza (calcolate quando servono)
 var _rete_valida := false
+var _cinta := -1  # cinta_chiusa() in cache: -1 da ricalcolare, 0 no, 1 sì
 var banditi: Dictionary = {}  # banda in arrivo: {forza, numero, entrata: Vector2i, mancano, totale} (tick)
 var _tick_banditi := -1       # in quale tick della stagione vengono avvistati (-1: nessuno)
 var ultime_tasse: Dictionary = {}  # l'ultima riscossione, per il pannello Info
@@ -100,7 +101,9 @@ func _ready() -> void:
 	dati_eventi = (load("res://data/eventi.json") as JSON).data
 	building_added.connect(func(_b): _rete_valida = false)
 	building_removed.connect(func(_id): _rete_valida = false)
-	terreno_cambiato.connect(func(_c): _rete_valida = false)
+	terreno_cambiato.connect(func(_c): _rete_valida = false; _cinta = -1)
+	building_added.connect(func(_b): _cinta = -1)
+	building_removed.connect(func(_id): _cinta = -1)
 
 
 # --- Partita -----------------------------------------------------------------
@@ -215,36 +218,33 @@ func _costruisci_dimora(indice: int) -> void:
 
 
 ## Dalla dimora parte una strada corta, possibilmente dalla parte opposta al falò:
-## l'inizio del borgo.
+## l'inizio del borgo. Parte dal vertice a metà del lato della dimora e va dritta.
 func _strada_iniziale(dimora: Dictionary, falo: Dictionary) -> void:
 	var lunghezza := int(bil.strade.strada_iniziale)
-	var t: Array = edifici[dimora.tipo].taglia
-	var w := int(t[0])
-	var h := int(t[1])
+	var t := taglia_di(dimora)
 	var lontano := Vector2(dimora.cella - falo.cella).normalized()
 	var direzioni := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 	direzioni.sort_custom(func(a, b): return Vector2(a).dot(lontano) > Vector2(b).dot(lontano))
 	for dir in direzioni:
-		# parte dal lato della dimora rivolto in quella direzione
 		var inizio: Vector2i = dimora.cella
 		match dir:
-			Vector2i(1, 0): inizio += Vector2i(w, h / 2)
-			Vector2i(-1, 0): inizio += Vector2i(-1, h / 2)
-			Vector2i(0, 1): inizio += Vector2i(w / 2, h)
-			_: inizio += Vector2i(w / 2, -1)
-		var celle_s := []
-		for i in lunghezza:
-			celle_s.append(inizio + dir * i)
-		var v := terreno.verifica_strada(celle_s)
+			Vector2i(1, 0): inizio += Vector2i(t.x, t.y / 2)
+			Vector2i(-1, 0): inizio += Vector2i(0, t.y / 2)
+			Vector2i(0, 1): inizio += Vector2i(t.x / 2, t.y)
+			_: inizio += Vector2i(t.x / 2, 0)
+		var vertici := []
+		for i in lunghezza + 1:
+			vertici.append(inizio + dir * i)
+		var v := terreno.verifica_strada(vertici)
 		if v.ok and v.ponti == 0 and v.passerelle == 0:
-			terreno_cambiato.emit(terreno.aggiungi_strada(celle_s))
+			terreno_cambiato.emit(terreno.aggiungi_strada(vertici))
 			return
 
 
 func consiglieri() -> Array[int]:
 	var lista: Array[int] = []
 	for i in famiglie.size():
-		if i != capo:
+		if i != capo and not famiglie[i].get("ribelle", false):
 			lista.append(i)
 	return lista
 
@@ -296,6 +296,7 @@ func nuova_partita(seme: int = -1) -> void:
 	_tick_evento = -1
 	_evento_da_riprendere = ""
 	_rete_valida = false
+	_cinta = -1
 	banditi = {}
 	_tick_banditi = -1
 	ultime_tasse = {}
@@ -313,11 +314,30 @@ func nuova_partita(seme: int = -1) -> void:
 	_accumulo = 0.0
 
 
+## Larghezza e profondità (in celle) di un tipo di edificio girato di rot volte 90°.
+func taglia_tipo(tipo: String, rot := 0) -> Vector2i:
+	var t: Array = edifici[tipo].taglia
+	var taglia := Vector2i(int(t[0]), int(t[1]))
+	return Vector2i(taglia.y, taglia.x) if posmod(rot, 2) == 1 else taglia
+
+
+func taglia_di(b: Dictionary) -> Vector2i:
+	return taglia_tipo(b.tipo, int(b.get("rot", 0)))
+
+
 ## Aggiunge un edificio già pronto, senza costi (case iniziali).
 func aggiungi_gratis(tipo: String, cella: Vector2i, bonus: float) -> Dictionary:
 	var b := _aggiungi(tipo, cella, bonus, 1.0)
 	_segna_eta(b)
+	_arma_torre(b)
 	return b
+
+
+## Appena finita, sulla torre di guardia salgono i suoi arcieri: non si tolgono, ma possono morire.
+func _arma_torre(b: Dictionary) -> void:
+	if edifici[b.tipo].has("arcieri"):
+		b.arcieri = int(edifici[b.tipo].arcieri)
+		_cinta = -1
 
 
 ## Le cose che durano poco (le tende) contano le stagioni da quando sono finite;
@@ -467,13 +487,13 @@ func puo_permettersi(tipo: String) -> bool:
 	return true
 
 
-func piazza(tipo: String, cella: Vector2i, bonus: float) -> Dictionary:
+func piazza(tipo: String, cella: Vector2i, bonus: float, rot := 0) -> Dictionary:
 	if not sbloccato(tipo) or not puo_permettersi(tipo):
 		return {}
 	var costo: Dictionary = edifici[tipo].get("costo", {})
 	for r in costo:
 		risorse[r] -= costo[r]
-	var b := _aggiungi(tipo, cella, bonus, 0.0)
+	var b := _aggiungi(tipo, cella, bonus, 0.0, rot)
 	if edifici[tipo].get("coltura", false):
 		b.coltura = coltura_iniziale(cella)
 	changed.emit()
@@ -526,11 +546,13 @@ func tempo_costruzione(tipo: String) -> float:
 	return secondi * float(tratto(capo).get("costruzione", 1.0))
 
 
-func _aggiungi(tipo: String, cella: Vector2i, bonus: float, progresso: float) -> Dictionary:
+func _aggiungi(tipo: String, cella: Vector2i, bonus: float, progresso: float, rot := 0) -> Dictionary:
 	var b := {
 		"id": _prossimo_id, "tipo": tipo, "cella": cella,
 		"lavoratori": 0, "progresso": progresso, "bonus": bonus,
 	}
+	if posmod(rot, 4) != 0:
+		b.rot = posmod(rot, 4)
 	_prossimo_id += 1
 	buildings.append(b)
 	if terreno:
@@ -547,6 +569,7 @@ func _completa(b: Dictionary) -> void:
 		var taglia := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
 		b.bosco_iniziale = terreno.conta_attorno(b.cella, taglia, int(d.zona.raggio), TerrenoFeudo.Tipo.BOSCO)
 	_segna_eta(b)
+	_arma_torre(b)
 	building_finished.emit(b.id)
 	message.emit("%s completato" % d.nome)
 	changed.emit()
@@ -647,8 +670,8 @@ func testo_effetto(tipo: String) -> String:
 		var spiegazioni := {"bosco": "rende di più con tanto bosco attorno", "roccia": "rende di più tra le rocce",
 			"acqua": "rende di più vicino a lago o fiume", "fertilita": "rende di più su terra fertile"}
 		parti.append(spiegazioni.get(d.zona.tipo, ""))
-	if d.has("difesa_per_guardia"):
-		parti.append("difesa %d per guardia" % int(d.difesa_per_guardia))
+	if d.has("arcieri"):
+		parti.append("%d arcieri, tirano a %d celle" % [int(d.arcieri), int(d.raggio_tiro)])
 	if d.has("difesa"):
 		parti.append("difesa +%s" % str(d.difesa))
 	if d.has("su"):
@@ -785,7 +808,8 @@ func _tick() -> void:
 		_avvista_banditi()
 	elif not banditi.is_empty():
 		banditi.mancano = int(banditi.mancano) - 1
-		if banditi.mancano <= 0:
+		_tiro_arcieri()
+		if not banditi.is_empty() and banditi.mancano <= 0:
 			_incursione()
 			if finita:
 				return
@@ -809,8 +833,7 @@ func coltura_di(b: Dictionary) -> Dictionary:
 func campo_selvatico(b: Dictionary) -> bool:
 	if terreno == null:
 		return false
-	var t: Array = edifici[b.tipo].taglia
-	return terreno.selvatica_sotto(b.cella, Vector2i(int(t[0]), int(t[1]))) == b.get("coltura", "")
+	return terreno.selvatica_sotto(b.cella, taglia_di(b)) == b.get("coltura", "")
 
 
 ## La coltura con cui partire su un campo nuovo: quella selvatica sotto, altrimenti
@@ -1114,7 +1137,7 @@ func _avvista_banditi() -> void:
 	forza *= _rng.randf_range(1.0 - float(c.variazione), 1.0 + float(c.variazione))
 	var avvistati_prima := false
 	for b in buildings:
-		if b.progresso >= 1.0 and edifici[b.tipo].get("avvista", false) and b.lavoratori > 0:
+		if b.progresso >= 1.0 and edifici[b.tipo].get("avvista", false) and int(b.get("arcieri", 0)) > 0:
 			avvistati_prima = true
 	var preavviso := int(c.preavviso_con_torre if avvistati_prima else c.preavviso)
 	var lati := ["nord", "est", "sud", "ovest"]
@@ -1130,7 +1153,10 @@ func _avvista_banditi() -> void:
 		if terreno == null or terreno.percorribile(entrata):
 			break
 	banditi = {"forza": forza, "numero": clampi(roundi(forza / 3.0), 4, 14), "entrata": entrata,
-		"mancano": preavviso, "totale": preavviso, "da": lati[lato]}
+		"mancano": preavviso, "totale": preavviso, "da": lati[lato], "percorso": []}
+	# la strada che faranno, a piedi attorno all'acqua e alle mura
+	if terreno:
+		banditi.percorso = terreno.cammino(entrata, _cella_centro())
 	var chi := _consigliere_per("costruire")
 	var testo := "Banditi avvistati a %s! Saranno qui tra %d giorni. Sono circa %d (forza %d); noi ci difendiamo con %d." % [
 		banditi.da, preavviso, banditi.numero, roundi(forza), roundi(difesa().totale)]
@@ -1154,37 +1180,96 @@ func _consigliere_per(area: String) -> int:
 ## valgono molto di più (e ancora di più con le armi), le palizzate fermano i banditi.
 func difesa() -> Dictionary:
 	var c: Dictionary = bil.banditi
-	var guardie := 0
-	var forza_guardie := 0.0
+	var arcieri := 0
+	var forza_arcieri := 0.0
 	var palizzate := 0.0
+	var centro := _cella_centro()
 	for b in buildings:
 		if b.progresso < 1.0:
 			continue
 		var d := def_di(b)
-		if d.has("difesa_per_guardia"):
-			guardie += int(b.lavoratori)
-			forza_guardie += int(b.lavoratori) * float(d.difesa_per_guardia)
+		# gli arcieri combattono solo se il centro del borgo è nel loro raggio di tiro
+		if d.has("difesa_per_arciere") and in_tiro(b, centro):
+			arcieri += int(b.get("arcieri", 0))
+			forza_arcieri += int(b.get("arcieri", 0)) * float(d.difesa_per_arciere)
 		palizzate += float(d.get("difesa", 0.0))
-	var armate := mini(guardie, int(risorse.armi))
-	if guardie > 0:
-		forza_guardie *= 1.0 + (float(c.bonus_armi) - 1.0) * armate / guardie
+	var armate := mini(arcieri, int(risorse.armi))
+	if arcieri > 0:
+		forza_arcieri *= 1.0 + (float(c.bonus_armi) - 1.0) * armate / arcieri
 	# poi si armano i soldati rimasti a casa, e le armi avanzate vanno alla milizia
 	var presenti := soldati_presenti()
 	var armi_soldati := mini(presenti, int(risorse.armi) - armate)
 	var forza_soldati := presenti * float(bil.esercito.difesa_per_soldato)
 	if presenti > 0:
 		forza_soldati *= 1.0 + (float(c.bonus_armi) - 1.0) * armi_soldati / presenti
-	var civili := maxi(0, abitanti - guardie - soldati)
+	var civili := maxi(0, abitanti - soldati)
 	var armi_milizia := mini(int(risorse.armi) - armate - armi_soldati, civili)
 	var milizia := civili * float(c.milizia_per_abitante) + armi_milizia * 0.5
 	var alleati := 0.0
+	var vassalli := 0.0
 	for k in regni:
 		if regni[k].alleato:
 			alleati += float(bil.diplomazia.aiuto_alleato)
-	return {"milizia": milizia, "guardie": guardie, "forza_guardie": forza_guardie, "palizzate": palizzate,
-		"soldati": presenti, "forza_soldati": forza_soldati, "alleati": alleati,
-		"armi_usate": armate + armi_soldati + armi_milizia,
-		"totale": milizia + forza_guardie + palizzate + forza_soldati + alleati}
+		if regni[k].conquistato:
+			vassalli += leva_vassallo(k)
+	var mura := 0.0
+	if terreno:
+		mura = terreno.mura.size() * float(bil.mura.difesa_per_cella)
+	var somma := milizia + forza_arcieri + palizzate + forza_soldati + alleati + vassalli + mura
+	var cinta := cinta_chiusa()
+	if cinta:
+		somma *= 1.0 + float(bil.mura.bonus_cinta)
+	return {"milizia": milizia, "arcieri": arcieri, "forza_arcieri": forza_arcieri, "palizzate": palizzate,
+		"soldati": presenti, "forza_soldati": forza_soldati, "alleati": alleati, "vassalli": vassalli,
+		"mura": mura, "cinta": cinta, "armi_usate": armate + armi_soldati + armi_milizia, "totale": somma}
+
+
+## La cella è entro il raggio di tiro della torre (raggio_tiro celle per lato attorno all'edificio)?
+func in_tiro(torre: Dictionary, c: Vector2i) -> bool:
+	var r := int(edifici[torre.tipo].get("raggio_tiro", 0))
+	var t := taglia_di(torre)
+	return c.x >= torre.cella.x - r and c.x < torre.cella.x + t.x + r \
+		and c.y >= torre.cella.y - r and c.y < torre.cella.y + t.y + r
+
+
+## Ogni giorno in cui la banda passa nel raggio di una torre, gli arcieri tirano: la banda
+## perde forza. Gli arcieri della banda rispondono e ogni tanto uccidono un arciere sulla torre.
+func _tiro_arcieri() -> void:
+	var percorso: Array = banditi.get("percorso", [])
+	if percorso.is_empty():
+		return
+	var a: Dictionary = bil.arcieri
+	var fatto := 1.0 - float(banditi.mancano) / float(banditi.totale)
+	var dove: Vector2i = percorso[clampi(int(fatto * (percorso.size() - 1)), 0, percorso.size() - 1)]
+	for b in buildings:
+		var n := int(b.get("arcieri", 0))
+		if n <= 0 or b.progresso < 1.0 or not in_tiro(b, dove):
+			continue
+		var colpi := n * float(a.danno_per_tiro)
+		banditi.forza = maxf(0.0, float(banditi.forza) - colpi)
+		banditi.colpiti = float(banditi.get("colpiti", 0.0)) + colpi
+		var loro_arcieri := ceili(banditi_vivi() * float(a.quota_arcieri_banditi))
+		if _rng.randf() < minf(0.5, loro_arcieri * float(a.probabilita_colpo)):
+			b.arcieri = n - 1
+			message.emit("Un arciere della torre è stato colpito dai banditi")
+	if float(banditi.forza) <= 0.0:
+		_incursione()
+
+
+## Quanti banditi sono ancora in piedi (per la grafica): uno ogni 3 di forza.
+func banditi_vivi() -> int:
+	if banditi.is_empty():
+		return 0
+	return clampi(ceili(float(banditi.forza) / 3.0), 0, int(banditi.numero))
+
+
+## A ogni stagione sulle torri che hanno perso arcieri ne sale uno nuovo.
+func _nuovi_arcieri() -> void:
+	for b in buildings:
+		var massimo := int(edifici[b.tipo].get("arcieri", 0))
+		if massimo > 0 and b.progresso >= 1.0 and int(b.get("arcieri", 0)) < massimo:
+			b.arcieri = mini(massimo, int(b.get("arcieri", 0)) + int(bil.arcieri.nuovi_per_stagione))
+			message.emit("Un nuovo arciere è salito sulla torre di guardia")
 
 
 ## La banda arriva. Se la difesa basta la respingiamo; altrimenti rubano una parte delle scorte
@@ -1196,12 +1281,17 @@ func _incursione() -> void:
 	var forza := float(banditi.forza)
 	var rapporto: float = dif.totale / maxf(1.0, forza)
 	var esito := {"vinto": rapporto >= 1.0, "entrata": banditi.entrata, "numero": banditi.numero,
-		"forza": forza, "difesa": dif.totale, "rubato": {}, "bruciato": -1, "morti": 0}
+		"forza": forza, "difesa": dif.totale, "rubato": {}, "bruciato": -1, "morti": 0,
+		"colpiti": float(banditi.get("colpiti", 0.0)), "fuggiti": forza <= 0.0}
 	# le armi si consumano un po' in battaglia (una su tre)
 	risorse.armi = maxf(0.0, risorse.armi - ceilf(dif.armi_usate / 3.0))
-	if esito.vinto:
+	if esito.fuggiti:
 		felicita = minf(100.0, felicita + float(c.felicita_vittoria))
-		message.emit("Banditi respinti! %d contro %d: la gente festeggia" % [roundi(dif.totale), roundi(forza)])
+		message.emit("Gli arcieri delle torri hanno messo in fuga i banditi prima che arrivassero!")
+	elif esito.vinto:
+		felicita = minf(100.0, felicita + float(c.felicita_vittoria))
+		var frecce := " (gli arcieri ne avevano già colpiti molti)" if esito.colpiti >= 3.0 else ""
+		message.emit("Banditi respinti! %d contro %d: la gente festeggia%s" % [roundi(dif.totale), roundi(forza), frecce])
 	else:
 		var quota: float = float(c.bottino_massimo) * (1.0 - rapporto)
 		for r in ["oro", "cibo", "rape", "orzo", "grano", "farina", "legna", "pietra", "ferro", "utensili", "armi"]:
@@ -1233,7 +1323,7 @@ func _brucia_qualcosa() -> int:
 	for b in buildings:
 		var d: Dictionary = edifici[b.tipo]
 		if b.progresso >= 1.0 and not d.get("fisso", false) and not d.get("centro", false) \
-				and str(d.taglia) == str(edifici.rovine.taglia) and b.tipo != "rovine":
+				and taglia_di(b) == taglia_tipo("rovine") and b.tipo != "rovine":
 			candidati.append(b)
 	if candidati.is_empty():
 		return -1
@@ -1344,7 +1434,7 @@ func _prepara_regni() -> void:
 				atteggiamento = -80
 		regni[str(i)] = {"tipo": r.tipo, "nome": r.nome, "signore": r.signore, "risorsa": r.risorsa,
 			"forza": rng.randi_range(int(intervallo[0]), int(intervallo[1])), "atteggiamento": atteggiamento,
-			"spiato": false, "alleato": false, "conquistato": false, "vassallo": -1}
+			"spiato": false, "alleato": false, "conquistato": false, "vassallo": -1, "lealta": 0, "tributo": "normale"}
 
 
 func diplomazia_possibile() -> bool:
@@ -1356,9 +1446,15 @@ func forza_regno(chiave: String) -> int:
 	return roundi(float(regni[chiave].forza) * (1.0 + float(bil.diplomazia.crescita_forza_per_anno) * (anno - 1)))
 
 
+## La forza in battaglia di n soldati (con le armi), più le truppe mandate dai vassalli.
 func forza_esercito(n: int) -> float:
 	var armati := mini(n, int(risorse.armi))
-	return n * float(bil.esercito.forza_per_soldato) * (1.0 + (float(bil.banditi.bonus_armi) - 1.0) * armati / maxf(1.0, n))
+	var f := n * float(bil.esercito.forza_per_soldato) * (1.0 + (float(bil.banditi.bonus_armi) - 1.0) * armati / maxf(1.0, n))
+	if n > 0:
+		for k in regni:
+			if regni[k].conquistato:
+				f += leva_vassallo(k)
+	return f
 
 
 func missione_per(chiave: String) -> Dictionary:
@@ -1506,19 +1602,13 @@ func _battaglia(m: Dictionary) -> void:
 		esito.caduti = mini(n, roundi(n * 0.5 * loro / maxf(1.0, nostra)))
 		r.conquistato = true
 		r.alleato = false
-		var vassallo := -1
-		for f in consiglieri():
-			var occupato := false
-			for k in regni:
-				if int(regni[k].vassallo) == f:
-					occupato = true
-			if not occupato and vassallo < 0:
-				vassallo = f
-		r.vassallo = vassallo
+		var liberi := consiglieri_liberi()
+		nomina_vassallo(m.regione, liberi[0] if not liberi.is_empty() else CAVALIERE)
+		var vassallo := int(r.vassallo)
 		for k in regni:
 			if regni[k].tipo == "signore" and k != m.regione:
 				regni[k].atteggiamento = int(regni[k].atteggiamento) - 10  # i vicini ci temono
-		var chi := " Ne ho affidato il governo a %s, tuo vassallo." % famiglie[vassallo].capo if vassallo >= 0 else ""
+		var chi := " Ne ho affidato il governo a %s, tuo vassallo." % nome_vassallo(vassallo)
 		message.emit("Vittoria! %s è nostra (%d contro %d). Ogni stagione ci manderà un tributo.%s" % [r.nome, roundi(nostra), roundi(loro), chi])
 		felicita = minf(100.0, felicita + 5.0)
 	else:
@@ -1537,18 +1627,97 @@ func _battaglia(m: Dictionary) -> void:
 const RISORSA_DEL_TRIBUTO := {"ferro": "ferro", "pietra": "pietra", "pesce": "cibo", "grano": "grano", "legname": "legna"}
 
 
-## Le terre conquistate mandano un tributo ogni stagione, gli alleati un dono.
+## Le terre conquistate mandano un tributo ogni stagione (secondo quanto chiediamo al vassallo
+## e la sua arte), gli alleati un dono. Chiedere molto rende di più ma fa perdere lealtà:
+## sotto la soglia il vassallo può ribellarsi e la regione torna libera.
 func _riscuoti_tributi() -> void:
 	var d: Dictionary = bil.diplomazia
+	var v: Dictionary = bil.vassalli
 	var cap := capacita()
 	for k in regni:
 		var r: Dictionary = regni[k]
 		if r.conquistato:
-			risorse.oro = minf(cap, risorse.oro + float(d.tributo_oro))
-			var ris: String = RISORSA_DEL_TRIBUTO.get(r.risorsa, "cibo")
-			risorse[ris] = minf(cap, risorse[ris] + float(d.tributo_risorsa))
+			for ris in tributo_di(k):
+				risorse[ris] = minf(cap, risorse[ris] + float(tributo_di(k)[ris]))
+			var lealta := int(r.lealta) + int(v.tributo[r.tributo].lealta)
+			if int(r.vassallo) >= 0 and tratto(int(r.vassallo)).has("felicita"):
+				lealta += 3  # i devoti restano fedeli
+			r.lealta = clampi(lealta, 0, 100)
+			if r.lealta < int(v.soglia_ribellione) and _rng.randf() < (int(v.soglia_ribellione) - r.lealta) / 60.0:
+				_ribellione(k)
 		elif r.alleato:
 			risorse.oro = minf(cap, risorse.oro + float(d.dono_alleato_stagione))
+
+
+const CAVALIERE := -2  # vassallo che non è un consigliere: un cavaliere qualunque
+
+
+func consiglieri_liberi() -> Array[int]:
+	var liberi: Array[int] = []
+	for f in consiglieri():
+		if vassallo_di(f) == "":
+			liberi.append(f)
+	return liberi
+
+
+func nome_vassallo(chi: int) -> String:
+	if chi >= 0:
+		return famiglie[chi].capo
+	return "un cavaliere" if chi == CAVALIERE else "nessuno"
+
+
+## Affida una regione conquistata a un consigliere libero (o a un cavaliere): la lealtà riparte.
+func nomina_vassallo(chiave: String, chi: int) -> bool:
+	var r: Dictionary = regni[chiave]
+	if not r.conquistato or (chi >= 0 and (not chi in consiglieri() or (vassallo_di(chi) != "" and int(r.vassallo) != chi))):
+		return false
+	r.vassallo = chi
+	var v: Dictionary = bil.vassalli
+	r.lealta = int(v.lealta_consigliere) if chi >= 0 else int(v.lealta_cavaliere)
+	changed.emit()
+	return true
+
+
+func imposta_tributo(chiave: String, quanto: String) -> void:
+	if regni[chiave].conquistato and bil.vassalli.tributo.has(quanto):
+		regni[chiave].tributo = quanto
+		changed.emit()
+
+
+## Cosa manda una regione ogni stagione: oro e la sua risorsa, per quanto chiediamo,
+## più qualcosa nell'arte del vassallo (es. i boscaioli mandano più legna).
+func tributo_di(chiave: String) -> Dictionary:
+	var r: Dictionary = regni[chiave]
+	var d: Dictionary = bil.diplomazia
+	var molt := float(bil.vassalli.tributo[r.tributo].molt)
+	var t := {"oro": roundi(float(d.tributo_oro) * molt)}
+	var ris: String = RISORSA_DEL_TRIBUTO.get(r.risorsa, "cibo")
+	t[ris] = int(t.get(ris, 0)) + roundi(float(d.tributo_risorsa) * molt)
+	if int(r.vassallo) >= 0:
+		var arte: Dictionary = tratto(int(r.vassallo)).get("produzione", {})
+		if not arte.is_empty():
+			var dove: String = arte.keys()[0]
+			t[dove] = int(t.get(dove, 0)) + int(bil.vassalli.bonus_tratto)
+	return t
+
+
+## Le truppe che un vassallo manda in aiuto (contro i banditi e in guerra): più è leale, più ne manda.
+func leva_vassallo(chiave: String) -> float:
+	return float(bil.vassalli.leva) * float(regni[chiave].lealta) / 100.0
+
+
+func _ribellione(chiave: String) -> void:
+	var r: Dictionary = regni[chiave]
+	var chi := int(r.vassallo)
+	r.conquistato = false
+	r.vassallo = -1
+	r.atteggiamento = -60
+	r.spiato = false
+	if chi >= 0:
+		famiglie[chi].ribelle = true  # la casata lascia il consiglio
+	message.emit("%s si è ribellato: %s non è più nostra!%s" % [nome_vassallo(chi).capitalize(), r.nome,
+		" La casata %s ha lasciato il consiglio." % famiglie[chi].casata if chi >= 0 else ""])
+	changed.emit()
 
 
 func vassallo_di(famiglia: int) -> String:
@@ -1560,61 +1729,59 @@ func vassallo_di(famiglia: int) -> String:
 
 # --- Collegamento alla piazza ---------------------------------------------------------
 
-## Vero se l'edificio è attaccato alla piazza (o alla dimora), oppure tocca una strada
-## che ci arriva. Chi non è collegato lavora un po' peggio (malus in bilanciamento.strade).
+## Vero se l'edificio è collegato da una strada (o perché li tocca direttamente) a un punto
+## da cui partono le strade: falò o piazza, dimora del signore, torre di guardia.
+## Chi non è collegato lavora un po' peggio (malus in bilanciamento.strade).
 func collegato(b: Dictionary) -> bool:
 	if terreno == null:
 		return true
-	if edifici[b.tipo].get("centro", false):
+	if _radice(b):
 		return true
 	if not _rete_valida:
 		_calcola_rete()
-	for c in _bordo(b):
-		if _rete_strade.has(c) or _centro_in(c):
+	for v in _bordo(b):
+		if _rete_strade.has(v):
 			return true
 	return false
 
 
+func _radice(b: Dictionary) -> bool:
+	var d: Dictionary = edifici[b.tipo]
+	return d.get("centro", false) or (d.get("radice_strade", false) and b.progresso >= 1.0)
+
+
+## I vertici raggiunti dalle strade che partono dalle radici (contando anche i vertici
+## sul bordo delle radici: chi le tocca è collegato).
 func _calcola_rete() -> void:
 	_rete_valida = true
 	_rete_strade = {}
 	var da_visitare: Array[Vector2i] = []
 	for b in buildings:
-		if edifici[b.tipo].get("centro", false):
-			for c in _bordo(b):
-				if terreno.strada_a(c) and not _rete_strade.has(c):
-					_rete_strade[c] = true
-					da_visitare.append(c)
+		if _radice(b):
+			for v in _bordo(b):
+				if not _rete_strade.has(v):
+					_rete_strade[v] = true
+					da_visitare.append(v)
 	while not da_visitare.is_empty():
-		var c: Vector2i = da_visitare.pop_back()
-		for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var v: Vector2i = c + dir
-			if terreno.strada_a(v) and not _rete_strade.has(v):
-				_rete_strade[v] = true
-				da_visitare.append(v)
+		var v: Vector2i = da_visitare.pop_back()
+		for dir in TerrenoFeudo.DIREZIONI:
+			var w: Vector2i = v + dir
+			if not _rete_strade.has(w) and terreno.lato_strada(v, w):
+				_rete_strade[w] = true
+				da_visitare.append(w)
 
 
-## Le celle che toccano i lati dell'edificio.
+## I vertici sul perimetro dell'edificio.
 func _bordo(b: Dictionary) -> Array[Vector2i]:
-	var t: Array = edifici[b.tipo].taglia
-	var w := int(t[0])
-	var h := int(t[1])
+	var t := taglia_di(b)
 	var bordo: Array[Vector2i] = []
-	for x in w:
-		bordo.append(b.cella + Vector2i(x, -1))
-		bordo.append(b.cella + Vector2i(x, h))
-	for y in h:
-		bordo.append(b.cella + Vector2i(-1, y))
-		bordo.append(b.cella + Vector2i(w, y))
+	for x in t.x + 1:
+		bordo.append(b.cella + Vector2i(x, 0))
+		bordo.append(b.cella + Vector2i(x, t.y))
+	for y in range(1, t.y):
+		bordo.append(b.cella + Vector2i(0, y))
+		bordo.append(b.cella + Vector2i(t.x, y))
 	return bordo
-
-
-func _centro_in(c: Vector2i) -> bool:
-	var id := terreno.edificio_a(c)
-	if id < 0:
-		return false
-	var altro := trova(id)
-	return not altro.is_empty() and edifici[altro.tipo].get("centro", false)
 
 
 # --- Strade ---------------------------------------------------------------------
@@ -1632,22 +1799,78 @@ func verifica_strada(celle: Array) -> Dictionary:
 	return terreno.verifica_strada(celle)
 
 
-func costruisci_strada(celle: Array) -> bool:
-	var v := verifica_strada(celle)
+## Costruisce la strada lungo questi vertici (vedi TerrenoFeudo.verifica_strada).
+func costruisci_strada(vertici: Array) -> bool:
+	var v := verifica_strada(vertici)
 	if not v.ok or risorse.pietra < v.pietra or risorse.legna < v.legna:
 		return false
 	risorse.pietra -= v.pietra
 	risorse.legna -= v.legna
-	var nuove := terreno.aggiungi_strada(celle)
+	var nuove := terreno.aggiungi_strada(vertici)
 	terreno_cambiato.emit(nuove)
 	changed.emit()
 	return true
 
 
-func rimuovi_strada(cella: Vector2i) -> void:
-	if terreno and terreno.rimuovi_strada(cella):
-		terreno_cambiato.emit([cella])
+## Toglie un lato di strada (la chiave del lato, vedi TerrenoFeudo.lato).
+func rimuovi_strada(k: int) -> void:
+	if terreno and terreno.rimuovi_lato(k):
+		terreno_cambiato.emit(TerrenoFeudo.celle_del_lato(k))
 		changed.emit()
+
+
+# --- Mura -------------------------------------------------------------------------
+
+func verifica_mura(celle: Array) -> Dictionary:
+	if terreno == null or livello < int(bil.mura.dal_livello):
+		return {"ok": false, "pietra": 0, "celle": 0, "motivo": "le mura si fanno dal Borgo in poi"}
+	return terreno.verifica_mura(celle)
+
+
+func costruisci_mura(celle: Array) -> bool:
+	var v := verifica_mura(celle)
+	if not v.ok or risorse.pietra < v.pietra or v.celle == 0:
+		return false
+	risorse.pietra -= v.pietra
+	terreno_cambiato.emit(terreno.aggiungi_mura(celle))
+	changed.emit()
+	return true
+
+
+func demolisci_muro(c: Vector2i) -> void:
+	if terreno and terreno.rimuovi_muro(c):
+		risorse.pietra = minf(capacita(), risorse.pietra + floorf(TerrenoFeudo.COSTO_MURA * float(bil.rimborso_demolizione)))
+		terreno_cambiato.emit([c])
+		changed.emit()
+
+
+## Vero se le mura chiudono il borgo: da un punto qualunque del confine non si arriva a piedi
+## alla dimora (o al centro). Calcolato quando servono le difese.
+func cinta_chiusa() -> bool:
+	if terreno == null or terreno.mura.is_empty():
+		return false
+	if _cinta < 0:
+		_cinta = 1 if _calcola_cinta() else 0
+	return _cinta == 1
+
+
+func _calcola_cinta() -> bool:
+	var centro := _cella_centro()
+	var f := TerrenoFeudo.FEUDO
+	for partenza in [Vector2i(f.position.x, f.position.y + f.size.y / 2), Vector2i(f.end.x - 1, f.position.y + f.size.y / 2),
+			Vector2i(f.position.x + f.size.x / 2, f.position.y), Vector2i(f.position.x + f.size.x / 2, f.end.y - 1)]:
+		if terreno.percorribile(partenza) and not terreno.chiuso_da_mura(partenza, centro):
+			return false
+	return true
+
+
+## La cella al centro del borgo: dove arrivano i banditi.
+func _cella_centro() -> Vector2i:
+	for tipo in ["dimora", "piazza", "falo"]:
+		for b in buildings:
+			if b.tipo == tipo:
+				return b.cella + taglia_di(b) / 2
+	return TerrenoFeudo.centro_feudo()
 
 
 # --- Mercato --------------------------------------------------------------------
@@ -1692,8 +1915,7 @@ func selvatica_di_stagione(b: Dictionary) -> String:
 	var d: Dictionary = edifici[b.tipo]
 	if not d.has("selvatiche") or terreno == null:
 		return ""
-	var t := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
-	var conteggio := terreno.selvatiche_attorno(b.cella, t, int(d.zona.raggio))
+	var conteggio := terreno.selvatiche_attorno(b.cella, taglia_di(b), int(d.zona.raggio))
 	var migliore := ""
 	var piu := int(d.selvatiche.minimo_celle) - 1
 	for nome in conteggio:
@@ -1707,8 +1929,7 @@ func _raccogli_semi(b: Dictionary, molt: float, cap: float, tps: float) -> void:
 	if terreno == null:
 		return
 	var d: Dictionary = edifici[b.tipo]
-	var t := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
-	var conteggio := terreno.selvatiche_attorno(b.cella, t, int(d.zona.raggio))
+	var conteggio := terreno.selvatiche_attorno(b.cella, taglia_di(b), int(d.zona.raggio))
 	for nome in conteggio:
 		var semi: String = colture[nome].semi
 		risorse[semi] = minf(cap, risorse[semi] + conteggio[nome] * float(colture.semi_raccolti_per_cella) / tps * molt)
@@ -1740,8 +1961,7 @@ func _disbosca() -> void:
 		var iniziale := int(b.get("bosco_iniziale", 0))
 		var per_stagione := maxi(1, ceili(float(iniziale) / float(bil.disboscamento.stagioni_per_esaurire)))
 		var quota := float(b.lavoratori) / float(d.lavoratori)
-		var taglia := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
-		tagliate.append_array(terreno.taglia_bosco(b.cella, taglia, int(d.zona.raggio), maxi(1, roundi(per_stagione * quota))))
+		tagliate.append_array(terreno.taglia_bosco(b.cella, taglia_di(b), int(d.zona.raggio), maxi(1, roundi(per_stagione * quota))))
 	if not tagliate.is_empty():
 		terreno_cambiato.emit(tagliate)
 
@@ -1751,6 +1971,7 @@ func _fine_stagione() -> void:
 	_fine_colture()
 	_lavora_forestali()
 	_consuma_tende()
+	_nuovi_arcieri()
 	_scadono_modificatori()
 	_riscuoti_tasse()
 	_riscuoti_tributi()
@@ -1932,7 +2153,7 @@ func salva() -> void:
 			"famiglia": b.get("famiglia", -1), "livello": b.get("livello", 1),
 			"bosco_iniziale": b.get("bosco_iniziale", 0),
 			"coltura": b.get("coltura", ""), "seminato": b.get("seminato", false),
-			"eta": b.get("eta", 0),
+			"eta": b.get("eta", 0), "rot": b.get("rot", 0), "arcieri": b.get("arcieri", 0),
 		})
 	var dati := {
 		"versione": VERSIONE_SALVATAGGIO, "famiglie": famiglie, "capo": capo, "risorse": risorse,
@@ -1996,6 +2217,10 @@ func carica() -> bool:
 			b.seminato = bool(x.get("seminato", false))
 		if int(edifici[b.tipo].get("durata_stagioni", 0)) > 0:
 			b.eta = int(x.get("eta", 0))
+		if int(x.get("rot", 0)) != 0:
+			b.rot = int(x.rot)
+		if edifici[b.tipo].has("arcieri"):
+			b.arcieri = int(x.get("arcieri", 0))
 		buildings.append(b)
 	tick_senza_casa = int(dati.get("tick_senza_casa", 0))
 	modificatori = dati.get("modificatori", [])
@@ -2006,8 +2231,9 @@ func carica() -> bool:
 	var salvati: Dictionary = dati.get("regni", {})
 	for k in salvati:
 		if regni.has(k):
-			for campo in ["forza", "atteggiamento", "vassallo"]:
-				regni[k][campo] = int(salvati[k][campo])
+			for campo in ["forza", "atteggiamento", "vassallo", "lealta"]:
+				regni[k][campo] = int(salvati[k].get(campo, 0))
+			regni[k].tributo = str(salvati[k].get("tributo", "normale"))
 			for campo in ["spiato", "alleato", "conquistato"]:
 				regni[k][campo] = bool(salvati[k][campo])
 	missioni = dati.get("missioni", [])
@@ -2018,6 +2244,7 @@ func carica() -> bool:
 	banditi = dati.get("banditi", {})
 	if not banditi.is_empty():
 		banditi.entrata = Vector2i(int(banditi.entrata[0]), int(banditi.entrata[1]))
+		banditi.percorso = banditi.get("percorso", []).map(func(c): return Vector2i(int(c[0]), int(c[1])))
 		for k in ["numero", "mancano", "totale"]:
 			banditi[k] = int(banditi[k])
 	# una carta lasciata a metà torna quando si rientra nel feudo (vedi riprendi_evento)
@@ -2041,6 +2268,7 @@ func _banditi_salvati() -> Dictionary:
 		return {}
 	var copia := banditi.duplicate()
 	copia.entrata = [banditi.entrata.x, banditi.entrata.y]
+	copia.percorso = banditi.get("percorso", []).map(func(c): return [c.x, c.y])
 	return copia
 
 

@@ -7,6 +7,9 @@ Il design completo è nel documento "Borgo — Game Design Document".
 ![Una carta evento raccontata da un consigliere](docs/carta_evento.png)
 ![Banditi in arrivo con le torce: la gente corre alla dimora](docs/banditi.png)
 ![Tasse della stagione e difesa nel pannello Info](docs/info_tasse.png)
+![Mura in pietra con le torri e la caserma](docs/mura.png)
+![Gli arcieri sulla torre e i banditi che arrivano](docs/arcieri.png)
+![Una regione conquistata e il suo vassallo](docs/vassalli.png)
 ![Un ponte sul fiume](docs/ponte.png)
 ![Una passerella sul lago e la caserma con i soldati](docs/caserma.png)
 ![La scheda di un regno vicino: spie, alleanze, attacco](docs/regni.png)
@@ -65,9 +68,17 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Banditi e difese** (dal Borgo in poi, o comunque dal terzo anno): ogni tanto una banda viene avvistata al confine.
   Un consigliere avvisa da dove arriva, quanti sono e quanto siamo forti; in alto resta il conto alla rovescia.
   I banditi (con le torce) camminano verso la dimora, girando attorno a laghi e fiumi (passano solo sui ponti), e la gente corre a rifugiarsi lì, dritta, senza seguire le strade.
-  La difesa è la somma di milizia (tutti gli abitanti), guardie nelle **torri di guardia** (valgono molto di più, ×1,5 se
-  armate) e **palizzate**. L'**armeria** fa armi con ferro e legna. La torre avvista la banda prima: più giorni per
-  prepararsi. Se vinciamo la gente festeggia; se perdiamo rubano una parte delle scorte (tanto più quanto eravamo deboli),
+  La **torre di guardia**, appena finita, ha **2 arcieri** in cima che non si tolgono e non tolgono lavoratori. Tirano
+  ai banditi che passano entro **3 celle per lato** (toccando la torre si vede il riquadro): ogni giorno nel raggio
+  la banda perde forza e si vedono le frecce e i banditi che cadono; i loro arcieri rispondono e possono uccidere i
+  nostri (ne sale uno nuovo a ogni stagione). Se le frecce bastano, la banda scappa prima di arrivare. Gli arcieri
+  combattono anche nella battaglia finale se il centro del borgo è nel loro raggio. La torre avvista la banda prima.
+  La difesa è la somma di milizia, arcieri, soldati, **palizzate**, **mura**, alleati e truppe dei vassalli.
+  L'**armeria** fa armi con ferro e legna (×1,5 per arcieri e soldati armati).
+- **Mura in pietra** (menu Difese, dal Borgo): si tracciano come le strade ma occupano le celle, 4 pietra l'una. Ogni
+  cella dà un po' di difesa; se le mura **chiudono il borgo** tutto attorno (i banditi non trovano un passaggio) la
+  difesa vale il 50% in più. Dove una strada passa fra due celle di mura si apre una **porta**: la gente passa, ma in
+  guerra le porte restano chiuse. I banditi camminano attorno ad acqua e mura. Se vinciamo la gente festeggia; se perdiamo rubano una parte delle scorte (tanto più quanto eravamo deboli),
   qualcuno muore e, se eravamo molto deboli, bruciano un edificio (restano le rovine da sgomberare).
 - **Esercito** (pulsante "Esercito", serve una **caserma**, dal Borgo): si arruola una formazione di 5 persone senza
   lavoro alla volta; ogni caserma ne ospita 2. Ogni formazione mangia **3 cibo al mese** (3 mesi a stagione); se il cibo
@@ -78,8 +89,13 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   - **Alleanza** (dono di 30 oro, solo con un signore): più è amichevole, più è facile che accetti. Un alleato manda
     rinforzi contro i banditi e un piccolo dono ogni stagione.
   - **Attacco**: parte tutto l'esercito a casa, arriva dopo un mese; la sua forza (con le armi) contro quella del regno.
-    Vincendo la regione è nostra: un consigliere ne diventa **vassallo** e ogni stagione arriva un tributo (oro e la risorsa
-    della regione). Conquistare un covo di banditi fa arrivare meno incursioni. Perdendo torna solo una parte dei soldati.
+    Vincendo la regione è nostra e la governa un **vassallo**. Conquistare un covo di banditi fa arrivare meno incursioni.
+    Perdendo torna solo una parte dei soldati.
+  - **Vassalli** (scheda di una regione conquistata): la governa un consigliere libero oppure un cavaliere ("Affida a").
+    Ogni stagione manda un tributo: oro, la risorsa della regione e qualcosa nell'arte della sua casata (es. i boscaioli
+    più legna). Si sceglie quanto chiedere: **basso** (meno roba, la lealtà sale), **normale**, **alto** (di più, ma la
+    lealtà scende). Più è leale, più truppe manda contro i banditi e in guerra. Sotto il 30% di lealtà può **ribellarsi**:
+    la regione torna libera e, se era un consigliere, la sua casata lascia il consiglio.
   Spie, messaggeri ed esercito viaggiano mentre il tempo scorre nel feudo; sulla mappa si vede la linea del viaggio.
 - **Tasse a ogni stagione**: a fine stagione si incassa oro secondo la media fra risorse, popolazione e gradimento.
   La media cade in una fascia (bassa, media, buona, massima) e ogni stagione ha le sue monete per fascia: in primavera,
@@ -103,11 +119,14 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   (più regioni producono una cosa, meno costa), oscillano a ogni stagione e cambiano con gli eventi del regno (carestie,
   incendi, nuove miniere...). D'inverno il cibo rincara. Con un edificio "mercato" si fanno prezzi migliori.
 - **Forestale**: ripianta gli alberi nelle radure lasciate dai taglialegna (poi sui prati); in un anno tornano bosco.
-- **Strade** (pulsante "Strade"): tocchi l'inizio e la fine, il percorso è a L. Costano 1 pietra per cella in piano e 2 in salita;
-  sulle strade non si costruisce. Toccando una strada la si può togliere. Sul fiume la strada diventa un **ponte**
-  (3 legna e 2 pietra per cella), sul lago una **passerella** di legno (3 legna per cella, al massimo 3 celle di fila). Un edificio con lavoratori che non tocca una strada
-  collegata alla piazza (o che non è attaccato alla piazza o alla dimora) lavora il **2% in meno**: il pannello lo dice.
-  All'inizio dalla dimora parte già una strada corta, l'inizio del borgo.
+- **Strade** (pulsante "Strade"): non occupano celle, corrono **lungo i bordi fra una cella e l'altra**: così gli
+  edifici si possono accostare e la strada passa loro accanto. Si tocca un angolo da cui parte e uno dove finisce
+  (percorso a L). Partono dal falò o dalla piazza, dalla dimora del signore o da una torre di guardia: un edificio con
+  lavoratori che non è collegato a una di queste (con una strada, o toccandole) lavora il **2% in meno**.
+  1 pietra per tratto in piano, 2 in salita. Fra due celle di fiume la strada è un **ponte** (3 legna e 2 pietra), fra
+  due di lago una **passerella** (3 legna, al massimo 3 tratti di fila). Una strada non può passare dentro un edificio.
+  Toccando un tratto di strada lo si può togliere. All'inizio dalla dimora parte già una strada corta.
+- **Ruotare gli edifici**: mentre si piazza, pulsante "Ruota" (o tasto R) per girarlo di 90°.
 - **Piazza**: dopo il primo anno il falò diventa la piazza del borgo (un pozzo sul selciato), il centro delle strade.
 - **Tende e senzatetto**: le tende reggono una sola stagione, poi si strappano: bisogna costruire case. Chi resta
   senza un tetto aspetta al massimo mezza stagione, poi se ne va.

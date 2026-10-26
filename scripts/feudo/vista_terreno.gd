@@ -49,7 +49,8 @@ var _orig_pool: Array[Transform3D] = []
 var _ciuffi: MultiMeshInstance3D
 var _ciuffi_orig: Array[Transform3D] = []
 var _ciuffi_cella: Dictionary = {}  # indice cella -> indici dei ciuffi
-var _ponti: MeshInstance3D  # ponti sul fiume e passerelle sul lago
+var _strade: MeshInstance3D  # strade sui bordi delle celle, ponti e passerelle
+var _mura: MeshInstance3D    # mura in pietra con le porte
 
 
 func costruisci(t: TerrenoFeudo) -> void:
@@ -60,9 +61,11 @@ func costruisci(t: TerrenoFeudo) -> void:
 	_crea_ciuffi()
 	_crea_rocce()
 	_crea_confine()
-	_ponti = MeshInstance3D.new()
-	add_child(_ponti)
-	_crea_ponti()
+	_strade = MeshInstance3D.new()
+	add_child(_strade)
+	_mura = MeshInstance3D.new()
+	add_child(_mura)
+	_crea_mura()
 	applica_stagione(GameState.stagione)
 
 
@@ -70,6 +73,7 @@ func applica_stagione(stagione: int) -> void:
 	if not _suoli_pronti.has(stagione):
 		_suoli_pronti[stagione] = _mesh_suolo(stagione)
 	_suolo.mesh = _suoli_pronti[stagione]
+	_crea_strade(stagione)
 	for i in _tondi.multimesh.instance_count:
 		_tondi.multimesh.set_instance_color(i, CHIOMA_TONDA[stagione].lightened(_variazioni_tondi[i]))
 	for i in _pini.multimesh.instance_count:
@@ -78,55 +82,155 @@ func applica_stagione(stagione: int) -> void:
 		_pool_chiome.multimesh.set_instance_color(i, CHIOMA_TONDA[stagione].lightened(((i % 16) - 8) / 100.0))
 
 
-# --- Ponti e passerelle ------------------------------------------------------------
+# --- Strade, ponti, passerelle, mura ----------------------------------------------------
 
 const LEGNO_PONTE := Color("8a6038")
 const LEGNO_CHIARO := Color("a87a48")
 const PIETRA_PONTE := Color("a09a8c")
+const PIETRA_MURA := Color("a8a296")
+const PIETRA_MURA_SCURA := Color("8a8478")
 const QUOTA_PONTE := 0.14  # il piano dove si cammina
+const LARGHEZZA_STRADA := 0.9
+const ALTEZZA_MURA := 1.8
 
 
-## Le strade sull'acqua: sul fiume un ponte con le spallette in pietra e il parapetto,
-## sul lago una passerella di assi su pali. Si orientano lungo la strada.
-func _crea_ponti() -> void:
+## Posizione nel mondo di un vertice della griglia, alla quota della terra attorno.
+func vertice(v: Vector2i) -> Vector3:
+	var h := 0.0
+	for c in [v, v - Vector2i(1, 0), v - Vector2i(0, 1), v - Vector2i(1, 1)]:
+		if terreno.tipo_a(c) >= 0 and not terreno.tipo_a(c) in [TerrenoFeudo.Tipo.ACQUA, TerrenoFeudo.Tipo.FIUME]:
+			h = maxf(h, terreno.altezza(c))
+	return Vector3(v.x * CELLA, h, v.y * CELLA)
+
+
+## Le strade sono strisce di terra battuta lungo i bordi delle celle; fra due celle d'acqua
+## diventano un ponte (sul fiume, con parapetto e spallette) o una passerella (sul lago).
+func _crea_strade(stagione: int) -> void:
+	_strade.mesh = _mesh_lati(terreno.strade.keys(), STRADA[stagione], true)
+
+
+func _mesh_lati(lati: Array, colore: Color, con_ponti: bool) -> ArrayMesh:
 	var k := LowPoly.Costruttore.new()
-	var vuoto := true
-	for i in terreno.strade:
-		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
-		var tipo := terreno.ponte_a(c)
+	if lati.is_empty():
+		return null
+	for chiave in lati:
+		var e := TerrenoFeudo.estremi(chiave)
+		var a := vertice(e[0])
+		var b := vertice(e[1])
+		var centro := (a + b) / 2.0
+		var rot := 0.0 if chiave % 2 == 0 else PI / 2.0
+		var tipo := terreno.tipo_lato(chiave) if con_ponti else ""
 		if tipo == "":
-			continue
-		vuoto = false
-		var est_ovest := terreno.strada_a(c + Vector2i(1, 0)) or terreno.strada_a(c - Vector2i(1, 0))
-		var nord_sud := terreno.strada_a(c + Vector2i(0, 1)) or terreno.strada_a(c - Vector2i(0, 1))
-		var lungo_x := est_ovest or not nord_sud  # verso in cui si cammina
-		var centro := Vector3((c.x + 0.5) * CELLA, 0.0, (c.y + 0.5) * CELLA)
-		var rot := 0.0 if lungo_x else PI / 2.0
-		var lungo := CELLA
-		if tipo == "ponte":
-			k.forma(LowPoly.cubo(Vector3(lungo, 0.16, CELLA * 0.8)), LowPoly.t(centro + Vector3(0, QUOTA_PONTE - 0.08, 0), Vector3.ONE, rot), LEGNO_PONTE)
+			var h := maxf(a.y, b.y)
+			k.forma(LowPoly.cubo(Vector3(CELLA + LARGHEZZA_STRADA, 0.08, LARGHEZZA_STRADA)), LowPoly.t(Vector3(centro.x, h + 0.02, centro.z), Vector3.ONE, rot), colore)
+		elif tipo == "ponte":
+			k.forma(LowPoly.cubo(Vector3(CELLA + 0.2, 0.16, CELLA * 0.7)), LowPoly.t(Vector3(centro.x, QUOTA_PONTE - 0.08, centro.z), Vector3.ONE, rot), LEGNO_PONTE)
 			for lato in [-1.0, 1.0]:
-				var fuori := Vector3(0, 0, lato * CELLA * 0.42).rotated(Vector3.UP, rot)
-				k.forma(LowPoly.cubo(Vector3(lungo, 0.1, 0.12)), LowPoly.t(centro + fuori + Vector3(0, 0.55, 0), Vector3.ONE, rot), LEGNO_CHIARO)
-				for f in [-0.4, 0.4]:
-					var palo := Vector3(f * lungo, 0, 0).rotated(Vector3.UP, rot) + fuori
-					k.forma(LowPoly.cubo(Vector3(0.12, 0.5, 0.12)), LowPoly.t(centro + palo + Vector3(0, 0.35, 0)), LEGNO_CHIARO)
-			# le spallette in pietra dove il ponte tocca terra
-			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var vicina: Vector2i = c + dir
-				if terreno.strada_a(vicina) and terreno.ponte_a(vicina) == "":
-					var bordo := centro + Vector3(dir.x, 0, dir.y) * (CELLA * 0.45)
-					k.forma(LowPoly.cubo(Vector3(0.3 if dir.x != 0 else CELLA * 0.9, 0.5, CELLA * 0.9 if dir.x != 0 else 0.3)), LowPoly.t(bordo + Vector3(0, -0.1, 0)), PIETRA_PONTE)
+				var fuori := Vector3(0, 0, lato * CELLA * 0.36).rotated(Vector3.UP, rot)
+				k.forma(LowPoly.cubo(Vector3(CELLA, 0.1, 0.12)), LowPoly.t(Vector3(centro.x, 0.55, centro.z) + fuori, Vector3.ONE, rot), LEGNO_CHIARO)
+				for f in [-0.45, 0.45]:
+					var palo := Vector3(f * CELLA, 0, 0).rotated(Vector3.UP, rot) + fuori
+					k.forma(LowPoly.cubo(Vector3(0.12, 0.5, 0.12)), LowPoly.t(Vector3(centro.x, 0.35, centro.z) + palo), LEGNO_CHIARO)
+			# spallette in pietra dove il ponte arriva a terra
+			for estremo in e:
+				var a_terra := false
+				for d in TerrenoFeudo.DIREZIONI:
+					var altro := TerrenoFeudo.lato(estremo, estremo + d)
+					if altro != chiave and terreno.strade.has(altro) and terreno.tipo_lato(altro) == "":
+						a_terra = true
+				if a_terra:
+					var p := vertice(estremo)
+					k.forma(LowPoly.cubo(Vector3(0.6, 0.5, CELLA * 0.8)), LowPoly.t(Vector3(p.x, -0.1, p.z), Vector3.ONE, rot), PIETRA_PONTE)
 		else:
-			# passerella: assi più strette, una per una, su pali piantati nel lago
-			for a in 4:
-				var avanti := Vector3((a - 1.5) * CELLA / 4.0, 0, 0).rotated(Vector3.UP, rot)
-				var tono := LEGNO_CHIARO if a % 2 == 0 else LEGNO_PONTE
-				k.forma(LowPoly.cubo(Vector3(CELLA / 4.0 - 0.06, 0.08, CELLA * 0.55)), LowPoly.t(centro + avanti + Vector3(0, QUOTA_PONTE - 0.04, 0), Vector3.ONE, rot), tono)
+			for i in 4:
+				var avanti := Vector3((i - 1.5) * CELLA / 4.0, 0, 0).rotated(Vector3.UP, rot)
+				var tono := LEGNO_CHIARO if i % 2 == 0 else LEGNO_PONTE
+				k.forma(LowPoly.cubo(Vector3(CELLA / 4.0 - 0.06, 0.08, CELLA * 0.5)), LowPoly.t(Vector3(centro.x, QUOTA_PONTE - 0.04, centro.z) + avanti, Vector3.ONE, rot), tono)
 			for lato in [-1.0, 1.0]:
-				var palo := Vector3(0, 0, lato * CELLA * 0.3).rotated(Vector3.UP, rot)
-				k.forma(LowPoly.cubo(Vector3(0.14, 0.7, 0.14)), LowPoly.t(centro + palo + Vector3(0, -0.2, 0)), LEGNO_PONTE)
-	_ponti.mesh = null if vuoto else k.mesh()
+				var palo := Vector3(0, 0, lato * CELLA * 0.28).rotated(Vector3.UP, rot)
+				k.forma(LowPoly.cubo(Vector3(0.14, 0.7, 0.14)), LowPoly.t(Vector3(centro.x, -0.2, centro.z) + palo), LEGNO_PONTE)
+	return k.mesh()
+
+
+## Le mura: un pilastro per cella e un tratto verso ogni cella di mura vicina, con i merli.
+## Dove una strada passa fra due celle di mura c'è una porta ad arco.
+func _crea_mura() -> void:
+	var k := LowPoly.Costruttore.new()
+	if terreno.mura.is_empty():
+		_mura.mesh = null
+		return
+	for i in terreno.mura:
+		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		var h := terreno.altezza(c)
+		var centro := Vector3((c.x + 0.5) * CELLA, h, (c.y + 0.5) * CELLA)
+		k.forma(LowPoly.cubo(Vector3(0.95, ALTEZZA_MURA + 0.3, 0.95)), LowPoly.t(centro + Vector3(0, (ALTEZZA_MURA + 0.3) / 2.0, 0)), PIETRA_MURA_SCURA)
+		for d in TerrenoFeudo.DIREZIONI:
+			if not terreno.muro_a(c + d):
+				continue
+			# il lato fra le due celle: se è strada, lì c'è la porta
+			var a := c + Vector2i(maxi(d.x, 0), maxi(d.y, 0))
+			var b := a + (Vector2i(0, 1) if d.x != 0 else Vector2i(1, 0))
+			var porta := terreno.lato_strada(a, b)
+			var lungo := CELLA / 2.0 - (0.55 if porta else 0.0)
+			var verso := Vector3(d.x, 0, d.y)
+			var mezzo := centro + verso * (lungo / 2.0)
+			var dim := Vector3(absf(d.x) * lungo + absf(d.y) * 0.75, ALTEZZA_MURA, absf(d.y) * lungo + absf(d.x) * 0.75)
+			k.forma(LowPoly.cubo(dim), LowPoly.t(mezzo + Vector3(0, ALTEZZA_MURA / 2.0, 0)), PIETRA_MURA)
+			# merli
+			for m in 2:
+				var posto := centro + verso * (0.35 + m * 0.4)
+				if m * 0.4 + 0.5 < lungo:
+					k.forma(LowPoly.cubo(Vector3(0.3, 0.3, 0.3)), LowPoly.t(posto + Vector3(0, ALTEZZA_MURA + 0.15, 0)), PIETRA_MURA_SCURA)
+			if porta and d.x + d.y > 0:
+				# l'arco della porta sopra il passaggio, una volta sola per coppia
+				var sopra := centro + verso * (CELLA / 2.0)
+				k.forma(LowPoly.cubo(Vector3(absf(d.x) * 1.2 + absf(d.y) * 0.8, 0.45, absf(d.y) * 1.2 + absf(d.x) * 0.8)), LowPoly.t(sopra + Vector3(0, ALTEZZA_MURA - 0.1, 0)), PIETRA_MURA_SCURA)
+	_mura.mesh = k.mesh()
+
+
+## Colora i lati di una strada da tracciare (anteprima).
+func mostra_lati(lati: Array, colore: Color) -> void:
+	var mesh := _mesh_lati(lati, colore, false)
+	if mesh == null:
+		nascondi_zona()
+		return
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.vertex_color_use_as_albedo = true
+	mat.vertex_color_is_srgb = true
+	mesh.surface_set_material(0, mat)
+	if _zona == null:
+		_zona = MeshInstance3D.new()
+		_zona.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_zona)
+	_zona.mesh = mesh
+	_zona.position = Vector3(0, 0.05, 0)
+	_zona.visible = true
+
+
+## Il vertice della griglia più vicino al punto toccato.
+func vertice_da_raggio(origine: Vector3, direzione: Vector3) -> Vector2i:
+	var p := _punto(origine, direzione)
+	return Vector2i(roundi(p.x / CELLA), roundi(p.z / CELLA))
+
+
+## Il punto toccato sul terreno (prima a quota 0, poi alla quota vera), in metri.
+func _punto(o: Vector3, d: Vector3) -> Vector3:
+	if absf(d.y) < 1e-4:
+		return Vector3.ZERO
+	var p := o + d * ((0.0 - o.y) / d.y)
+	var c := Vector2i(floori(p.x / CELLA), floori(p.z / CELLA))
+	var h := terreno.altezza(c)
+	if h > 0.0:
+		p = o + d * ((h - o.y) / d.y)
+	return p
+
+
+## Il punto toccato in coordinate di cella con i decimali (per scegliere un lato di strada).
+func punto_celle(origine: Vector3, direzione: Vector3) -> Vector2:
+	var p := _punto(origine, direzione)
+	return Vector2(p.x / CELLA, p.z / CELLA)
 
 
 # --- Coordinate --------------------------------------------------------------
@@ -161,8 +265,6 @@ func _interseca(o: Vector3, d: Vector3, quota: float) -> Vector2i:
 # --- Suolo -------------------------------------------------------------------
 
 func _colore_cella(c: Vector2i, stagione: int) -> Color:
-	if terreno.strada_a(c) and terreno.ponte_a(c) == "":
-		return STRADA[stagione]
 	var base: Color
 	match terreno.tipo_a(c):
 		TerrenoFeudo.Tipo.ACQUA:
@@ -394,7 +496,7 @@ func aggiorna_celle(celle: Array) -> void:
 	for c in celle:
 		_aggiorna_alberi(c.y * TerrenoFeudo.LATO + c.x)
 	_suoli_pronti.clear()
-	_crea_ponti()
+	_crea_mura()
 	applica_stagione(GameState.stagione)
 
 
@@ -507,7 +609,7 @@ func aggiorna_ciuffi() -> void:
 		return
 	for i in _ciuffi_cella:
 		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
-		var nascosto := terreno.edificio_a(c) >= 0 or terreno.strada_a(c)
+		var nascosto := terreno.edificio_a(c) >= 0 or terreno.muro_a(c)
 		for n in _ciuffi_cella[i]:
 			var tr: Transform3D = _ciuffi_orig[n]
 			_ciuffi.multimesh.set_instance_transform(n, Transform3D(Basis.from_scale(Vector3.ONE * 0.001), tr.origin) if nascosto else tr)
@@ -561,6 +663,7 @@ func _disegna_celle(colorate: Array) -> void:
 		_zona.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(_zona)
 	_zona.mesh = mesh
+	_zona.position = Vector3.ZERO
 	_zona.visible = true
 
 

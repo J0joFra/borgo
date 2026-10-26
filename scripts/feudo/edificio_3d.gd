@@ -35,16 +35,20 @@ var _cornice: MeshInstance3D
 var _completo := false
 var _stagione := -1
 var _tempo := 0.0
+var _arcieri: Node3D  # gli arcieri sopra la torre di guardia
+var _arcieri_mostrati := -1
 var _larghezza := 4.0
 var _profondita := 4.0
 
 
 func _ready() -> void:
 	var d: Dictionary = GameState.edifici[b.tipo]
+	# il modello si costruisce dritto e poi si gira: larghezza e profondità sono quelle di base
 	var taglia := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
 	_larghezza = taglia.x * VistaTerreno.CELLA
 	_profondita = taglia.y * VistaTerreno.CELLA
-	position = vista.centro_area(b.cella, taglia)
+	position = vista.centro_area(b.cella, GameState.taglia_di(b))
+	rotation.y = -int(b.get("rot", 0)) * PI / 2.0
 	_corpo = MeshInstance3D.new()
 	add_child(_corpo)
 	_cornice = _mesh(_crea_cornice())
@@ -92,6 +96,32 @@ func _process(delta: float) -> void:
 		_luce.light_energy = 2.2 + 0.5 * sin(_tempo * 9.0) + 0.3 * sin(_tempo * 23.0)
 	if _avviso.visible:
 		_avviso.position.y = _altezza_tetto() + 0.8 + sin(_tempo * 4.0) * 0.15
+	if completo and GameState.edifici[b.tipo].has("arcieri") and int(b.get("arcieri", 0)) != _arcieri_mostrati:
+		_metti_arcieri()
+
+
+## Gli arcieri in cima alla torre, uno per lato, con l'arco. Quanti ne sono rimasti vivi.
+func _metti_arcieri() -> void:
+	_arcieri_mostrati = int(b.get("arcieri", 0))
+	if _arcieri:
+		_arcieri.queue_free()
+	_arcieri = Node3D.new()
+	add_child(_arcieri)
+	var k := LowPoly.Costruttore.new()
+	k.forma(LowPoly.cilindro(0.22, 0.17, 0.55, 6), LowPoly.t(Vector3(0, 0.28, 0)), Color("3f6b3a"))
+	k.forma(LowPoly.sfera(0.15, 0.3, 6, 3), LowPoly.t(Vector3(0, 0.7, 0)), Color("e0b08a"))
+	k.forma(LowPoly.cilindro(0.17, 0.05, 0.22, 6), LowPoly.t(Vector3(0, 0.88, 0)), Color("2f4b2a"))
+	k.forma(LowPoly.cubo(Vector3(0.05, 0.9, 0.05)), LowPoly.t(Vector3(0.28, 0.55, 0.1)), Color("6b4a2e"))
+	var mesh := k.mesh()
+	var cima := _altezza_tetto()
+	for i in _arcieri_mostrati:
+		var a := MeshInstance3D.new()
+		a.mesh = mesh
+		a.scale = Vector3.ONE * 1.3
+		var lato := -1.0 if i % 2 == 0 else 1.0
+		a.position = Vector3(lato * 0.45, cima - 0.1, 0.3 * lato)
+		a.rotation.y = lato * 0.8
+		_arcieri.add_child(a)
 
 
 func seleziona(attivo: bool) -> void:
