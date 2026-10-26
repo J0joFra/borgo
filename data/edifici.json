@@ -1,0 +1,83 @@
+{
+	"casa": {
+		"nome": "Casa", "categoria": "case", "livello": 0, "taglia": [2, 2],
+		"costo": {"legna": 10}, "lavoratori": 0,
+		"alloggi": 4, "riscaldamento": 10, "colore": "a0522d"
+	},
+	"magazzino": {
+		"nome": "Magazzino", "categoria": "case", "livello": 0, "taglia": [3, 2],
+		"costo": {"legna": 15}, "lavoratori": 1,
+		"capacita": 100, "colore": "7a5c3a"
+	},
+	"taglialegna": {
+		"nome": "Taglialegna", "categoria": "risorse", "livello": 0, "taglia": [2, 2],
+		"costo": {"legna": 8}, "lavoratori": 2,
+		"produce": {"legna": 30}, "vicino": "bosco", "colore": "5d7a3a"
+	},
+	"cava": {
+		"nome": "Cava", "categoria": "risorse", "livello": 0, "taglia": [2, 2],
+		"costo": {"legna": 12}, "lavoratori": 3,
+		"produce": {"pietra": 20}, "vicino": "roccia", "colore": "6e6e6e"
+	},
+	"miniera": {
+		"nome": "Miniera", "categoria": "risorse", "livello": 1, "taglia": [2, 2],
+		"costo": {"legna": 20, "pietra": 10}, "lavoratori": 3,
+		"produce": {"ferro": 15}, "su": "collina", "colore": "4a4a5a"
+	},
+	"fabbro": {
+		"nome": "Fabbro", "categoria": "risorse", "livello": 1, "taglia": [2, 2],
+		"costo": {"legna": 20, "pietra": 20}, "lavoratori": 2,
+		"consuma": {"ferro": 10}, "produce": {"utensili": 10}, "colore": "3d3d3d"
+	},
+	"raccoglitore": {
+		"nome": "Raccoglitore", "categoria": "cibo", "livello": 0, "taglia": [2, 2],
+		"costo": {"legna": 6}, "lavoratori": 2,
+		"produce": {"cibo": 40}, "stagioni": {"inverno": 0}, "colore": "8c6d3f"
+	},
+	"pescatore": {
+		"nome": "Pescatore", "categoria": "cibo", "livello": 0, "taglia": [2, 2],
+		"costo": {"legna": 10}, "lavoratori": 2,
+		"produce": {"cibo": 30}, "vicino": "acqua", "stagioni": {"inverno": 0.5}, "colore": "3f6f9f"
+	},
+	"cacciatore": {
+		"nome": "Cacciatore", "categoria": "cibo", "livello": 0, "taglia": [2, 2],
+		"costo": {"legna": 10}, "lavoratori": 2,
+		"produce": {"cibo": 25}, "colore": "6b3e26"
+	},
+	"campo": {
+		"nome": "Campo", "categoria": "cibo", "livello": 1, "taglia": [3, 3],
+		"costo": {"legna": 5}, "lavoratori": 2,
+		"produce": {"grano": 120}, "stagioni": {"primavera": 0, "estate": 0, "inverno": 0},
+		"forma": "campo", "colore": "c9a94a"
+	},
+	"mulino": {
+		"nome": "Mulino", "categoria": "cibo", "livello": 1, "taglia": [2, 2],
+		"costo": {"legna": 20, "pietra": 10}, "lavoratori": 1,
+		"consuma": {"grano": 40}, "produce": {"farina": 40}, "forma": "mulino", "colore": "b0a890"
+	},
+	"forno": {
+		"nome": "Forno", "categoria": "cibo", "livello": 1, "taglia": [2, 2],
+		"costo": {"legna": 15, "pietra": 15}, "lavoratori": 2,
+		"consuma": {"farina": 20}, "produce": {"cibo": 40}, "pane": true, "colore": "b5653a"
+	},
+	"taverna": {
+		"nome": "Taverna", "categoria": "servizi", "livello": 1, "taglia": [3, 2],
+		"costo": {"legna": 25, "pietra": 10}, "lavoratori": 1,
+		"consuma": {"cibo": 10}, "felicita": 15, "colore": "8a3b2e"
+	},
+	"mercato": {
+		"nome": "Mercato", "categoria": "servizi", "livello": 1, "taglia": [3, 3],
+		"costo": {"legna": 30, "pietra": 20}, "lavoratori": 2,
+		"produce": {"oro": 10}, "felicita": 10, "colore": "c08a2e"
+	},
+	"chiesa": {
+		"nome": "Chiesa", "categoria": "servizi", "livello": 1, "taglia": [3, 4],
+		"costo": {"legna": 40, "pietra": 60, "utensili": 10}, "lavoratori": 1,
+		"felicita": 20, "colore": "5a6a8a"
+	},
+	"maniero": {
+		"nome": "Maniero", "categoria": "servizi", "livello": 2, "taglia": [4, 4],
+		"costo": {"legna": 50, "pietra": 50, "utensili": 20}, "lavoratori": 0,
+		"vittoria": true, "colore": "6a2e4a"
+	}
+}
