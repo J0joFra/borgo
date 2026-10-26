@@ -2,7 +2,7 @@
 	"casa": {
 		"nome": "Casa", "categoria": "case", "livello": 0, "taglia": [2, 2],
 		"costo": {"legna": 10}, "lavoratori": 0,
-		"alloggi": 4, "riscaldamento": 10, "colore": "a0522d"
+		"alloggi": 4, "riscaldamento": 10, "colore": "6b3a26"
 	},
 	"magazzino": {
 		"nome": "Magazzino", "categoria": "case", "livello": 0, "taglia": [3, 2],
@@ -68,16 +68,16 @@
 	"mercato": {
 		"nome": "Mercato", "categoria": "servizi", "livello": 1, "taglia": [3, 3],
 		"costo": {"legna": 30, "pietra": 20}, "lavoratori": 2,
-		"produce": {"oro": 10}, "felicita": 10, "colore": "c08a2e"
+		"produce": {"oro": 10}, "felicita": 10, "forma": "mercato", "colore": "c08a2e"
 	},
 	"chiesa": {
 		"nome": "Chiesa", "categoria": "servizi", "livello": 1, "taglia": [3, 4],
 		"costo": {"legna": 40, "pietra": 60, "utensili": 10}, "lavoratori": 1,
-		"felicita": 20, "colore": "5a6a8a"
+		"felicita": 20, "forma": "chiesa", "colore": "5a6a8a"
 	},
 	"maniero": {
 		"nome": "Maniero", "categoria": "servizi", "livello": 2, "taglia": [4, 4],
 		"costo": {"legna": 50, "pietra": 50, "utensili": 20}, "lavoratori": 0,
-		"vittoria": true, "colore": "6a2e4a"
+		"vittoria": true, "forma": "castello", "colore": "6a2e4a"
 	}
 }

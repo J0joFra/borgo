@@ -112,6 +112,30 @@ func _ready() -> void:
 	_verifica(int(GameState.risorse.legna) == 22, "costo del taglialegna salvato (legna %d)" % GameState.risorse.legna)
 	GameState.cancella_salvataggio()
 
+	# Terreno del feudo: piazzamento e sovrapposizioni.
+	GameState.nuova_partita(42)
+	var terreno := TerrenoFeudo.new(42)
+	GameState.terreno = terreno
+	var centro := Vector2i(TerrenoFeudo.LATO / 2, TerrenoFeudo.LATO / 2)
+	_verifica(terreno.posizione_valida("casa", centro), "il centro della mappa è libero")
+	var casa := GameState.aggiungi_gratis("casa", centro, 1.0)
+	_verifica(not terreno.posizione_valida("casa", centro + Vector2i(1, 1)), "niente edifici sovrapposti")
+	_verifica(terreno.edificio_a(centro + Vector2i(1, 1)) == casa.id, "la cella sa quale edificio contiene")
+	GameState.demolisci(casa.id)
+	_verifica(terreno.posizione_valida("casa", centro), "demolendo la cella torna libera")
+	var collina := Vector2i(-1, -1)
+	for i in terreno.celle.size():
+		if terreno.celle[i] == TerrenoFeudo.Tipo.COLLINA:
+			collina = Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+			break
+	_verifica(collina.x >= 0, "la mappa ha almeno una collina")
+	_verifica(not terreno.posizione_valida("miniera", centro), "la miniera non va sull'erba")
+	var posto_miniera := terreno.trova_posto("miniera", collina)
+	_verifica(posto_miniera.x >= 0 and terreno.tipo_a(posto_miniera) == TerrenoFeudo.Tipo.COLLINA, "la miniera trova posto su una collina")
+	var posto := terreno.trova_posto("taglialegna", centro)
+	_verifica(posto.x >= 0, "trova_posto trova un posto per il taglialegna")
+	GameState.terreno = null
+
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])
 	get_tree().quit(1 if _errori > 0 else 0)
 

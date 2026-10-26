@@ -3,6 +3,7 @@ extends CanvasLayer
 ## Interfaccia: barra delle risorse, menu di costruzione ai lati,
 ## pannello contestuale in basso, finestra Info e fine partita.
 ## Costruita in codice per ora; quando ci sarà la grafica vera si può rifare nell'editor.
+## Le misure sono in pixel di una base 480×270, scalata sullo schermo vero.
 
 signal costruisci(tipo: String)
 signal conferma_piazzamento
@@ -10,6 +11,8 @@ signal annulla_piazzamento
 signal cambia_lavoratori(id: int, delta: int)
 signal demolisci(id: int)
 signal chiudi_pannello
+signal ruota(direzione: int)
+signal vai_al_regno
 signal nuova_partita
 
 const CATEGORIE := [["Case", "case"], ["Risorse", "risorse"], ["Cibo", "cibo"], ["Servizi", "servizi"]]
@@ -196,9 +199,19 @@ func _crea_lati() -> void:
 	destra.offset_right = -4
 	destra.offset_top = 24
 	_radice.add_child(destra)
+	var regno := _bottone("Regno", 46, 30)
+	regno.pressed.connect(func(): vai_al_regno.emit())
+	destra.add_child(regno)
 	var info := _bottone("Info", 46, 30)
 	info.pressed.connect(func(): _info.visible = not _info.visible; _aggiorna())
 	destra.add_child(info)
+	var giro := HBoxContainer.new()
+	giro.add_theme_constant_override("separation", 2)
+	destra.add_child(giro)
+	for verso in [-1, 1]:
+		var b := _bottone("<" if verso < 0 else ">", 22, 30)
+		b.pressed.connect(func(): ruota.emit(verso))
+		giro.add_child(b)
 
 
 func _crea_menu() -> void:

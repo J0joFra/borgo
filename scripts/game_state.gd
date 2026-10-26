@@ -39,6 +39,9 @@ var velocita: int = 1  # 0 = pausa
 var seme_mappa: int = 0
 var buildings: Array = []  # {id, tipo, cella: Vector2i, lavoratori, progresso 0..1, bonus}
 var finita: bool = false
+var terreno: TerrenoFeudo     # celle del feudo; creato da avvia()
+var in_corso: bool = false    # c'è una partita caricata o iniziata
+var nel_feudo: bool = false   # il tempo scorre solo dentro il feudo
 
 var _prossimo_id: int = 1
 var _accumulo: float = 0.0
@@ -54,6 +57,34 @@ func _ready() -> void:
 
 
 # --- Partita -----------------------------------------------------------------
+
+## Carica il salvataggio oppure inizia una partita nuova con le case di partenza.
+## Chiamata sia dalla mappa del regno sia dal feudo: la prima volta fa il lavoro, poi niente.
+func avvia() -> void:
+	if in_corso:
+		return
+	var caricata := carica()
+	if not caricata:
+		nuova_partita()
+	terreno = TerrenoFeudo.new(seme_mappa)
+	for b in buildings:
+		terreno.occupa(b)
+	if not caricata:
+		var centro := Vector2i(TerrenoFeudo.LATO / 2, TerrenoFeudo.LATO / 2)
+		for i in int(bil.case_iniziali):
+			var c := terreno.trova_posto("casa", centro + Vector2i(i * 3 - 3, 0))
+			if c.x >= 0:
+				aggiungi_gratis("casa", c, 1.0)
+		salva()
+	in_corso = true
+
+
+func ricomincia() -> void:
+	cancella_salvataggio()
+	in_corso = false
+	nel_feudo = false
+	terreno = null
+
 
 func nuova_partita(seme: int = -1) -> void:
 	risorse = {}
@@ -73,6 +104,7 @@ func nuova_partita(seme: int = -1) -> void:
 	seme_mappa = seme if seme >= 0 else randi() % 1000000
 	buildings = []
 	finita = false
+	terreno = null
 	_prossimo_id = 1
 	_accumulo = 0.0
 
@@ -83,7 +115,7 @@ func aggiungi_gratis(tipo: String, cella: Vector2i, bonus: float) -> Dictionary:
 
 
 func _process(delta: float) -> void:
-	if finita or velocita == 0 or bil.is_empty():
+	if finita or not nel_feudo or velocita == 0 or bil.is_empty():
 		return
 	var dt := delta * velocita
 	for b in buildings:
@@ -130,6 +162,8 @@ func demolisci(id: int) -> void:
 	var costo: Dictionary = edifici[b.tipo].get("costo", {})
 	for r in costo:
 		risorse[r] = minf(capacita(), risorse[r] + floorf(costo[r] * bil.rimborso_demolizione))
+	if terreno:
+		terreno.libera(b)
 	buildings.erase(b)
 	building_removed.emit(id)
 	changed.emit()
@@ -174,6 +208,8 @@ func _aggiungi(tipo: String, cella: Vector2i, bonus: float, progresso: float) ->
 	}
 	_prossimo_id += 1
 	buildings.append(b)
+	if terreno:
+		terreno.occupa(b)
 	building_added.emit(b)
 	return b
 

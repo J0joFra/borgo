@@ -1,0 +1,16 @@
+{
+	"numero": 10,
+	"nomi": [
+		"Valdoro", "Roccalta", "Pietrafonda", "Boscoscuro", "Lagobianco", "Campofiore",
+		"Montegrigio", "Fossanera", "Querceto", "Torrelunga", "Acquaviva", "Ventoso"
+	],
+	"risorse": ["ferro", "pietra", "pesce", "grano", "legname"],
+	"signori": [
+		{"nome": "Barone Aldobrando", "colore": "c9a227"},
+		{"nome": "Contessa Ilaria", "colore": "4f8a5b"},
+		{"nome": "Duca Ruggero", "colore": "3f6f9f"}
+	],
+	"giocatore": {"nome": "Il tuo feudo", "colore": "b03a2e"},
+	"banditi": {"nome": "Banditi", "colore": "4a4a4a"},
+	"libera": {"nome": "Terra libera", "colore": "d9c9a3"}
+}
