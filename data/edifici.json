@@ -327,5 +327,17 @@
 		"lavoratori": 0,
 		"felicita": -3,
 		"colore": "3a3028"
+	},
+	"caserma": {
+		"nome": "Caserma",
+		"categoria": "difese",
+		"livello": 1,
+		"taglia": [3, 2],
+		"costo": {"legna": 20, "pietra": 25},
+		"lavoratori": 0,
+		"alloggi": 10,
+		"riscaldamento": 4,
+		"formazioni": 2,
+		"colore": "6a4a3a"
 	}
 }

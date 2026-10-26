@@ -16,12 +16,14 @@ var vista: VistaTerreno
 var _persone: Array = []  # {nodo, casa, lavoro, destinazione: Vector3, tappe: Array[Vector3], attesa, verso_lavoro}
 var _firma := ""           # per ricalcolare case e lavori solo quando cambiano
 var _mesh: Array[ArrayMesh] = []
+var _mesh_soldato: ArrayMesh
 var _tempo := 0.0
 
 
 func _ready() -> void:
 	for tunica in TUNICHE:
 		_mesh.append(_crea_mesh(tunica))
+	_mesh_soldato = _crea_soldato()
 	GameState.changed.connect(_ricalcola)
 	GameState.banditi_avvistati.connect(func(_d): _tutti_si_muovono())
 	GameState.incursione.connect(func(_e): _tutti_si_muovono())
@@ -37,10 +39,24 @@ func _crea_mesh(tunica: Color) -> ArrayMesh:
 	return k.mesh()
 
 
+## Un soldato: tunica rossa, elmo e lancia.
+func _crea_soldato() -> ArrayMesh:
+	var k := LowPoly.Costruttore.new()
+	k.forma(LowPoly.cubo(Vector3(0.3, 0.32, 0.2)), LowPoly.t(Vector3(0, 0.16, 0)), Color("3a2e26"))
+	k.forma(LowPoly.cilindro(0.25, 0.2, 0.62, 6), LowPoly.t(Vector3(0, 0.62, 0)), Color("a8322a"))
+	k.forma(LowPoly.sfera(0.17, 0.34, 6, 3), LowPoly.t(Vector3(0, 1.1, 0)), PELLE)
+	k.forma(LowPoly.sfera(0.2, 0.22, 6, 3), LowPoly.t(Vector3(0, 1.22, 0)), Color("8a9098"))
+	k.forma(LowPoly.cilindro(0.03, 0.03, 1.8, 4), LowPoly.t(Vector3(0.3, 0.9, 0.05)), Color("6b4a2e"))
+	k.forma(LowPoly.cilindro(0.07, 0.0, 0.25, 4), LowPoly.t(Vector3(0.3, 1.9, 0.05)), Color("c8ccd0"))
+	return k.mesh()
+
+
 ## Assegna a ogni persona una casa e, a chi lavora, un edificio. Rifatto solo se cambia qualcosa.
+## I soldati a casa stanno attorno alla caserma.
 func _ricalcola() -> void:
 	var case: Array = []   # un posto letto per voce: id dell'edificio
 	var lavori: Array = []  # un lavoratore per voce: id dell'edificio
+	var caserme: Array = []
 	for b in GameState.buildings:
 		if b.progresso < 1.0:
 			continue
@@ -48,8 +64,15 @@ func _ricalcola() -> void:
 			case.append(b.id)
 		for i in int(b.lavoratori):
 			lavori.append(b.id)
+		if int(GameState.def_di(b).get("formazioni", 0)) > 0:
+			caserme.append(b.id)
+	var soldati_visti := 0 if caserme.is_empty() else mini(GameState.soldati_presenti(), MASSIMO / 3)
+	var in_caserma: Array = []
+	for i in soldati_visti:
+		in_caserma.append(caserme[i % caserme.size()])
+	lavori = in_caserma + lavori
 	var quante := mini(GameState.abitanti, MASSIMO)
-	var firma := "%d|%s|%s" % [quante, str(case), str(lavori)]
+	var firma := "%d|%s|%s|%d" % [quante, str(case), str(lavori), soldati_visti]
 	if firma == _firma:
 		return
 	_firma = firma
@@ -61,6 +84,8 @@ func _ricalcola() -> void:
 		var p: Dictionary = _persone[i]
 		p.casa = case[i] if i < case.size() else -1
 		p.lavoro = lavori[i] if i < lavori.size() else -1
+		var soldato := i < soldati_visti
+		(p.nodo as MeshInstance3D).mesh = _mesh_soldato if soldato else _mesh[i % _mesh.size()]
 
 
 func _aggiungi_persona() -> void:
@@ -228,4 +253,6 @@ func _punto_falo() -> Vector3:
 
 func _quota(p: Vector3) -> float:
 	var c := Vector2i(floori(p.x / VistaTerreno.CELLA), floori(p.z / VistaTerreno.CELLA))
+	if vista.terreno.ponte_a(c) != "":
+		return VistaTerreno.QUOTA_PONTE  # sopra il ponte o la passerella
 	return maxf(vista.terreno.altezza(c), 0.0)  # sull'acqua camminano sulla riva (niente bagni)

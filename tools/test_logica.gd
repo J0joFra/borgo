@@ -464,7 +464,127 @@ func _ready() -> void:
 		if ts.celle[i] == TerrenoFeudo.Tipo.FIUME and ts.nel_feudo(Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)):
 			acqua_c = Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
 			break
-	_verifica(ts.costo_strada([acqua_c]) == -1, "niente strade sull'acqua")
+	var vp := ts.verifica_strada([acqua_c])
+	_verifica(vp.ok and vp.ponti == 1 and vp.legna == 3 and vp.pietra == 2, "sul fiume la strada diventa un ponte (3 legna, 2 pietra)")
+	_verifica(not ts.percorribile(acqua_c), "il fiume senza ponte non si attraversa")
+	ts.aggiungi_strada([acqua_c])
+	_verifica(ts.percorribile(acqua_c) and ts.ponte_a(acqua_c) == "ponte", "col ponte sì")
+	# passerelle sul lago: al massimo 3 celle di fila
+	var fila := Vector2i(-1, -1)
+	for y in range(TerrenoFeudo.FEUDO.position.y, TerrenoFeudo.FEUDO.end.y):
+		for x in range(TerrenoFeudo.FEUDO.position.x, TerrenoFeudo.FEUDO.end.x - 6):
+			var tutte := true
+			for k in 6:
+				if ts.tipo_a(Vector2i(x + k, y)) != TerrenoFeudo.Tipo.ACQUA or ts.tipo_a(Vector2i(x + k, y - 1)) == TerrenoFeudo.Tipo.ACQUA and ts.strada_a(Vector2i(x + k, y - 1)):
+					tutte = false
+			if tutte and fila.x < 0:
+				fila = Vector2i(x, y)
+	_verifica(fila.x >= 0, "c'è un lago abbastanza largo")
+	if fila.x >= 0:
+		var tre := TerrenoFeudo.percorso(fila, fila + Vector2i(2, 0))
+		var quattro := TerrenoFeudo.percorso(fila, fila + Vector2i(3, 0))
+		var v3 := ts.verifica_strada(tre)
+		_verifica(v3.ok and v3.passerelle == 3 and v3.legna == 9 and v3.pietra == 0, "passerella di 3 celle: 9 legna")
+		_verifica(not ts.verifica_strada(quattro).ok, "4 celle di lago: troppo lunga")
+		ts.aggiungi_strada(tre)
+		_verifica(ts.ponte_a(fila) == "passerella" and not ts.verifica_strada([fila + Vector2i(3, 0)]).ok, "non si allunga una passerella già di 3")
+
+	# Esercito: formazioni in caserma, cibo al mese, difesa.
+	GameState.nuova_partita(30)
+	_verifica(GameState.regni.size() == 9, "nove regni attorno al nostro")
+	GameState.capo = 0
+	GameState.livello = 1
+	GameState.abitanti = 14
+	for i in 4:
+		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
+	_verifica(GameState.perche_non_arruolare() == "serve una caserma", "senza caserma niente soldati")
+	GameState.aggiungi_gratis("caserma", Vector2i(0, 4), 1.0)
+	var liberi := GameState.disoccupati()
+	_verifica(GameState.arruola() and GameState.soldati == 5 and GameState.disoccupati() == liberi - 5, "arruolata una formazione di 5")
+	_verifica(GameState.arruola() and not GameState.arruola(), "la caserma tiene 2 formazioni")
+	_verifica(GameState.cibo_esercito_al_mese() == 6, "2 formazioni: 6 cibo al mese")
+	_verifica(is_equal_approx(GameState.difesa().forza_soldati, 50.0), "10 soldati difendono con 50")
+	GameState.risorse.cibo = 100.0
+	GameState.tick_in_stagione = 19
+	GameState._tick()
+	_verifica(absf(GameState.risorse.cibo - (100.0 - 6.0 - 14 * 0.1)) < 0.01, "a fine mese i soldati mangiano 6 cibo")
+	for cibo_r in GameState.CIBI:
+		GameState.risorse[cibo_r] = 0.0
+	GameState._paga_soldati()
+	_verifica(GameState.soldati == 5, "senza cibo una formazione se ne va")
+
+	# Regni vicini: spie, alleanze, guerra (dal Borgo).
+	GameState.livello = 0
+	var chiave := ""
+	var libera := ""
+	var forte := ""
+	for k in GameState.regni:
+		match GameState.regni[k].tipo:
+			"signore":
+				if chiave == "":
+					chiave = k
+				elif forte == "":
+					forte = k
+			"libera":
+				libera = k
+	_verifica(GameState.perche_no("spia", chiave) != "", "prima del Borgo niente spie")
+	GameState.livello = 1
+	GameState.risorse.oro = 100.0
+	GameState.bil.diplomazia.spia_scoperta = 0.0
+	_verifica(GameState.manda_spia(chiave) and GameState.risorse.oro == 85.0 and not GameState.manda_spia(chiave), "la spia parte (15 oro), una per regno")
+	var finite := []
+	GameState.missione_finita.connect(func(e): finite.append(e))
+	for i in int(GameState.bil.diplomazia.giorni_spia):
+		GameState._avanza_missioni()
+	_verifica(GameState.regni[chiave].spiato and finite.size() == 1, "dopo un mese la spia torna con le notizie")
+	GameState.bil.diplomazia.spia_scoperta = 0.2
+	GameState.regni[chiave].atteggiamento = 100
+	var alleati_ok := false
+	for prova in 5:
+		GameState.risorse.oro = 100.0
+		GameState.proponi_alleanza(chiave)
+		for i in int(GameState.bil.diplomazia.giorni_messaggero):
+			GameState._avanza_missioni()
+		if GameState.regni[chiave].alleato:
+			alleati_ok = true
+			break
+	_verifica(alleati_ok and GameState.perche_no("attacco", chiave) != "", "un signore amico accetta l'alleanza, e gli alleati non si attaccano")
+	_verifica(GameState.difesa().alleati == float(GameState.bil.diplomazia.aiuto_alleato), "gli alleati ci aiutano contro i banditi")
+	GameState.soldati = 20
+	GameState.abitanti = 30
+	GameState.risorse.armi = 20.0
+	_verifica(GameState.attacca(libera) and GameState.soldati_presenti() == 0, "l'esercito parte tutto")
+	for i in int(GameState.bil.diplomazia.giorni_marcia):
+		GameState._avanza_missioni()
+	var conquista: Dictionary = GameState.regni[libera]
+	_verifica(conquista.conquistato and int(conquista.vassallo) in GameState.consiglieri(), "vinta la terra libera: un consigliere ne è vassallo")
+	_verifica(GameState.soldati_presenti() > 0 and GameState.soldati <= 20, "i soldati tornano (%d)" % GameState.soldati)
+	var oro_t: float = GameState.risorse.oro
+	GameState._riscuoti_tributi()
+	_verifica(GameState.risorse.oro == oro_t + float(GameState.bil.diplomazia.tributo_oro) + float(GameState.bil.diplomazia.dono_alleato_stagione), "tributo della conquista e dono dell'alleato")
+	GameState.regni[forte].forza = 60
+	GameState.soldati = 5
+	GameState.risorse.armi = 0.0
+	GameState.attacca(forte)
+	for i in int(GameState.bil.diplomazia.giorni_marcia):
+		GameState._avanza_missioni()
+	_verifica(not GameState.regni[forte].conquistato and GameState.soldati < 5, "troppo pochi contro un signore forte: sconfitta")
+
+	# Salvataggio della versione 7: esercito, regni, missioni, ponti.
+	GameState.ricomincia()
+	GameState.avvia()
+	GameState.scegli_capo(0)
+	GameState.livello = 1
+	GameState.soldati = 5
+	var prima_k: String = GameState.regni.keys()[0]
+	GameState.regni[prima_k].spiato = true
+	GameState.risorse.oro = 100.0
+	GameState.manda_spia(GameState.regni.keys()[1])
+	GameState.salva()
+	GameState.in_corso = false
+	GameState.avvia()
+	_verifica(GameState.soldati == 5 and GameState.regni[prima_k].spiato and GameState.missioni.size() == 1, "esercito, regni e missioni si salvano")
+	GameState.cancella_salvataggio()
 
 	# Salvataggio della versione 4: strade, piantine, colture, mercato.
 	GameState.ricomincia()
@@ -717,7 +837,7 @@ func _ready() -> void:
 	torre.lavoratori = 2
 	GameState.aggiungi_gratis("palizzata", Vector2i(4, 4), 1.0)
 	GameState.aggiungi_gratis("palizzata", Vector2i(5, 4), 1.0)
-	_verifica(is_equal_approx(GameState.difesa().totale, 3.0 + 12.0 + 3.0), "torre con 2 guardie (+12) e 2 palizzate (+3)")
+	_verifica(is_equal_approx(GameState.difesa().totale, 8 * 0.3 + 12.0 + 3.0), "torre con 2 guardie (+12, non più milizia) e 2 palizzate (+3)")
 	GameState.risorse.armi = 2.0
 	_verifica(is_equal_approx(GameState.difesa().forza_guardie, 18.0), "guardie armate: x1,5")
 	GameState._avvista_banditi()

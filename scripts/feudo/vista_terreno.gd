@@ -49,6 +49,7 @@ var _orig_pool: Array[Transform3D] = []
 var _ciuffi: MultiMeshInstance3D
 var _ciuffi_orig: Array[Transform3D] = []
 var _ciuffi_cella: Dictionary = {}  # indice cella -> indici dei ciuffi
+var _ponti: MeshInstance3D  # ponti sul fiume e passerelle sul lago
 
 
 func costruisci(t: TerrenoFeudo) -> void:
@@ -59,6 +60,9 @@ func costruisci(t: TerrenoFeudo) -> void:
 	_crea_ciuffi()
 	_crea_rocce()
 	_crea_confine()
+	_ponti = MeshInstance3D.new()
+	add_child(_ponti)
+	_crea_ponti()
 	applica_stagione(GameState.stagione)
 
 
@@ -72,6 +76,57 @@ func applica_stagione(stagione: int) -> void:
 		_pini.multimesh.set_instance_color(i, CHIOMA_PINO[stagione].lightened(_variazioni_pini[i]))
 	for i in _pool_chiome.multimesh.visible_instance_count:
 		_pool_chiome.multimesh.set_instance_color(i, CHIOMA_TONDA[stagione].lightened(((i % 16) - 8) / 100.0))
+
+
+# --- Ponti e passerelle ------------------------------------------------------------
+
+const LEGNO_PONTE := Color("8a6038")
+const LEGNO_CHIARO := Color("a87a48")
+const PIETRA_PONTE := Color("a09a8c")
+const QUOTA_PONTE := 0.14  # il piano dove si cammina
+
+
+## Le strade sull'acqua: sul fiume un ponte con le spallette in pietra e il parapetto,
+## sul lago una passerella di assi su pali. Si orientano lungo la strada.
+func _crea_ponti() -> void:
+	var k := LowPoly.Costruttore.new()
+	var vuoto := true
+	for i in terreno.strade:
+		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		var tipo := terreno.ponte_a(c)
+		if tipo == "":
+			continue
+		vuoto = false
+		var est_ovest := terreno.strada_a(c + Vector2i(1, 0)) or terreno.strada_a(c - Vector2i(1, 0))
+		var nord_sud := terreno.strada_a(c + Vector2i(0, 1)) or terreno.strada_a(c - Vector2i(0, 1))
+		var lungo_x := est_ovest or not nord_sud  # verso in cui si cammina
+		var centro := Vector3((c.x + 0.5) * CELLA, 0.0, (c.y + 0.5) * CELLA)
+		var rot := 0.0 if lungo_x else PI / 2.0
+		var lungo := CELLA
+		if tipo == "ponte":
+			k.forma(LowPoly.cubo(Vector3(lungo, 0.16, CELLA * 0.8)), LowPoly.t(centro + Vector3(0, QUOTA_PONTE - 0.08, 0), Vector3.ONE, rot), LEGNO_PONTE)
+			for lato in [-1.0, 1.0]:
+				var fuori := Vector3(0, 0, lato * CELLA * 0.42).rotated(Vector3.UP, rot)
+				k.forma(LowPoly.cubo(Vector3(lungo, 0.1, 0.12)), LowPoly.t(centro + fuori + Vector3(0, 0.55, 0), Vector3.ONE, rot), LEGNO_CHIARO)
+				for f in [-0.4, 0.4]:
+					var palo := Vector3(f * lungo, 0, 0).rotated(Vector3.UP, rot) + fuori
+					k.forma(LowPoly.cubo(Vector3(0.12, 0.5, 0.12)), LowPoly.t(centro + palo + Vector3(0, 0.35, 0)), LEGNO_CHIARO)
+			# le spallette in pietra dove il ponte tocca terra
+			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var vicina: Vector2i = c + dir
+				if terreno.strada_a(vicina) and terreno.ponte_a(vicina) == "":
+					var bordo := centro + Vector3(dir.x, 0, dir.y) * (CELLA * 0.45)
+					k.forma(LowPoly.cubo(Vector3(0.3 if dir.x != 0 else CELLA * 0.9, 0.5, CELLA * 0.9 if dir.x != 0 else 0.3)), LowPoly.t(bordo + Vector3(0, -0.1, 0)), PIETRA_PONTE)
+		else:
+			# passerella: assi più strette, una per una, su pali piantati nel lago
+			for a in 4:
+				var avanti := Vector3((a - 1.5) * CELLA / 4.0, 0, 0).rotated(Vector3.UP, rot)
+				var tono := LEGNO_CHIARO if a % 2 == 0 else LEGNO_PONTE
+				k.forma(LowPoly.cubo(Vector3(CELLA / 4.0 - 0.06, 0.08, CELLA * 0.55)), LowPoly.t(centro + avanti + Vector3(0, QUOTA_PONTE - 0.04, 0), Vector3.ONE, rot), tono)
+			for lato in [-1.0, 1.0]:
+				var palo := Vector3(0, 0, lato * CELLA * 0.3).rotated(Vector3.UP, rot)
+				k.forma(LowPoly.cubo(Vector3(0.14, 0.7, 0.14)), LowPoly.t(centro + palo + Vector3(0, -0.2, 0)), LEGNO_PONTE)
+	_ponti.mesh = null if vuoto else k.mesh()
 
 
 # --- Coordinate --------------------------------------------------------------
@@ -106,7 +161,7 @@ func _interseca(o: Vector3, d: Vector3, quota: float) -> Vector2i:
 # --- Suolo -------------------------------------------------------------------
 
 func _colore_cella(c: Vector2i, stagione: int) -> Color:
-	if terreno.strada_a(c):
+	if terreno.strada_a(c) and terreno.ponte_a(c) == "":
 		return STRADA[stagione]
 	var base: Color
 	match terreno.tipo_a(c):
@@ -339,6 +394,7 @@ func aggiorna_celle(celle: Array) -> void:
 	for c in celle:
 		_aggiorna_alberi(c.y * TerrenoFeudo.LATO + c.x)
 	_suoli_pronti.clear()
+	_crea_ponti()
 	applica_stagione(GameState.stagione)
 
 

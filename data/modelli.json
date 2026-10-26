@@ -8,7 +8,7 @@
 	"edifici": {
 		"tenda": [],
 		"casa": ["building_home_a"],
-		"magazzino": ["building_barracks"],
+		"magazzino": [],
 		"taglialegna": ["building_lumbermill"],
 		"cava": ["building_mine"],
 		"miniera": ["building_mine"],
@@ -29,7 +29,8 @@
 		"torre_guardia": ["building_tower_base"],
 		"palizzata": ["fence_wood_straight"],
 		"armeria": ["building_archeryrange"],
-		"rovine": ["building_destroyed"]
+		"rovine": ["building_destroyed"],
+		"caserma": ["building_barracks"]
 	},
 	"per_livello": {"dimora": {"2": ["building_tower_b"]}}
 }

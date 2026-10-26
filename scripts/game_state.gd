@@ -13,7 +13,8 @@ signal capo_scelto(indice: int)
 signal consiglio(famiglia: int, testo: String)
 signal evento(carta: Dictionary)
 signal banditi_avvistati(dati: Dictionary)  # una banda è in arrivo (vedi banditi)
-signal incursione(esito: Dictionary)        # la banda è arrivata: com'è andata  # una carta evento da mostrare (il gioco è in pausa)
+signal incursione(esito: Dictionary)        # la banda è arrivata: com'è andata
+signal missione_finita(esito: Dictionary)   # una spia, un messaggero o l'esercito sono tornati  # una carta evento da mostrare (il gioco è in pausa)
 signal terreno_cambiato(celle: Array)  # celle cambiate: bosco abbattuto o ricresciuto, piantine, strade
 
 const PRIMAVERA := 0
@@ -29,7 +30,7 @@ const CIBI := ["cibo", "rape", "orzo", "grano"]
 ## Le risorse mostrate nella barra in alto (grano e farina restano nascosti).
 const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "grano", "orzo", "rape", "ferro", "utensili", "armi", "oro"]
 const SAVE_PATH := "user://save.json"
-const VERSIONE_SALVATAGGIO := 6
+const VERSIONE_SALVATAGGIO := 7
 
 var edifici: Dictionary = {}  # tipo -> definizione (data/edifici.json)
 var bil: Dictionary = {}      # data/bilanciamento.json
@@ -79,6 +80,9 @@ var _rete_valida := false
 var banditi: Dictionary = {}  # banda in arrivo: {forza, numero, entrata: Vector2i, mancano, totale} (tick)
 var _tick_banditi := -1       # in quale tick della stagione vengono avvistati (-1: nessuno)
 var ultime_tasse: Dictionary = {}  # l'ultima riscossione, per il pannello Info
+var soldati := 0              # abitanti arruolati: non lavorano, difendono e possono attaccare
+var regni: Dictionary = {}    # "indice regione" -> {forza, atteggiamento, spiato, alleato, conquistato, vassallo}
+var missioni: Array = []      # {tipo: spia|alleanza|attacco, regione, mancano, soldati}
 
 var _prossimo_id: int = 1
 var _accumulo: float = 0.0
@@ -231,7 +235,8 @@ func _strada_iniziale(dimora: Dictionary, falo: Dictionary) -> void:
 		var celle_s := []
 		for i in lunghezza:
 			celle_s.append(inizio + dir * i)
-		if terreno.costo_strada(celle_s) >= 0:
+		var v := terreno.verifica_strada(celle_s)
+		if v.ok and v.ponti == 0 and v.passerelle == 0:
 			terreno_cambiato.emit(terreno.aggiungi_strada(celle_s))
 			return
 
@@ -294,6 +299,10 @@ func nuova_partita(seme: int = -1) -> void:
 	banditi = {}
 	_tick_banditi = -1
 	ultime_tasse = {}
+	soldati = 0
+	missioni = []
+	regni = {}
+	_prepara_regni()
 	attrattiva = 0.0
 	mercato = Mercato.new(seme_mappa)
 	_scegli_famiglie()
@@ -571,7 +580,7 @@ func lavoratori_assegnati() -> int:
 
 
 func disoccupati() -> int:
-	return maxi(0, abitanti - lavoratori_assegnati())
+	return maxi(0, abitanti - lavoratori_assegnati() - soldati)
 
 
 func conta_completati(tipo: String) -> int:
@@ -768,6 +777,10 @@ func _tick() -> void:
 	tick_in_stagione += 1
 	if tick_in_stagione == _tick_evento:
 		_pesca_evento()
+	var mese := int(bil.tick_per_stagione) / int(bil.esercito.mesi_per_stagione)
+	if tick_in_stagione % mese == 0:
+		_paga_soldati()
+	_avanza_missioni()
 	if tick_in_stagione == _tick_banditi:
 		_avvista_banditi()
 	elif not banditi.is_empty():
@@ -1084,6 +1097,9 @@ func _programma_banditi() -> void:
 		return
 	var c: Dictionary = bil.banditi
 	var p := minf(float(c.probabilita_massima), float(c.probabilita) + float(c.in_piu_per_anno) * (anno - 1))
+	for k in regni:
+		if regni[k].conquistato and regni[k].tipo == "banditi":
+			p *= float(bil.diplomazia.banditi_dopo_conquista)  # meno covi di banditi attorno
 	if _rng.randf() < p:
 		var tps := int(bil.tick_per_stagione)
 		_tick_banditi = _rng.randi_range(tps / 10, tps / 2)
@@ -1102,11 +1118,17 @@ func _avvista_banditi() -> void:
 			avvistati_prima = true
 	var preavviso := int(c.preavviso_con_torre if avvistati_prima else c.preavviso)
 	var lati := ["nord", "est", "sud", "ovest"]
-	var lato := _rng.randi_range(0, 3)
+	var lato := 0
+	var entrata := Vector2i.ZERO
 	var f := TerrenoFeudo.FEUDO
-	var lungo := _rng.randi_range(4, f.size.x - 5)
-	var entrata: Vector2i = [Vector2i(f.position.x + lungo, f.position.y), Vector2i(f.end.x - 1, f.position.y + lungo),
-		Vector2i(f.position.x + lungo, f.end.y - 1), Vector2i(f.position.x, f.position.y + lungo)][lato]
+	# entrano da un punto del confine sulla terra (non dal lago o dal fiume)
+	for prova in 30:
+		lato = _rng.randi_range(0, 3)
+		var lungo := _rng.randi_range(4, f.size.x - 5)
+		entrata = [Vector2i(f.position.x + lungo, f.position.y), Vector2i(f.end.x - 1, f.position.y + lungo),
+			Vector2i(f.position.x + lungo, f.end.y - 1), Vector2i(f.position.x, f.position.y + lungo)][lato]
+		if terreno == null or terreno.percorribile(entrata):
+			break
 	banditi = {"forza": forza, "numero": clampi(roundi(forza / 3.0), 4, 14), "entrata": entrata,
 		"mancano": preavviso, "totale": preavviso, "da": lati[lato]}
 	var chi := _consigliere_per("costruire")
@@ -1146,11 +1168,23 @@ func difesa() -> Dictionary:
 	var armate := mini(guardie, int(risorse.armi))
 	if guardie > 0:
 		forza_guardie *= 1.0 + (float(c.bonus_armi) - 1.0) * armate / guardie
-	# le armi avanzate vanno alla milizia: mezzo punto ciascuna, una per persona
-	var armi_milizia := mini(int(risorse.armi) - armate, maxi(0, abitanti - guardie))
-	var milizia := abitanti * float(c.milizia_per_abitante) + armi_milizia * 0.5
+	# poi si armano i soldati rimasti a casa, e le armi avanzate vanno alla milizia
+	var presenti := soldati_presenti()
+	var armi_soldati := mini(presenti, int(risorse.armi) - armate)
+	var forza_soldati := presenti * float(bil.esercito.difesa_per_soldato)
+	if presenti > 0:
+		forza_soldati *= 1.0 + (float(c.bonus_armi) - 1.0) * armi_soldati / presenti
+	var civili := maxi(0, abitanti - guardie - soldati)
+	var armi_milizia := mini(int(risorse.armi) - armate - armi_soldati, civili)
+	var milizia := civili * float(c.milizia_per_abitante) + armi_milizia * 0.5
+	var alleati := 0.0
+	for k in regni:
+		if regni[k].alleato:
+			alleati += float(bil.diplomazia.aiuto_alleato)
 	return {"milizia": milizia, "guardie": guardie, "forza_guardie": forza_guardie, "palizzate": palizzate,
-		"armi_usate": armate + armi_milizia, "totale": milizia + forza_guardie + palizzate}
+		"soldati": presenti, "forza_soldati": forza_soldati, "alleati": alleati,
+		"armi_usate": armate + armi_soldati + armi_milizia,
+		"totale": milizia + forza_guardie + palizzate + forza_soldati + alleati}
 
 
 ## La banda arriva. Se la difesa basta la respingiamo; altrimenti rubano una parte delle scorte
@@ -1212,6 +1246,316 @@ func _brucia_qualcosa() -> int:
 	b.erase("eta")
 	building_added.emit(b)
 	return b.id
+
+
+# --- Esercito ------------------------------------------------------------------------
+
+## Si arruola una formazione alla volta (bilanciamento.esercito.per_formazione persone), prese fra
+## chi non lavora. Ogni caserma ne ospita alcune. Ogni formazione mangia del cibo ogni mese.
+func formazioni() -> int:
+	return ceili(soldati / float(bil.esercito.per_formazione))
+
+
+func formazioni_massime() -> int:
+	var n := 0
+	for b in buildings:
+		if b.progresso >= 1.0:
+			n += int(def_di(b).get("formazioni", 0))
+	return n
+
+
+func soldati_in_marcia() -> int:
+	var n := 0
+	for m in missioni:
+		n += int(m.get("soldati", 0))
+	return n
+
+
+func soldati_presenti() -> int:
+	return maxi(0, soldati - soldati_in_marcia())
+
+
+## "" se si può arruolare, altrimenti il perché.
+func perche_non_arruolare() -> String:
+	if formazioni_massime() == 0:
+		return "serve una caserma"
+	if formazioni() >= formazioni_massime():
+		return "le caserme sono piene"
+	if disoccupati() < int(bil.esercito.per_formazione):
+		return "servono %d persone senza lavoro" % int(bil.esercito.per_formazione)
+	return ""
+
+
+func arruola() -> bool:
+	if perche_non_arruolare() != "":
+		return false
+	soldati += int(bil.esercito.per_formazione)
+	message.emit("Una nuova formazione di %d soldati: mangia %d cibo al mese" % [int(bil.esercito.per_formazione), int(bil.esercito.cibo_al_mese)])
+	changed.emit()
+	return true
+
+
+func congeda() -> bool:
+	if soldati_presenti() < int(bil.esercito.per_formazione):
+		return false
+	soldati -= int(bil.esercito.per_formazione)
+	changed.emit()
+	return true
+
+
+func cibo_esercito_al_mese() -> int:
+	return formazioni() * int(bil.esercito.cibo_al_mese)
+
+
+## A ogni mese le formazioni si mangiano la loro razione; se il cibo non basta, una formazione se ne torna a casa.
+func _paga_soldati() -> void:
+	var serve := float(cibo_esercito_al_mese())
+	if serve <= 0.0:
+		return
+	var preso := 0.0
+	for r in CIBI:
+		var x := minf(risorse[r], serve - preso)
+		risorse[r] -= x
+		preso += x
+	if preso + 0.001 < serve and soldati_presenti() > 0:
+		soldati -= mini(int(bil.esercito.per_formazione), soldati_presenti())
+		message.emit("Senza cibo una formazione di soldati ha lasciato l'esercito")
+
+
+# --- Regni vicini: spie, alleanze, guerra --------------------------------------------
+
+## Lo stato delle altre regioni della mappa, dal seme della partita: forza dell'esercito,
+## atteggiamento verso di noi (-100 ostile .. 100 amico), cosa sappiamo di loro.
+func _prepara_regni() -> void:
+	var g := Regioni.genera(seme_mappa)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seme_mappa + 51
+	var f: Dictionary = bil.diplomazia.forza
+	for i in g.regioni.size():
+		var r: Dictionary = g.regioni[i]
+		if r.tipo == "mia":
+			continue
+		var intervallo: Array = f[r.tipo]
+		var atteggiamento := 0
+		match r.tipo:
+			"signore":
+				atteggiamento = rng.randi_range(-30, 40)
+			"banditi":
+				atteggiamento = -80
+		regni[str(i)] = {"tipo": r.tipo, "nome": r.nome, "signore": r.signore, "risorsa": r.risorsa,
+			"forza": rng.randi_range(int(intervallo[0]), int(intervallo[1])), "atteggiamento": atteggiamento,
+			"spiato": false, "alleato": false, "conquistato": false, "vassallo": -1}
+
+
+func diplomazia_possibile() -> bool:
+	return livello >= int(bil.diplomazia.dal_livello)
+
+
+## La forza di un regno adesso: cresce un po' ogni anno.
+func forza_regno(chiave: String) -> int:
+	return roundi(float(regni[chiave].forza) * (1.0 + float(bil.diplomazia.crescita_forza_per_anno) * (anno - 1)))
+
+
+func forza_esercito(n: int) -> float:
+	var armati := mini(n, int(risorse.armi))
+	return n * float(bil.esercito.forza_per_soldato) * (1.0 + (float(bil.banditi.bonus_armi) - 1.0) * armati / maxf(1.0, n))
+
+
+func missione_per(chiave: String) -> Dictionary:
+	for m in missioni:
+		if m.regione == chiave:
+			return m
+	return {}
+
+
+## "" se l'azione si può fare su quel regno, altrimenti il perché.
+func perche_no(azione: String, chiave: String) -> String:
+	if not diplomazia_possibile():
+		return "si può dal Borgo in poi"
+	var r: Dictionary = regni[chiave]
+	if r.conquistato:
+		return "è già nostro"
+	if not missione_per(chiave).is_empty():
+		return "c'è già qualcuno in viaggio"
+	var d: Dictionary = bil.diplomazia
+	match azione:
+		"spia":
+			if risorse.oro < float(d.costo_spia):
+				return "servono %d oro" % int(d.costo_spia)
+		"alleanza":
+			if r.tipo != "signore":
+				return "lì non c'è un signore con cui trattare"
+			if r.alleato:
+				return "siamo già alleati"
+			if risorse.oro < float(d.dono_alleanza):
+				return "servono %d oro per il dono" % int(d.dono_alleanza)
+		"attacco":
+			if r.alleato:
+				return "sono nostri alleati"
+			if soldati_presenti() <= 0:
+				return "serve un esercito (arruola soldati in caserma)"
+	return ""
+
+
+func manda_spia(chiave: String) -> bool:
+	if perche_no("spia", chiave) != "":
+		return false
+	risorse.oro -= float(bil.diplomazia.costo_spia)
+	missioni.append({"tipo": "spia", "regione": chiave, "mancano": int(bil.diplomazia.giorni_spia)})
+	changed.emit()
+	return true
+
+
+func proponi_alleanza(chiave: String) -> bool:
+	if perche_no("alleanza", chiave) != "":
+		return false
+	risorse.oro -= float(bil.diplomazia.dono_alleanza)
+	missioni.append({"tipo": "alleanza", "regione": chiave, "mancano": int(bil.diplomazia.giorni_messaggero)})
+	changed.emit()
+	return true
+
+
+## Tutti i soldati a casa partono per l'attacco: tornano (chi torna) dopo la battaglia.
+func attacca(chiave: String) -> bool:
+	if perche_no("attacco", chiave) != "":
+		return false
+	missioni.append({"tipo": "attacco", "regione": chiave, "mancano": int(bil.diplomazia.giorni_marcia), "soldati": soldati_presenti()})
+	changed.emit()
+	return true
+
+
+func _avanza_missioni() -> void:
+	for m in missioni.duplicate():
+		m.mancano = int(m.mancano) - 1
+		if m.mancano <= 0:
+			missioni.erase(m)
+			match m.tipo:
+				"spia":
+					_ritorno_spia(m)
+				"alleanza":
+					_risposta_alleanza(m)
+				"attacco":
+					_battaglia(m)
+
+
+func _racconta(area: String, testo: String) -> void:
+	var chi := _consigliere_per(area)
+	if chi >= 0:
+		consiglio.emit(chi, testo)
+	else:
+		message.emit(testo)
+
+
+static func testo_atteggiamento(a: int) -> String:
+	if a >= 40:
+		return "amichevole"
+	if a >= 0:
+		return "tranquillo"
+	if a > -40:
+		return "diffidente"
+	return "ostile"
+
+
+func _ritorno_spia(m: Dictionary) -> void:
+	var r: Dictionary = regni[m.regione]
+	var esito := {"tipo": "spia", "regione": m.regione, "riuscita": true}
+	if _rng.randf() < float(bil.diplomazia.spia_scoperta):
+		esito.riuscita = false
+		r.atteggiamento = int(r.atteggiamento) - 15
+		_racconta("oro", "La nostra spia è stata scoperta a %s: non sapremo niente, e ora ci guardano storto." % r.nome)
+	else:
+		r.spiato = true
+		var cosa := "forza %d" % forza_regno(m.regione)
+		if r.tipo == "signore":
+			cosa += ", %s è %s verso di noi" % [r.signore, testo_atteggiamento(int(r.atteggiamento))]
+		elif r.tipo == "banditi":
+			cosa += ": un covo di banditi, da lì vengono a saccheggiarci"
+		else:
+			cosa += ": nessun signore, solo qualche pastore armato"
+		_racconta("oro", "La spia è tornata da %s: %s. Il nostro esercito vale %d." % [r.nome, cosa, roundi(forza_esercito(soldati))])
+	missione_finita.emit(esito)
+	changed.emit()
+
+
+func _risposta_alleanza(m: Dictionary) -> void:
+	var r: Dictionary = regni[m.regione]
+	var probabilita := clampf(0.35 + int(r.atteggiamento) / 100.0, 0.05, 0.95)
+	var esito := {"tipo": "alleanza", "regione": m.regione, "riuscita": _rng.randf() < probabilita}
+	if esito.riuscita:
+		r.alleato = true
+		r.atteggiamento = mini(100, int(r.atteggiamento) + 30)
+		_racconta("oro", "%s accetta l'alleanza! Ci manderà rinforzi contro i banditi e un dono ogni stagione." % r.signore)
+	else:
+		r.atteggiamento = int(r.atteggiamento) - 10
+		_racconta("oro", "%s ha tenuto il dono ma rifiuta l'alleanza." % r.signore)
+	missione_finita.emit(esito)
+	changed.emit()
+
+
+## L'esercito arriva: la sua forza (con le armi) contro quella del regno, con un po' di fortuna.
+## Vincendo la regione è nostra e la affidiamo a un consigliere come vassallo; perdendo
+## torna solo una parte dei soldati.
+func _battaglia(m: Dictionary) -> void:
+	var r: Dictionary = regni[m.regione]
+	var n := int(m.soldati)
+	var nostra := forza_esercito(n)
+	risorse.armi = maxf(0.0, risorse.armi - ceilf(mini(n, int(risorse.armi)) / 3.0))
+	var loro := forza_regno(m.regione) * _rng.randf_range(0.8, 1.2)
+	var esito := {"tipo": "attacco", "regione": m.regione, "riuscita": nostra >= loro, "nostra": nostra, "loro": loro, "caduti": 0}
+	if esito.riuscita:
+		esito.caduti = mini(n, roundi(n * 0.5 * loro / maxf(1.0, nostra)))
+		r.conquistato = true
+		r.alleato = false
+		var vassallo := -1
+		for f in consiglieri():
+			var occupato := false
+			for k in regni:
+				if int(regni[k].vassallo) == f:
+					occupato = true
+			if not occupato and vassallo < 0:
+				vassallo = f
+		r.vassallo = vassallo
+		for k in regni:
+			if regni[k].tipo == "signore" and k != m.regione:
+				regni[k].atteggiamento = int(regni[k].atteggiamento) - 10  # i vicini ci temono
+		var chi := " Ne ho affidato il governo a %s, tuo vassallo." % famiglie[vassallo].capo if vassallo >= 0 else ""
+		message.emit("Vittoria! %s è nostra (%d contro %d). Ogni stagione ci manderà un tributo.%s" % [r.nome, roundi(nostra), roundi(loro), chi])
+		felicita = minf(100.0, felicita + 5.0)
+	else:
+		esito.caduti = mini(n, roundi(n * clampf(0.4 + 0.4 * (1.0 - nostra / maxf(1.0, loro)), 0.4, 0.9)))
+		r.atteggiamento = int(r.atteggiamento) - 40
+		message.emit("Sconfitti a %s (%d contro %d): tornano %d soldati su %d" % [r.nome, roundi(nostra), roundi(loro), n - esito.caduti, n])
+		felicita = maxf(0.0, felicita - 8.0)
+	soldati -= esito.caduti
+	abitanti -= esito.caduti
+	missione_finita.emit(esito)
+	changed.emit()
+	if abitanti <= 0:
+		_fine(false, "Nessuno è rimasto a casa.")
+
+
+const RISORSA_DEL_TRIBUTO := {"ferro": "ferro", "pietra": "pietra", "pesce": "cibo", "grano": "grano", "legname": "legna"}
+
+
+## Le terre conquistate mandano un tributo ogni stagione, gli alleati un dono.
+func _riscuoti_tributi() -> void:
+	var d: Dictionary = bil.diplomazia
+	var cap := capacita()
+	for k in regni:
+		var r: Dictionary = regni[k]
+		if r.conquistato:
+			risorse.oro = minf(cap, risorse.oro + float(d.tributo_oro))
+			var ris: String = RISORSA_DEL_TRIBUTO.get(r.risorsa, "cibo")
+			risorse[ris] = minf(cap, risorse[ris] + float(d.tributo_risorsa))
+		elif r.alleato:
+			risorse.oro = minf(cap, risorse.oro + float(d.dono_alleato_stagione))
+
+
+func vassallo_di(famiglia: int) -> String:
+	for k in regni:
+		if int(regni[k].vassallo) == famiglia:
+			return regni[k].nome
+	return ""
 
 
 # --- Collegamento alla piazza ---------------------------------------------------------
@@ -1282,11 +1626,18 @@ func costo_strada(celle: Array) -> int:
 	return terreno.costo_strada(celle)
 
 
+func verifica_strada(celle: Array) -> Dictionary:
+	if terreno == null:
+		return {"ok": false, "pietra": 0, "legna": 0, "ponti": 0, "passerelle": 0, "motivo": ""}
+	return terreno.verifica_strada(celle)
+
+
 func costruisci_strada(celle: Array) -> bool:
-	var costo := costo_strada(celle)
-	if costo < 0 or risorse.pietra < costo:
+	var v := verifica_strada(celle)
+	if not v.ok or risorse.pietra < v.pietra or risorse.legna < v.legna:
 		return false
-	risorse.pietra -= costo
+	risorse.pietra -= v.pietra
+	risorse.legna -= v.legna
 	var nuove := terreno.aggiungi_strada(celle)
 	terreno_cambiato.emit(nuove)
 	changed.emit()
@@ -1402,6 +1753,7 @@ func _fine_stagione() -> void:
 	_consuma_tende()
 	_scadono_modificatori()
 	_riscuoti_tasse()
+	_riscuoti_tributi()
 	if finita:
 		return
 	if abitanti <= 0:
@@ -1547,7 +1899,12 @@ func requisiti_mancanti(liv: int) -> Array[String]:
 
 func _togli_abitanti(n: int) -> void:
 	abitanti = maxi(0, abitanti - n)
-	var eccesso := lavoratori_assegnati() - abitanti
+	# se mancano braccia lasciano prima il lavoro, poi l'esercito
+	var eccesso := lavoratori_assegnati() + soldati - abitanti
+	var dai_soldati := maxi(0, eccesso - lavoratori_assegnati())
+	if dai_soldati > 0:
+		soldati -= dai_soldati
+		eccesso -= dai_soldati
 	for i in range(buildings.size() - 1, -1, -1):
 		if eccesso <= 0:
 			break
@@ -1589,6 +1946,7 @@ func salva() -> void:
 		"eventi_usati": eventi_usati, "tick_evento": _tick_evento,
 		"evento_attivo": evento_attivo.get("id", ""),
 		"banditi": _banditi_salvati(), "tick_banditi": _tick_banditi,
+		"soldati": soldati, "regni": regni, "missioni": missioni,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -1644,6 +2002,19 @@ func carica() -> bool:
 	eventi_usati = dati.get("eventi_usati", [])
 	_tick_evento = int(dati.get("tick_evento", -1))
 	_tick_banditi = int(dati.get("tick_banditi", -1))
+	soldati = int(dati.get("soldati", 0))
+	var salvati: Dictionary = dati.get("regni", {})
+	for k in salvati:
+		if regni.has(k):
+			for campo in ["forza", "atteggiamento", "vassallo"]:
+				regni[k][campo] = int(salvati[k][campo])
+			for campo in ["spiato", "alleato", "conquistato"]:
+				regni[k][campo] = bool(salvati[k][campo])
+	missioni = dati.get("missioni", [])
+	for m in missioni:
+		m.mancano = int(m.mancano)
+		if m.has("soldati"):
+			m.soldati = int(m.soldati)
 	banditi = dati.get("banditi", {})
 	if not banditi.is_empty():
 		banditi.entrata = Vector2i(int(banditi.entrata[0]), int(banditi.entrata[1]))

@@ -134,6 +134,10 @@ static func attivi() -> Array:
 		lista.append(_c("costruire", 74, "Ora che siamo un borgo si parla di noi, anche tra i banditi. Una torre di guardia con due guardie e qualche palizzata ci proteggerebbero."))
 	elif gs.livello >= 1 and _esiste(["torre_guardia"]) and not _esiste(["armeria"]) and gs.risorse.armi < 1.0:
 		lista.append(_c("costruire", 34, "Le guardie combattono meglio armate: un'armeria fa armi con ferro e legna."))
+	if gs.diplomazia_possibile() and gs.missioni.is_empty() and not gs.regni.values().any(func(r): return r.spiato):
+		lista.append(_c("oro", 33, "Ora che siamo un borgo possiamo mandare spie nei regni vicini (dalla mappa del Regno): sapremo chi è forte, chi è amico e dove si può attaccare."))
+	if gs.soldati > 0 and gs.risorse.cibo + gs.risorse.rape + gs.risorse.orzo < gs.cibo_esercito_al_mese():
+		lista.append(_c("cibo", 86, "I soldati mangiano %d cibo al mese e non ne abbiamo abbastanza: se resteranno senza, una formazione se ne andrà." % gs.cibo_esercito_al_mese()))
 	for b in gs.buildings:
 		if b.tipo == "rovine":
 			lista.append(_c("case", 48, "Le rovine bruciate dai banditi intristiscono la gente: sgomberiamole (tocca le rovine, Demolisci)."))

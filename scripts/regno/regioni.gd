@@ -45,10 +45,15 @@ static func genera(seme: int) -> Dictionary:
 			var x := rng.randf()
 			if x < 0.6:
 				proprietario = dati.signori[rng.randi() % dati.signori.size()]
+				r.tipo = "signore"
 			elif x < 0.8:
 				proprietario = dati.banditi
+				r.tipo = "banditi"
 			else:
 				proprietario = dati.libera
+				r.tipo = "libera"
+		if i == mia:
+			r.tipo = "mia"
 		r.signore = proprietario.nome
 		r.colore = Color(proprietario.colore)
 		regioni.append(r)

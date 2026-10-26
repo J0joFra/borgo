@@ -38,6 +38,10 @@ var _radice: Control
 var _numeri: Dictionary = {}  # chiave -> Label nella barra in alto
 var _icone: Dictionary = {}   # chiave -> icona nella barra in alto
 var _mercato: PanelContainer
+var _esercito: PanelContainer
+var _esercito_testo: Label
+var _btn_arruola: Button
+var _btn_congeda: Button
 var _mercato_notizia: Label
 var _mercato_righe: Dictionary = {}  # risorsa -> [scorta, tendenza, compra, vendi]
 var _mercato_nota: Label
@@ -98,6 +102,7 @@ func _ready() -> void:
 	_crea_info()
 	_crea_consiglio()
 	_crea_mercato()
+	_crea_esercito()
 	_crea_carta()
 	_crea_fine()
 	GameState.evento.connect(_mostra_carta)
@@ -268,14 +273,17 @@ func _crea_lati() -> void:
 	regno.pressed.connect(func(): vai_al_regno.emit())
 	destra.add_child(regno)
 	var info := _bottone("Info", 46, 30)
-	info.pressed.connect(func(): _info.visible = not _info.visible; _consiglio.visible = false; _aggiorna())
+	info.pressed.connect(func(): _apri_finestra(_info))
 	destra.add_child(info)
 	var consiglio := _bottone("Consiglio", 46, 30)
-	consiglio.pressed.connect(func(): _consiglio.visible = not _consiglio.visible; _info.visible = false; _aggiorna())
+	consiglio.pressed.connect(func(): _apri_finestra(_consiglio))
 	destra.add_child(consiglio)
 	var mercato := _bottone("Mercato", 46, 30)
-	mercato.pressed.connect(func(): _mercato.visible = not _mercato.visible; _info.visible = false; _consiglio.visible = false; _aggiorna())
+	mercato.pressed.connect(func(): _apri_finestra(_mercato))
 	destra.add_child(mercato)
+	var esercito := _bottone("Esercito", 46, 30)
+	esercito.pressed.connect(func(): _apri_finestra(_esercito))
+	destra.add_child(esercito)
 	var giro := HBoxContainer.new()
 	giro.add_theme_constant_override("separation", 2)
 	destra.add_child(giro)
@@ -283,6 +291,65 @@ func _crea_lati() -> void:
 		var b := _bottone("<" if verso < 0 else ">", 22, 30)
 		b.pressed.connect(func(): ruota.emit(verso))
 		giro.add_child(b)
+
+
+## Apre una delle finestre centrali (chiudendo le altre), o la chiude se era già aperta.
+func _apri_finestra(finestra: PanelContainer) -> void:
+	var era := finestra.visible
+	for f in [_info, _consiglio, _mercato, _esercito]:
+		f.visible = false
+	finestra.visible = not era
+	_aggiorna()
+
+
+func _crea_esercito() -> void:
+	_esercito = PanelContainer.new()
+	_esercito.set_anchors_preset(Control.PRESET_CENTER)
+	_esercito.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_esercito.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_esercito.visible = false
+	_radice.add_child(_esercito)
+	var col := VBoxContainer.new()
+	_esercito.add_child(col)
+	_esercito_testo = Label.new()
+	_esercito_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_esercito_testo.custom_minimum_size.x = 300
+	col.add_child(_esercito_testo)
+	var riga := HBoxContainer.new()
+	col.add_child(riga)
+	_btn_arruola = _bottone("", 0, 18)
+	_btn_arruola.pressed.connect(func(): GameState.arruola())
+	riga.add_child(_btn_arruola)
+	_btn_congeda = _bottone("Congeda una formazione", 0, 18)
+	_btn_congeda.pressed.connect(func(): GameState.congeda())
+	riga.add_child(_btn_congeda)
+	var chiudi := _bottone("Chiudi")
+	chiudi.pressed.connect(func(): _esercito.visible = false)
+	col.add_child(chiudi)
+
+
+func _aggiorna_esercito() -> void:
+	var e: Dictionary = GameState.bil.esercito
+	var righe: Array[String] = []
+	righe.append("Soldati: %d (%d formazioni su %d posti in caserma) · a casa %d, in marcia %d" % [GameState.soldati,
+		GameState.formazioni(), GameState.formazioni_massime(), GameState.soldati_presenti(), GameState.soldati_in_marcia()])
+	righe.append("Ogni formazione è di %d persone senza lavoro e mangia %d cibo al mese: ora %d cibo al mese (%d a stagione)." % [
+		int(e.per_formazione), int(e.cibo_al_mese), GameState.cibo_esercito_al_mese(), GameState.cibo_esercito_al_mese() * int(e.mesi_per_stagione)])
+	righe.append("In difesa ogni soldato vale %d (x%.1f con le armi); in attacco l'esercito vale %d." % [int(e.difesa_per_soldato),
+		float(GameState.bil.banditi.bonus_armi), roundi(GameState.forza_esercito(GameState.soldati_presenti()))])
+	for m in GameState.missioni:
+		var r: Dictionary = GameState.regni[m.regione]
+		var cosa: String = {"spia": "Spia verso", "alleanza": "Messaggero verso", "attacco": "Esercito (%d) in marcia su" % int(m.get("soldati", 0))}[m.tipo]
+		righe.append("%s %s: %d giorni" % [cosa, r.nome, int(m.mancano)])
+	if not GameState.diplomazia_possibile():
+		righe.append("Dal Borgo in poi, sulla mappa del Regno, si mandano spie, si cercano alleanze e si attacca.")
+	else:
+		righe.append("Spie, alleanze e attacchi: tocca \"Regno\" e poi una regione sulla mappa.")
+	_esercito_testo.text = "\n".join(righe)
+	var perche := GameState.perche_non_arruolare()
+	_btn_arruola.text = "Arruola %d soldati" % int(e.per_formazione) + ("" if perche == "" else " (%s)" % perche)
+	_btn_arruola.disabled = perche != ""
+	_btn_congeda.disabled = GameState.soldati_presenti() < int(e.per_formazione)
 
 
 func _crea_menu() -> void:
@@ -416,10 +483,12 @@ func _aggiorna_consiglio() -> void:
 	for i in GameState.consiglieri():
 		var f: Dictionary = GameState.famiglie[i]
 		righe.append("")
-		righe.append("%s, casata %s (%s)" % [f.capo, f.casata, GameState.tratto(i).get("nome", "").to_lower()])
+		var terra := GameState.vassallo_di(i)
+		righe.append("%s, casata %s (%s)%s" % [f.capo, f.casata, GameState.tratto(i).get("nome", "").to_lower(),
+			"" if terra == "" else " · vassallo di " + terra])
 		righe.append("   " + Consiglio.per(i))
 	righe.append("")
-	righe.append("Quando conquisterai nuove terre potrai nominare i consiglieri tuoi vassalli.")
+	righe.append("Quando conquisti una regione, un consigliere ne diventa vassallo e la governa per te.")
 	_consiglio_testo.text = "\n".join(righe)
 
 
@@ -586,6 +655,8 @@ func _aggiorna() -> void:
 		_aggiorna_consiglio()
 	if _mercato.visible:
 		_aggiorna_mercato()
+	if _esercito.visible:
+		_aggiorna_esercito()
 
 
 ## Nella barra in alto solo ciò che conta adesso: le risorse di base sempre,
@@ -777,8 +848,8 @@ func _aggiorna_info() -> void:
 		GameState.NOMI_FASCE[v.fascia], roundi(v.risorse * 100), roundi(v.popolazione * 100), roundi(v.gradimento * 100)])
 	righe.append("Tassa al re in autunno: %d oro · capacità magazzino %d" % [GameState.tassa_del_re(), GameState.capacita()])
 	var dif := GameState.difesa()
-	righe.append("Difesa %d: milizia %d, guardie %d (forza %d), palizzate %d%s" % [roundi(dif.totale), roundi(dif.milizia),
-		dif.guardie, roundi(dif.forza_guardie), roundi(dif.palizzate),
+	righe.append("Difesa %d: milizia %d, guardie %d (forza %d), soldati %d (forza %d), palizzate %d, alleati %d%s" % [roundi(dif.totale), roundi(dif.milizia),
+		dif.guardie, roundi(dif.forza_guardie), dif.soldati, roundi(dif.forza_soldati), roundi(dif.palizzate), roundi(dif.alleati),
 		"" if GameState.banditi_possibili() else " · i banditi arriveranno quando saremo un Borgo"])
 	_info_testo.text = "\n".join(righe)
 	for i in _tasse.size():
@@ -822,6 +893,7 @@ func _mostra_carta(carta: Dictionary) -> void:
 	_info.visible = false
 	_consiglio.visible = false
 	_mercato.visible = false
+	_esercito.visible = false
 	var n := int(carta.get("narratore", -1))
 	if n >= 0:
 		var f: Dictionary = GameState.famiglie[n]

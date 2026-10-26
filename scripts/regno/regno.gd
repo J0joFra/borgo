@@ -2,6 +2,8 @@ extends Control
 ## Mappa del regno a tutto schermo: regioni stile carta antica, ognuna con nome,
 ## risorsa speciale e proprietario. Toccando la propria regione si entra nel feudo.
 ## Le regioni sono celle di Voronoi generate dal seme della partita.
+## Toccando un'altra regione si apre la sua scheda: dal Borgo in poi si mandano spie,
+## si propongono alleanze e si attacca (le missioni avanzano mentre il tempo scorre nel feudo).
 
 const MARGINE := 14.0
 const INCHIOSTRO := Color("5a4128")
@@ -19,6 +21,10 @@ var _mia := 0
 var _info: Label
 var _velo: ColorRect
 var _entrando := false
+var _scheda: PanelContainer
+var _scheda_testo: Label
+var _scheda_bottoni: Dictionary = {}  # azione -> Button
+var _scelta := ""  # chiave della regione aperta nella scheda
 
 
 func _ready() -> void:
@@ -93,7 +99,7 @@ func _crea_interfaccia() -> void:
 	titolo.offset_top = 8
 	add_child(titolo)
 	_info = Label.new()
-	_info.text = "Tocca la tua regione, bordata di rosso, per entrare nel feudo"
+	_info.text = "Tocca la tua regione, bordata di rosso, per entrare nel feudo; le altre per spie, alleanze e guerra"
 	_info.add_theme_color_override("font_color", INCHIOSTRO)
 	_info.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_info.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -105,6 +111,91 @@ func _crea_interfaccia() -> void:
 	_velo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_velo.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_velo)
+	_crea_scheda()
+	GameState.changed.connect(func(): _aggiorna_scheda(); queue_redraw())
+
+
+func _crea_scheda() -> void:
+	_scheda = PanelContainer.new()
+	_scheda.theme = Hud.crea_tema()
+	_scheda.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	_scheda.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_scheda.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_scheda.offset_right = -10
+	_scheda.visible = false
+	add_child(_scheda)
+	var col := VBoxContainer.new()
+	_scheda.add_child(col)
+	_scheda_testo = Label.new()
+	_scheda_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_scheda_testo.custom_minimum_size.x = 190
+	col.add_child(_scheda_testo)
+	for azione in ["spia", "alleanza", "attacco"]:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(190, 18)
+		b.focus_mode = Control.FOCUS_NONE
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.pressed.connect(_azione.bind(azione))
+		col.add_child(b)
+		_scheda_bottoni[azione] = b
+	var chiudi := Button.new()
+	chiudi.text = "Chiudi"
+	chiudi.focus_mode = Control.FOCUS_NONE
+	chiudi.pressed.connect(func(): _scheda.visible = false; _scelta = ""; queue_redraw())
+	col.add_child(chiudi)
+
+
+func _apri_scheda(chiave: String) -> void:
+	_scelta = chiave
+	_scheda.visible = true
+	_aggiorna_scheda()
+	queue_redraw()
+
+
+func _aggiorna_scheda() -> void:
+	if _scelta == "" or not GameState.regni.has(_scelta):
+		return
+	var r: Dictionary = GameState.regni[_scelta]
+	var righe: Array[String] = ["%s · %s" % [r.nome, r.signore], "Risorsa: %s" % r.risorsa]
+	if r.conquistato:
+		var v := int(r.vassallo)
+		righe.append("È nostra: ogni stagione manda %d oro e %d %s." % [int(GameState.bil.diplomazia.tributo_oro),
+			int(GameState.bil.diplomazia.tributo_risorsa), GameState.RISORSA_DEL_TRIBUTO.get(r.risorsa, "cibo")])
+		if v >= 0:
+			righe.append("La governa %s, tuo vassallo." % GameState.famiglie[v].capo)
+	elif r.spiato:
+		righe.append("Forza: %d (il nostro esercito: %d)" % [GameState.forza_regno(_scelta), roundi(GameState.forza_esercito(GameState.soldati_presenti()))])
+		if r.tipo == "signore":
+			righe.append("Verso di noi: %s%s" % [GameState.testo_atteggiamento(int(r.atteggiamento)), " · alleato" if r.alleato else ""])
+	else:
+		righe.append("Non sappiamo quanto sono forti: manda una spia.")
+	var m := GameState.missione_per(_scelta)
+	if not m.is_empty():
+		righe.append("In viaggio: %s, %d giorni (il tempo scorre nel feudo)" % [m.tipo, int(m.mancano)])
+	_scheda_testo.text = "\n".join(righe)
+	var d: Dictionary = GameState.bil.diplomazia
+	var testi := {"spia": "Manda %s spia (%d oro)" % ["un'altra" if r.spiato else "una", int(d.costo_spia)],
+		"alleanza": "Proponi alleanza (dono di %d oro)" % int(d.dono_alleanza),
+		"attacco": "Attacca con %d soldati" % GameState.soldati_presenti()}
+	for azione in _scheda_bottoni:
+		var b: Button = _scheda_bottoni[azione]
+		var perche := GameState.perche_no(azione, _scelta)
+		b.text = testi[azione] + ("" if perche == "" else "\n(%s)" % perche)
+		b.disabled = perche != ""
+		b.visible = not r.conquistato and not (azione == "alleanza" and r.tipo != "signore")
+
+
+func _azione(azione: String) -> void:
+	match azione:
+		"spia":
+			GameState.manda_spia(_scelta)
+		"alleanza":
+			GameState.proponi_alleanza(_scelta)
+		"attacco":
+			GameState.attacca(_scelta)
+	GameState.salva()
+	_aggiorna_scheda()
+	queue_redraw()
 
 
 func _draw() -> void:
@@ -122,7 +213,11 @@ func _draw() -> void:
 		var r: Dictionary = _regioni[i]
 		if not r.has("poligono") or r.poligono.size() < 3:
 			continue
-		draw_colored_polygon(r.poligono, Color(r.colore, 0.28 if i != _mia else 0.4))
+		var colore: Color = r.colore
+		var stato: Dictionary = GameState.regni.get(str(i), {})
+		if stato.get("conquistato", false):
+			colore = Color("b03a2e")
+		draw_colored_polygon(r.poligono, Color(colore, 0.28 if i != _mia else 0.4))
 	for i in _regioni.size():
 		var r: Dictionary = _regioni[i]
 		if not r.has("poligono") or r.poligono.size() < 3:
@@ -136,11 +231,36 @@ func _draw() -> void:
 		var bordo: PackedVector2Array = mia.poligono.duplicate()
 		bordo.append(bordo[0])
 		draw_polyline(bordo, Color("b03a2e"), 2.5, true)
+	# alleati bordati di verde, la regione scelta di giallo, missioni in viaggio tratteggiate
+	for i in _regioni.size():
+		var r: Dictionary = _regioni[i]
+		var stato: Dictionary = GameState.regni.get(str(i), {})
+		if not r.has("poligono") or r.poligono.size() < 3:
+			continue
+		var bordo_r: PackedVector2Array = r.poligono.duplicate()
+		bordo_r.append(bordo_r[0])
+		if stato.get("alleato", false):
+			draw_polyline(bordo_r, Color("4f8a3b"), 2.0, true)
+		if str(i) == _scelta:
+			draw_polyline(bordo_r, Color("f2c94c"), 2.0, true)
+	for m in GameState.missioni:
+		var a: Vector2 = _regioni[_mia].get("centro", Vector2.ZERO)
+		var b: Vector2 = _regioni[int(m.regione)].get("centro", Vector2.ZERO)
+		var colore_m := Color("8a2a20") if m.tipo == "attacco" else INCHIOSTRO
+		draw_dashed_line(a, b, colore_m, 1.5, 4.0)
+		var fatto := 1.0 - float(m.mancano) / float({"spia": GameState.bil.diplomazia.giorni_spia,
+			"alleanza": GameState.bil.diplomazia.giorni_messaggero, "attacco": GameState.bil.diplomazia.giorni_marcia}[m.tipo])
+		draw_circle(a.lerp(b, clampf(fatto, 0.0, 1.0)), 3.0, colore_m)
 	for i in _regioni.size():
 		var r: Dictionary = _regioni[i]
 		if not r.has("centro"):
 			continue
 		var c: Vector2 = r.centro
+		var stato: Dictionary = GameState.regni.get(str(i), {})
+		if stato.get("spiato", false) and not stato.get("conquistato", false):
+			draw_string(font, c + Vector2(-60, 28), "forza %d" % GameState.forza_regno(str(i)), HORIZONTAL_ALIGNMENT_CENTER, 120, 6, Color("8a2a20"))
+		elif stato.get("conquistato", false):
+			draw_string(font, c + Vector2(-60, 28), "nostra", HORIZONTAL_ALIGNMENT_CENTER, 120, 6, Color("8a2a20"))
 		draw_string(font, c + Vector2(-60, -4), r.nome, HORIZONTAL_ALIGNMENT_CENTER, 120, 9, INCHIOSTRO)
 		draw_circle(c + Vector2(0, 7), 5.5, Color(COLORI_RISORSE[r.risorsa], 0.9))
 		draw_arc(c + Vector2(0, 7), 5.5, 0, TAU, 16, INCHIOSTRO, 1.0, true)
@@ -165,7 +285,11 @@ func _tocca(p: Vector2) -> void:
 				_entra()
 			else:
 				_info.text = "%s  ·  %s  ·  risorsa: %s" % [r.nome, r.signore, r.risorsa]
+				_apri_scheda(str(i))
 			return
+	_scheda.visible = false
+	_scelta = ""
+	queue_redraw()
 
 
 ## Zoom animato sulla propria regione e dissolvenza, poi la scena 3D del feudo.

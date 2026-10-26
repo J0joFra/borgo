@@ -211,22 +211,32 @@ func _inizia_strada() -> void:
 	modo = Modo.STRADA
 	_strada_da = Vector2i(-1, -1)
 	_strada_celle = []
-	hud.mostra_strada("Tocca dove inizia la strada, poi dove finisce. 1 pietra per cella in piano, 2 in salita.", false)
+	hud.mostra_strada("Tocca dove inizia la strada, poi dove finisce. 1 pietra per cella in piano, 2 in salita; sul fiume un ponte, sul lago una passerella (max 3).", false)
 
 
 func _tocco_strada(cella: Vector2i) -> void:
 	if _strada_da.x < 0:
 		_strada_da = cella
 	_strada_celle = TerrenoFeudo.percorso(_strada_da, cella)
-	var costo := GameState.costo_strada(_strada_celle)
-	var valida := costo >= 0
-	var colore := Color(0.9, 0.75, 0.45, 0.6) if valida else Color(0.95, 0.25, 0.2, 0.5)
+	var v := GameState.verifica_strada(_strada_celle)
+	var colore := Color(0.9, 0.75, 0.45, 0.6) if v.ok else Color(0.95, 0.25, 0.2, 0.5)
 	vista.mostra_celle(_strada_celle, colore)
-	if not valida:
-		hud.mostra_strada("Il percorso passa su acqua, bosco, rocce o edifici: scegli un'altra fine.", false)
+	if not v.ok:
+		hud.mostra_strada("Non si può: %s. Scegli un'altra fine." % v.motivo, false)
 	else:
-		var basta: bool = GameState.risorse.pietra >= costo
-		hud.mostra_strada("%d celle · %d pietra%s" % [_strada_celle.size(), costo, "" if basta else " (non basta)"], basta and costo > 0)
+		var basta: bool = GameState.risorse.pietra >= v.pietra and GameState.risorse.legna >= v.legna
+		var parti: Array[String] = ["%d celle" % _strada_celle.size()]
+		if v.ponti > 0:
+			parti.append("ponte di %d" % v.ponti)
+		if v.passerelle > 0:
+			parti.append("passerella di %d" % v.passerelle)
+		var costo: Array[String] = []
+		if v.pietra > 0:
+			costo.append("%d pietra" % v.pietra)
+		if v.legna > 0:
+			costo.append("%d legna" % v.legna)
+		parti.append(", ".join(costo) if not costo.is_empty() else "già fatta")
+		hud.mostra_strada(" · ".join(parti) + ("" if basta else " (non basta)"), basta and not costo.is_empty())
 
 
 func _costruisci_strada() -> void:

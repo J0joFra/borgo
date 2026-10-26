@@ -18,7 +18,10 @@ var _figure: Array[Node3D] = []
 var _scarti: Array[Vector3] = []  # ognuno cammina un po' di lato agli altri
 var _partenza := Vector3.ZERO
 var _arrivo := Vector3.ZERO
+var _cammino: Array[Vector3] = []  # i punti del percorso, sulla terra (o sui ponti)
+var _lunghezze: Array[float] = []  # distanza percorsa fino a ogni punto
 var _in_fuga := false
+var _tempo_fuga := 0.0
 var _tempo := 0.0
 
 
@@ -55,6 +58,7 @@ func _compaiono(dati: Dictionary) -> void:
 	var entrata: Vector2i = dati.entrata
 	_partenza = vista.centro_area(entrata, Vector2i.ONE)
 	_arrivo = _bersaglio()
+	_prepara_cammino(entrata, Vector2i(floori(_arrivo.x / VistaTerreno.CELLA), floori(_arrivo.z / VistaTerreno.CELLA)))
 	for i in int(dati.numero):
 		var nodo := MeshInstance3D.new()
 		nodo.mesh = _mesh
@@ -62,7 +66,7 @@ func _compaiono(dati: Dictionary) -> void:
 		add_child(nodo)
 		_figure.append(nodo)
 		var a := TAU * i / float(dati.numero)
-		_scarti.append(Vector3(cos(a), 0, sin(a)) * randf_range(0.6, 2.2))
+		_scarti.append(Vector3(cos(a), 0, sin(a)) * randf_range(0.3, 1.0))
 		nodo.position = _partenza + _scarti[i]
 
 
@@ -77,6 +81,7 @@ func _bersaglio() -> Vector3:
 
 func _scappano(esito: Dictionary) -> void:
 	_in_fuga = true
+	_tempo_fuga = 0.0
 	if not esito.vinto:
 		for f in _figure:
 			(f as MeshInstance3D).mesh = _mesh_sacco
@@ -91,7 +96,11 @@ func _process(delta: float) -> void:
 		var f := _figure[i]
 		var meta: Vector3
 		if _in_fuga:
-			meta = _partenza + _scarti[i]
+			# scappano ripercorrendo la strada fatta all'andata
+			var dove := _fatto_da(f.position)
+			meta = _punto_a(maxf(0.0, dove - 0.08)) + _scarti[i] * 0.5
+			if dove <= 0.01:
+				meta = _partenza + _scarti[i]
 			var verso := meta - f.position
 			verso.y = 0.0
 			var passo := FUGA * dt
@@ -103,7 +112,7 @@ func _process(delta: float) -> void:
 			# avanzano in modo che arrivino alla meta proprio quando scatta l'incursione
 			var totale := float(GameState.banditi.totale)
 			var fatto := clampf((totale - float(GameState.banditi.mancano) + GameState._accumulo / float(GameState.bil.tick_secondi)) / totale, 0.0, 1.0)
-			meta = _partenza.lerp(_arrivo, fatto) + _scarti[i] * (1.0 - 0.5 * fatto)
+			meta = _punto_a(fatto) + _scarti[i] * (1.0 - 0.5 * fatto)
 			var verso := meta - f.position
 			verso.y = 0.0
 			if verso.length() > 0.01:
@@ -111,14 +120,87 @@ func _process(delta: float) -> void:
 			f.position = Vector3(meta.x, _quota(meta) + absf(sin(_tempo * 8.0 + i)) * 0.08, meta.z)
 	# finita la fuga, spariscono oltre il confine
 	if _in_fuga:
-		var arrivati := true
+		_tempo_fuga += dt
+		var arrivati := _tempo_fuga > 40.0
 		for i in _figure.size():
 			var d := _figure[i].position - (_partenza + _scarti[i])
 			d.y = 0.0
-			if d.length() > 0.3:
+			if d.length() > 0.3 and _tempo_fuga <= 40.0:
 				arrivati = false
 		if arrivati:
 			_togli_figure()
+
+
+## Il percorso più corto sulla terra (ricerca in ampiezza, anche in diagonale), senza attraversare
+## lago e fiume se non su ponti e passerelle. Se non c'è, vanno dritti.
+func _prepara_cammino(da: Vector2i, a: Vector2i) -> void:
+	var t := vista.terreno
+	var limite := TerrenoFeudo.FEUDO.grow(4)
+	var da_dove := {da: da}
+	var coda: Array[Vector2i] = [da]
+	var i := 0
+	var arrivo := a
+	while i < coda.size():
+		var c := coda[i]
+		i += 1
+		# basta arrivare vicino alla dimora (lei stessa è occupata ma percorribile)
+		if (c - a).length_squared() <= 2:
+			arrivo = c
+			break
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+				Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+			var v: Vector2i = c + d
+			if da_dove.has(v) or not limite.has_point(v) or not t.percorribile(v):
+				continue
+			if d.x != 0 and d.y != 0 and not (t.percorribile(c + Vector2i(d.x, 0)) and t.percorribile(c + Vector2i(0, d.y))):
+				continue  # niente tagli d'angolo sull'acqua
+			da_dove[v] = c
+			coda.append(v)
+	_cammino.clear()
+	_lunghezze.clear()
+	if not da_dove.has(arrivo) or arrivo == da:
+		_cammino = [_partenza, _arrivo]
+	else:
+		var celle: Array[Vector2i] = []
+		var c := arrivo
+		while c != da:
+			celle.push_front(c)
+			c = da_dove[c]
+		celle.push_front(da)
+		for cella in celle:
+			_cammino.append(vista.centro_area(cella, Vector2i.ONE))
+		_cammino.append(_arrivo)
+	var totale := 0.0
+	_lunghezze.append(0.0)
+	for k in range(1, _cammino.size()):
+		totale += _cammino[k].distance_to(_cammino[k - 1])
+		_lunghezze.append(totale)
+
+
+## Il punto del percorso a una certa frazione (0 = confine, 1 = dimora).
+func _punto_a(frazione: float) -> Vector3:
+	if _cammino.size() < 2:
+		return _partenza.lerp(_arrivo, frazione)
+	var dist := frazione * _lunghezze[_lunghezze.size() - 1]
+	for k in range(1, _cammino.size()):
+		if _lunghezze[k] >= dist:
+			var tratto := maxf(0.001, _lunghezze[k] - _lunghezze[k - 1])
+			return _cammino[k - 1].lerp(_cammino[k], (dist - _lunghezze[k - 1]) / tratto)
+	return _cammino[_cammino.size() - 1]
+
+
+## A che frazione del percorso è più o meno questo punto (il punto del percorso più vicino).
+func _fatto_da(p: Vector3) -> float:
+	if _cammino.size() < 2:
+		return 0.0
+	var migliore := 0
+	var dmin := INF
+	for k in _cammino.size():
+		var d := Vector2(_cammino[k].x - p.x, _cammino[k].z - p.z).length_squared()
+		if d < dmin:
+			dmin = d
+			migliore = k
+	return _lunghezze[migliore] / maxf(0.001, _lunghezze[_lunghezze.size() - 1])
 
 
 func _togli_figure() -> void:
@@ -130,4 +212,6 @@ func _togli_figure() -> void:
 
 func _quota(p: Vector3) -> float:
 	var c := Vector2i(floori(p.x / VistaTerreno.CELLA), floori(p.z / VistaTerreno.CELLA))
+	if vista.terreno.ponte_a(c) != "":
+		return VistaTerreno.QUOTA_PONTE
 	return maxf(vista.terreno.altezza(c), 0.0)

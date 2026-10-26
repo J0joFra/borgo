@@ -214,11 +214,116 @@ func _via() -> void:
 	await _attendi(1.5)
 	await _scatta("22_saccheggio")
 
+	# ponte sul fiume e passerella sul lago, i più vicini alla dimora
+	GameState.risorse.legna = 200.0
+	GameState.risorse.pietra = 200.0
+	var ponte := _attraversamento(TerrenoFeudo.Tipo.FIUME, dimora_v.cella, 6)
+	if not ponte.is_empty():
+		print("PONTE ", GameState.costruisci_strada(ponte), " ", ponte.size())
+	var pontile := _pontile(dimora_v.cella)
+	if not pontile.is_empty():
+		print("PASSERELLA ", GameState.costruisci_strada(pontile), " ", pontile.size())
+	GameState._tick_evento = -1
+	GameState.velocita = 1
+	if not ponte.is_empty():
+		var pp: Vector3 = f.vista.centro_area(ponte[ponte.size() / 2], Vector2i.ONE)
+		f.camera.position = Vector3(pp.x, 0, pp.z)
+		f.camera.cambia_zoom(1)
+		f.camera.cambia_zoom(1)
+		await _attendi(1.0)
+		await _scatta("23_ponte")
+	if not pontile.is_empty():
+		var pl: Vector3 = f.vista.centro_area(pontile[pontile.size() - 1], Vector2i.ONE)
+		f.camera.position = Vector3(pl.x, 0, pl.z)
+		await _attendi(1.0)
+		await _scatta("24_passerella")
+	# caserma e soldati
+	GameState.livello = 1
+	var cas := GameState.piazza("caserma", t.trova_posto("caserma", dimora_v.cella + Vector2i(-3, -5)), 1.0)
+	cas.progresso = 1.0
+	GameState.abitanti = maxi(GameState.abitanti, 30)
+	for i in 3:
+		var casa_x := GameState.piazza("casa", t.trova_posto("casa", dimora_v.cella + Vector2i(6, -6 + i * 3)), 1.0)
+		if not casa_x.is_empty():
+			casa_x.progresso = 1.0
+	GameState.risorse.cibo = 200.0
+	GameState.arruola()
+	GameState.arruola()
+	var pc2: Vector3 = f.vista.centro_area(cas.cella, Vector2i(3, 2))
+	f.camera.position = Vector3(pc2.x, 0, pc2.z)
+	await _attendi(4.0)
+	await _scatta("25_caserma_soldati")
+	f.hud._apri_finestra(f.hud._esercito)
+	await _attendi(0.3)
+	await _scatta("26_esercito")
+	f.hud._apri_finestra(f.hud._esercito)
+	GameState.risorse.oro = 200.0
+	var spiata: String = GameState.regni.keys()[0]
+	GameState.regni[spiata].spiato = true
+	GameState.manda_spia(GameState.regni.keys()[1])
+	GameState.attacca(GameState.regni.keys()[2])
+	for k in GameState.regni:
+		if GameState.regni[k].tipo == "libera":
+			GameState.regni[k].conquistato = true
+			GameState.regni[k].vassallo = GameState.consiglieri()[0]
+			break
+
 	f._vai_al_regno()
 	await _attendi(1.0)
 	print("SCENA ", get_tree().current_scene.name)
 	await _scatta("9_regno")
+	var mappa = get_tree().current_scene
+	mappa._apri_scheda(spiata)
+	await _attendi(0.3)
+	await _scatta("27_scheda_regione")
 	get_tree().quit()
+
+
+## Una strada dritta che attraversa l'acqua del tipo dato vicino a una cella: da terra a terra.
+func _attraversamento(tipo: int, vicino: Vector2i, massimo: int) -> Array[Vector2i]:
+	var t: TerrenoFeudo = GameState.terreno
+	var migliore: Array[Vector2i] = []
+	var dmin := INF
+	for y in range(vicino.y - 18, vicino.y + 18):
+		for x in range(vicino.x - 18, vicino.x + 18):
+			for dir in [Vector2i(1, 0), Vector2i(0, 1)]:
+				var c := Vector2i(x, y)
+				if t.tipo_a(c) == tipo or not t.nel_feudo(c):
+					continue
+				var celle: Array[Vector2i] = [c]
+				var k := 1
+				while k <= massimo and t.tipo_a(c + dir * k) == tipo:
+					celle.append(c + dir * k)
+					k += 1
+				if k == 1 or k > massimo:
+					continue
+				celle.append(c + dir * k)
+				var v := GameState.verifica_strada(celle)
+				var d := Vector2(c - vicino).length()
+				if v.ok and d < dmin:
+					dmin = d
+					migliore = celle
+	return migliore
+
+
+## Un pontile: dalla riva del lago, tre celle dentro l'acqua.
+func _pontile(vicino: Vector2i) -> Array[Vector2i]:
+	var t: TerrenoFeudo = GameState.terreno
+	var migliore: Array[Vector2i] = []
+	var dmin := INF
+	for y in range(vicino.y - 20, vicino.y + 20):
+		for x in range(vicino.x - 20, vicino.x + 20):
+			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var c := Vector2i(x, y)
+				if t.tipo_a(c) == TerrenoFeudo.Tipo.ACQUA or not t.nel_feudo(c):
+					continue
+				var celle: Array[Vector2i] = [c, c + dir, c + dir * 2, c + dir * 3]
+				var v := GameState.verifica_strada(celle)
+				var d := Vector2(c - vicino).length()
+				if v.ok and v.passerelle == 3 and d < dmin:
+					dmin = d
+					migliore = celle
+	return migliore
 
 
 ## Il posto valido con la resa più alta in un quadrato attorno a una cella.

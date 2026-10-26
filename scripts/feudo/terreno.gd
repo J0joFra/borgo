@@ -421,23 +421,103 @@ static func percorso(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
 	return celle_p
 
 
-## Pietra necessaria: 1 per cella in piano, 2 in salita (collina o cambio di quota);
-## le celle già strada non costano. -1 se una cella non si può usare.
-func costo_strada(celle_s: Array) -> int:
-	var costo := 0
+## Costi e regole di una strada lungo queste celle:
+## - sulla terra: 1 pietra per cella in piano, 2 in salita (collina o cambio di quota);
+## - sul fiume diventa un ponte: legna e pietra per cella (COSTO_PONTE);
+## - sul lago una passerella di legno (COSTO_PASSERELLA), lunga al massimo MAX_PASSERELLA celle
+##   di fila, contando anche le passerelle già fatte che tocca.
+## Le celle già strada non costano. {ok, pietra, legna, ponti, passerelle, motivo}.
+const COSTO_PONTE := {"legna": 3, "pietra": 2}
+const COSTO_PASSERELLA := {"legna": 3, "pietra": 0}
+const MAX_PASSERELLA := 3
+
+
+func verifica_strada(celle_s: Array) -> Dictionary:
+	var v := {"ok": true, "pietra": 0, "legna": 0, "ponti": 0, "passerelle": 0, "motivo": ""}
 	var quota_prima := NAN
+	var lago: Array[Vector2i] = []
 	for c in celle_s:
 		var i: int = c.y * LATO + c.x
 		if not nel_feudo(c) or _occupato.has(c) or piantine.has(i):
-			return -1
-		if not tipo_a(c) in [Tipo.ERBA, Tipo.ERBA_FIORI, Tipo.COLLINA, Tipo.SENTIERO]:
-			return -1
+			return _no(v, "il percorso passa su edifici, alberelli o fuori dal feudo")
+		var t := tipo_a(c)
+		var gia := strade.has(i)
+		if t == Tipo.FIUME:
+			if not gia:
+				v.legna += COSTO_PONTE.legna
+				v.pietra += COSTO_PONTE.pietra
+				v.ponti += 1
+			quota_prima = NAN
+			continue
+		if t == Tipo.ACQUA:
+			if not gia:
+				v.legna += COSTO_PASSERELLA.legna
+				v.pietra += COSTO_PASSERELLA.pietra
+				v.passerelle += 1
+			lago.append(c)
+			quota_prima = NAN
+			continue
+		if not t in [Tipo.ERBA, Tipo.ERBA_FIORI, Tipo.COLLINA, Tipo.SENTIERO]:
+			return _no(v, "il percorso passa su bosco o rocce")
 		var quota := altezza(c)
-		if not strade.has(i):
-			var salita := tipo_a(c) == Tipo.COLLINA or (not is_nan(quota_prima) and quota != quota_prima)
-			costo += 2 if salita else 1
+		if not gia:
+			var salita := t == Tipo.COLLINA or (not is_nan(quota_prima) and quota != quota_prima)
+			v.pietra += 2 if salita else 1
 		quota_prima = quota
-	return costo
+	# ogni passerella (celle di lago di fila, con quelle già fatte attaccate) al massimo 3 celle
+	var nel_percorso := {}
+	for c in lago:
+		nel_percorso[c] = true
+	var visti := {}
+	for c in lago:
+		if visti.has(c):
+			continue
+		var pezzo := 0
+		var coda: Array[Vector2i] = [c]
+		visti[c] = true
+		while not coda.is_empty():
+			var x: Vector2i = coda.pop_back()
+			pezzo += 1
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var y: Vector2i = x + d
+				if not visti.has(y) and tipo_a(y) == Tipo.ACQUA and (nel_percorso.has(y) or strada_a(y)):
+					visti[y] = true
+					coda.append(y)
+		if pezzo > MAX_PASSERELLA:
+			return _no(v, "una passerella sul lago può essere lunga al massimo %d celle" % MAX_PASSERELLA)
+	return v
+
+
+func _no(v: Dictionary, motivo: String) -> Dictionary:
+	v.ok = false
+	v.motivo = motivo
+	return v
+
+
+## Pietra necessaria per la strada, -1 se non si può fare (vedi verifica_strada).
+func costo_strada(celle_s: Array) -> int:
+	var v := verifica_strada(celle_s)
+	return int(v.pietra) if v.ok else -1
+
+
+## "ponte" sul fiume, "passerella" sul lago, "" sulla terra o se non è strada.
+func ponte_a(c: Vector2i) -> String:
+	if not strada_a(c):
+		return ""
+	match tipo_a(c):
+		Tipo.FIUME:
+			return "ponte"
+		Tipo.ACQUA:
+			return "passerella"
+	return ""
+
+
+## Si può camminare qui? Terra (anche bosco e rocce), oppure acqua con un ponte o una passerella.
+func percorribile(c: Vector2i) -> bool:
+	if not dentro(c):
+		return false
+	var t := tipo_a(c)
+	return not t in [Tipo.ACQUA, Tipo.FIUME] or strada_a(c)
 
 
 func aggiungi_strada(celle_s: Array) -> Array:
