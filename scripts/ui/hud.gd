@@ -70,6 +70,11 @@ var _tempo_avviso := 0.0
 var _fine: PanelContainer
 var _fine_titolo: Label
 var _fine_testo: Label
+var _carta: PanelContainer
+var _carta_chi: Label
+var _carta_titolo: Label
+var _carta_testo: Label
+var _carta_scelte: VBoxContainer
 
 var _edificio := -1          # id mostrato nel pannello, -1 = nessuno
 var _piazzamento := ""       # tipo in piazzamento, "" = nessuno
@@ -91,13 +96,17 @@ func _ready() -> void:
 	_crea_info()
 	_crea_consiglio()
 	_crea_mercato()
+	_crea_carta()
 	_crea_fine()
+	GameState.evento.connect(_mostra_carta)
 	GameState.changed.connect(_aggiorna)
 	GameState.season_changed.connect(func(_s, _a): _aggiorna())
 	GameState.message.connect(mostra_avviso)
 	GameState.consiglio.connect(_nuovo_consiglio)
 	GameState.game_ended.connect(_mostra_fine)
 	_aggiorna()
+	if not GameState.evento_attivo.is_empty():
+		_mostra_carta(GameState.evento_attivo)
 
 
 func _process(delta: float) -> void:
@@ -199,12 +208,9 @@ func _bottone(testo: String, larghezza := 0, altezza := 16) -> Button:
 	return b
 
 
-func _icona(colore: Color) -> Control:
+func _icona(chiave: String, lato := 10.0) -> Control:
 	var c := CenterContainer.new()
-	var r := ColorRect.new()
-	r.color = colore
-	r.custom_minimum_size = Vector2(6, 6)
-	c.add_child(r)
+	c.add_child(IconaRisorsa.new(chiave, lato))
 	return c
 
 
@@ -214,12 +220,14 @@ func _crea_barra() -> void:
 	_radice.add_child(barra)
 	var riga := HBoxContainer.new()
 	barra.add_child(riga)
-	for chiave in GameState.RISORSE_VISIBILI + ["abitanti", "felicita"]:
-		var icona := _icona(COLORI[chiave])
+	for chiave in GameState.RISORSE_VISIBILI + ["abitanti", "disponibili", "felicita"]:
+		var icona := _icona(chiave)
 		_icone[chiave] = icona
 		riga.add_child(icona)
 		var l := Label.new()
 		l.custom_minimum_size.x = 22 if chiave != "abitanti" else 30
+		l.tooltip_text = IconaRisorsa.NOMI.get(chiave, chiave)
+		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		riga.add_child(l)
 		_numeri[chiave] = l
 	var spazio := Control.new()
@@ -366,10 +374,10 @@ func _crea_info() -> void:
 		_tasse.append(b)
 	var legenda := HBoxContainer.new()
 	col.add_child(legenda)
-	for chiave in COLORI:
-		legenda.add_child(_icona(COLORI[chiave]))
+	for chiave in GameState.RISORSE_VISIBILI + ["abitanti", "disponibili", "felicita"]:
+		legenda.add_child(_icona(chiave, 8.0))
 		var n := Label.new()
-		n.text = chiave
+		n.text = IconaRisorsa.NOMI.get(chiave, chiave).split(" ")[0].to_lower()
 		legenda.add_child(n)
 	var chiudi := _bottone("Chiudi")
 	chiudi.pressed.connect(func(): _info.visible = false)
@@ -426,11 +434,12 @@ func _crea_mercato() -> void:
 	_mercato_notizia.custom_minimum_size.x = 330
 	col.add_child(_mercato_notizia)
 	var griglia := GridContainer.new()
-	griglia.columns = 5
+	griglia.columns = 6
 	griglia.add_theme_constant_override("h_separation", 4)
 	griglia.add_theme_constant_override("v_separation", 1)
 	col.add_child(griglia)
 	for r in GameState.mercato.risorse() if GameState.mercato else []:
+		griglia.add_child(_icona(r, 9.0))
 		var nome := Label.new()
 		nome.text = NOMI_RISORSE.get(r, r)
 		nome.custom_minimum_size.x = 64
@@ -533,10 +542,16 @@ func _aggiorna() -> void:
 			allarme = true
 		_numeri[r].add_theme_color_override("font_color", TESTO_ALLARME if allarme else TESTO)
 	_numeri.abitanti.text = "%d/%d" % [GameState.abitanti, GameState.alloggi()]
+	_numeri.abitanti.add_theme_color_override("font_color", TESTO_ALLARME if GameState.senza_casa() > 0 else TESTO)
+	_numeri.disponibili.text = str(GameState.disoccupati())
 	_numeri.felicita.text = str(int(GameState.felicita))
+	_numeri.felicita.add_theme_color_override("font_color", TESTO_ALLARME if GameState.felicita < 35.0 else TESTO)
+	(_icone.felicita.get_child(0) as IconaRisorsa).imposta_valore(GameState.felicita)
 	_tempo.text = "%s, anno %d" % [GameState.STAGIONI[GameState.stagione], GameState.anno]
 	for i in _velocita.size():
 		_velocita[i].set_pressed_no_signal(i == GameState.velocita)
+	if GameState.evento_attivo.is_empty():
+		_carta.visible = false
 	if _pannello.visible:
 		_aggiorna_pannello()
 	if _menu.visible:
@@ -565,6 +580,9 @@ func _da_mostrare(r: String) -> bool:
 
 
 func _imposta_velocita(v: int) -> void:
+	if not GameState.evento_attivo.is_empty():
+		_aggiorna()
+		return  # finché la carta è aperta il tempo resta fermo
 	GameState.velocita = v
 	_aggiorna()
 
@@ -622,7 +640,7 @@ func _aggiorna_pannello() -> void:
 		_pannello.visible = true
 		_titolo.text = "Strada"
 		if _strada == "esistente":
-			_dettagli.text = "Le strade tengono ordinato il villaggio e la gente ci cammina più svelta."
+			_dettagli.text = "La gente cammina lungo le strade. Gli edifici che toccano una strada collegata alla piazza non hanno il ritardo del 2%."
 			_btn_demolisci.text = "Rimuovi"
 			_btn_demolisci.visible = true
 			_btn_chiudi.visible = true
@@ -672,6 +690,11 @@ func _aggiorna_pannello() -> void:
 		_btn_migliora.text = "Migliora (%s)" % GameState._elenco(prossimo.costo)
 		_btn_migliora.disabled = not GameState.puo_migliorare(b)
 		testo += "\nProssimo livello: %s" % prossimo.nome
+	if int(d.lavoratori) > 0 and not GameState.collegato(b):
+		testo += "\nNon collegato alla piazza: -%d%% di lavoro (serve una strada che lo tocchi)" % roundi(float(GameState.bil.strade.malus_non_collegato) * 100)
+	var durata := int(GameState.edifici[b.tipo].get("durata_stagioni", 0))
+	if durata > 0:
+		testo += "\nRegge una stagione: si strappa a fine %s. Costruisci case vere." % GameState.STAGIONI[(GameState.stagione + maxi(0, durata - 1 - int(b.get("eta", 0)))) % 4].to_lower()
 	_titolo.text = d.nome
 	if int(d.lavoratori) > 0:
 		_titolo.text += "  ·  %d/%d lavoratori" % [b.lavoratori, d.lavoratori]
@@ -702,6 +725,14 @@ func _aggiorna_info() -> void:
 		righe.append("Per diventare %s servono: %s" % [livelli[GameState.livello + 1].nome, ", ".join(manca)])
 	righe.append("Abitanti %d (alloggi %d) · al lavoro %d · disoccupati %d" % [
 		GameState.abitanti, GameState.alloggi(), GameState.lavoratori_assegnati(), GameState.disoccupati()])
+	if GameState.senza_casa() > 0:
+		righe.append("Senza casa: %d · se ne vanno tra %d giorni se non trovano un tetto" % [GameState.senza_casa(),
+			maxi(1, int(GameState.bil.senza_casa.tick_prima_di_andarsene) - GameState.tick_senza_casa)])
+	if not GameState.modificatori.is_empty():
+		var effetti: Array[String] = []
+		for m in GameState.modificatori:
+			effetti.append("%s (%d stagion%s)" % [_testo_modificatore(m), int(m.stagioni), "e" if int(m.stagioni) == 1 else "i"])
+		righe.append("Effetti in corso: " + ", ".join(effetti))
 	var fattori := GameState.fattori_felicita()
 	var voci: Array[String] = []
 	for k in fattori:
@@ -715,7 +746,100 @@ func _aggiorna_info() -> void:
 		_tasse[i].set_pressed_no_signal(["basse", "normali", "alte"][i] == GameState.tasse)
 
 
+# --- Carte evento --------------------------------------------------------------
+
+func _crea_carta() -> void:
+	_carta = PanelContainer.new()
+	_carta.set_anchors_preset(Control.PRESET_CENTER)
+	_carta.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_carta.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_carta.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e")))
+	_carta.visible = false
+	_radice.add_child(_carta)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	col.custom_minimum_size.x = 260
+	_carta.add_child(col)
+	var inchiostro := Color("3b2a1e")
+	_carta_chi = Label.new()
+	_carta_chi.add_theme_color_override("font_color", Color("7a4a2a"))
+	col.add_child(_carta_chi)
+	_carta_titolo = Label.new()
+	_carta_titolo.add_theme_font_size_override("font_size", 12)
+	_carta_titolo.add_theme_color_override("font_color", inchiostro)
+	col.add_child(_carta_titolo)
+	_carta_testo = Label.new()
+	_carta_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_carta_testo.add_theme_color_override("font_color", inchiostro)
+	col.add_child(_carta_testo)
+	_carta_scelte = VBoxContainer.new()
+	col.add_child(_carta_scelte)
+
+
+## Una carta evento: la racconta un consigliere, il tempo è fermo finché non si sceglie.
+func _mostra_carta(carta: Dictionary) -> void:
+	nascondi_pannello()
+	_chiudi_menu()
+	_info.visible = false
+	_consiglio.visible = false
+	_mercato.visible = false
+	var n := int(carta.get("narratore", -1))
+	if n >= 0:
+		var f: Dictionary = GameState.famiglie[n]
+		_carta_chi.text = "%s, del consiglio, racconta:" % f.capo
+	else:
+		_carta_chi.text = "Dal villaggio:"
+	_carta_titolo.text = carta.titolo
+	_carta_testo.text = "«%s»" % carta.testo
+	for c in _carta_scelte.get_children():
+		c.queue_free()
+	for i in carta.scelte.size():
+		var scelta: Dictionary = carta.scelte[i]
+		var b := _bottone("", 0, 20)
+		var effetti := _testo_effetti(scelta.effetti)
+		b.text = scelta.testo if effetti == "" else "%s   (%s)" % [scelta.testo, effetti]
+		b.disabled = not GameState.scelta_possibile(i)
+		if b.disabled:
+			b.text += " · non abbiamo abbastanza"
+		b.pressed.connect(func():
+			_carta.visible = false
+			GameState.scegli_evento(i))
+		_carta_scelte.add_child(b)
+	_carta.visible = true
+	_aggiorna()
+
+
+func _testo_effetti(e: Dictionary) -> String:
+	var parti: Array[String] = []
+	var r: Dictionary = e.get("risorse", {})
+	for k in r:
+		parti.append("%+d %s" % [int(r[k]), NOMI_RISORSE.get(k, k).to_lower()])
+	if e.has("abitanti"):
+		parti.append("%+d abitanti" % int(e.abitanti))
+	if e.has("felicita"):
+		parti.append("%+d felicità" % int(e.felicita))
+	if e.has("distruggi"):
+		parti.append("perdiamo una %s" % GameState.edifici[e.distruggi].nome.to_lower())
+	if e.has("modificatore"):
+		var m: Dictionary = e.modificatore
+		parti.append("%s per %d stagion%s" % [_testo_modificatore(m), int(m.stagioni), "e" if int(m.stagioni) == 1 else "i"])
+	return ", ".join(parti)
+
+
+func _testo_modificatore(m: Dictionary) -> String:
+	if m.has("edificio"):
+		return "%s %+d%%" % [GameState.edifici[m.edificio].nome.to_lower(), roundi((float(m.molt) - 1.0) * 100)]
+	if m.has("coltura"):
+		return "raccolti %+d%%" % roundi((float(m.molt) - 1.0) * 100)
+	if m.has("riscaldamento"):
+		return "legna per scaldarsi %+d%%" % roundi((float(m.riscaldamento) - 1.0) * 100)
+	if m.has("tassa_re"):
+		return "tassa del re %+d%%" % roundi((float(m.tassa_re) - 1.0) * 100)
+	return ""
+
+
 func _mostra_fine(vittoria: bool, motivo: String) -> void:
+	_carta.visible = false
 	nascondi_pannello()
 	_chiudi_menu()
 	_info.visible = false

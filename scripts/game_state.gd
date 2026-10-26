@@ -11,6 +11,7 @@ signal message(testo: String)
 signal game_ended(vittoria: bool, motivo: String)
 signal capo_scelto(indice: int)
 signal consiglio(famiglia: int, testo: String)
+signal evento(carta: Dictionary)  # una carta evento da mostrare (il gioco è in pausa)
 signal terreno_cambiato(celle: Array)  # celle cambiate: bosco abbattuto o ricresciuto, piantine, strade
 
 const PRIMAVERA := 0
@@ -26,7 +27,7 @@ const CIBI := ["cibo", "rape", "orzo", "grano"]
 ## Le risorse mostrate nella barra in alto (grano e farina restano nascosti).
 const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "grano", "orzo", "rape", "ferro", "utensili", "oro"]
 const SAVE_PATH := "user://save.json"
-const VERSIONE_SALVATAGGIO := 4
+const VERSIONE_SALVATAGGIO := 5
 
 var edifici: Dictionary = {}  # tipo -> definizione (data/edifici.json)
 var bil: Dictionary = {}      # data/bilanciamento.json
@@ -63,6 +64,16 @@ var _terreno_salvato: Dictionary = {}  # strade, piantine e boschi nuovi letti d
 var _rng := RandomNumberGenerator.new()  # arrivi di nuove persone
 var _tick_scontento := 0
 var attrattiva := 0.0  # quanto il villaggio attira gente nuova (0..1), per il pannello Info
+var tick_senza_casa := 0  # da quanto qualcuno dorme all'aperto
+var modificatori: Array = []  # effetti temporanei delle carte evento: {edificio|coltura|riscaldamento|tassa_re, molt, stagioni}
+var evento_attivo: Dictionary = {}  # la carta mostrata adesso, con il consigliere che la racconta
+var eventi_usati: Array = []
+var dati_eventi: Dictionary = {}
+var _tick_evento := -1  # in quale tick della stagione arriva la prossima carta (-1: nessuna)
+var _velocita_prima := 1
+var _evento_da_riprendere := ""
+var _rete_strade: Dictionary = {}  # celle di strada collegate alla piazza (calcolate quando servono)
+var _rete_valida := false
 
 var _prossimo_id: int = 1
 var _accumulo: float = 0.0
@@ -77,6 +88,10 @@ func _ready() -> void:
 	bil = (load("res://data/bilanciamento.json") as JSON).data
 	dati_famiglie = (load("res://data/famiglie.json") as JSON).data
 	colture = (load("res://data/colture.json") as JSON).data
+	dati_eventi = (load("res://data/eventi.json") as JSON).data
+	building_added.connect(func(_b): _rete_valida = false)
+	building_removed.connect(func(_id): _rete_valida = false)
+	terreno_cambiato.connect(func(_c): _rete_valida = false)
 
 
 # --- Partita -----------------------------------------------------------------
@@ -154,6 +169,7 @@ func scegli_capo(indice: int) -> void:
 			famiglie[i].colore = colori[prossimo % colori.size()]
 			prossimo += 1
 	_costruisci_dimora(indice)
+	_programma_evento()
 	capo_scelto.emit(indice)
 	changed.emit()
 	salva()
@@ -186,6 +202,33 @@ func _costruisci_dimora(indice: int) -> void:
 	if posto.x >= 0:
 		var dimora := aggiungi_gratis("dimora", posto, 1.0)
 		dimora.famiglia = indice
+		_strada_iniziale(dimora, falo)
+
+
+## Dalla dimora parte una strada corta, possibilmente dalla parte opposta al falò:
+## l'inizio del borgo.
+func _strada_iniziale(dimora: Dictionary, falo: Dictionary) -> void:
+	var lunghezza := int(bil.strade.strada_iniziale)
+	var t: Array = edifici[dimora.tipo].taglia
+	var w := int(t[0])
+	var h := int(t[1])
+	var lontano := Vector2(dimora.cella - falo.cella).normalized()
+	var direzioni := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+	direzioni.sort_custom(func(a, b): return Vector2(a).dot(lontano) > Vector2(b).dot(lontano))
+	for dir in direzioni:
+		# parte dal lato della dimora rivolto in quella direzione
+		var inizio: Vector2i = dimora.cella
+		match dir:
+			Vector2i(1, 0): inizio += Vector2i(w, h / 2)
+			Vector2i(-1, 0): inizio += Vector2i(-1, h / 2)
+			Vector2i(0, 1): inizio += Vector2i(w / 2, h)
+			_: inizio += Vector2i(w / 2, -1)
+		var celle_s := []
+		for i in lunghezza:
+			celle_s.append(inizio + dir * i)
+		if terreno.costo_strada(celle_s) >= 0:
+			terreno_cambiato.emit(terreno.aggiungi_strada(celle_s))
+			return
 
 
 func consiglieri() -> Array[int]:
@@ -236,6 +279,13 @@ func nuova_partita(seme: int = -1) -> void:
 	_terreno_salvato = {}
 	_rng.seed = seme_mappa + 17
 	_tick_scontento = 0
+	tick_senza_casa = 0
+	modificatori = []
+	evento_attivo = {}
+	eventi_usati = []
+	_tick_evento = -1
+	_evento_da_riprendere = ""
+	_rete_valida = false
 	attrattiva = 0.0
 	mercato = Mercato.new(seme_mappa)
 	_scegli_famiglie()
@@ -248,7 +298,16 @@ func nuova_partita(seme: int = -1) -> void:
 
 ## Aggiunge un edificio già pronto, senza costi (case iniziali).
 func aggiungi_gratis(tipo: String, cella: Vector2i, bonus: float) -> Dictionary:
-	return _aggiungi(tipo, cella, bonus, 1.0)
+	var b := _aggiungi(tipo, cella, bonus, 1.0)
+	_segna_eta(b)
+	return b
+
+
+## Le cose che durano poco (le tende) contano le stagioni da quando sono finite;
+## finite a stagione inoltrata, quella stagione non conta.
+func _segna_eta(b: Dictionary) -> void:
+	if int(edifici[b.tipo].get("durata_stagioni", 0)) > 0:
+		b.eta = 0 if tick_in_stagione <= int(bil.tick_per_stagione) / 4 else -1
 
 
 func _process(delta: float) -> void:
@@ -311,6 +370,18 @@ func migliora(id: int) -> void:
 	b.livello = int(b.get("livello", 1)) + 1
 	message.emit("%s migliorato: ora è %s" % [edifici[b.tipo].nome, m.nome])
 	changed.emit()
+
+
+## Quanto lavora bene un edificio, al di là di zona e lavoratori: chi non è collegato alla
+## piazza perde un po' (strade) e le carte evento possono rallentarlo o spingerlo.
+func efficienza(b: Dictionary) -> float:
+	var e := 1.0
+	if int(def_di(b).lavoratori) > 0 and not collegato(b):
+		e -= float(bil.strade.malus_non_collegato)
+	e *= molt_modificatore("edificio", b.tipo)
+	if edifici[b.tipo].get("coltura", false):
+		e *= molt_modificatore("coltura")
+	return e
 
 
 ## Resa della zona per un edificio piazzato (1.0 senza terreno, ad esempio nei test).
@@ -444,6 +515,7 @@ func _completa(b: Dictionary) -> void:
 		# il bosco attorno quando inizia il lavoro: decide quanto se ne taglia a stagione
 		var taglia := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
 		b.bosco_iniziale = terreno.conta_attorno(b.cella, taglia, int(d.zona.raggio), TerrenoFeudo.Tipo.BOSCO)
+	_segna_eta(b)
 	building_finished.emit(b.id)
 	message.emit("%s completato" % d.nome)
 	changed.emit()
@@ -489,7 +561,7 @@ func conta_completati(tipo: String) -> int:
 
 
 func tassa_del_re() -> int:
-	return int(bil.re.tassa_iniziale + bil.re.incremento * (anno - 1))
+	return int((bil.re.tassa_iniziale + bil.re.incremento * (anno - 1)) * molt_modificatore("tassa_re"))
 
 
 ## Ogni voce che pesa sulla felicità, per il calcolo e per il pannello Info.
@@ -578,7 +650,7 @@ func _tick() -> void:
 		var max_l := int(d.lavoratori)
 		var molt := 1.0 if max_l == 0 else float(b.lavoratori) / max_l
 		molt *= float(b.bonus) * float(d.get("stagioni", {}).get(CHIAVI_STAGIONI[stagione], 1.0))
-		molt *= resa_di(b) * float(d.get("produzione", 1.0))
+		molt *= resa_di(b) * float(d.get("produzione", 1.0)) * efficienza(b)
 		if d.get("coltura", false):
 			_lavora_campo(b, molt, cap, tps)
 			continue
@@ -614,6 +686,7 @@ func _tick() -> void:
 		for b in buildings:
 			if b.progresso >= 1.0:
 				legna_serve += float(def_di(b).get("riscaldamento", 0)) / tps
+		legna_serve *= molt_modificatore("riscaldamento")
 		if risorse.legna < legna_serve:
 			_freddo = true
 		risorse.legna = maxf(0.0, risorse.legna - legna_serve)
@@ -642,6 +715,7 @@ func _tick() -> void:
 			message.emit("Una persona scontenta ha lasciato il villaggio")
 	else:
 		_tick_scontento = 0
+	_controlla_senzatetto()
 	if abitanti <= 0:
 		_fine(false, "Il villaggio è rimasto vuoto.")
 		return
@@ -658,6 +732,8 @@ func _tick() -> void:
 		ultimo_delta[r] = risorse[r] - prima[r]
 
 	tick_in_stagione += 1
+	if tick_in_stagione == _tick_evento:
+		_pesca_evento()
 	if tick_in_stagione >= tps:
 		_fine_stagione()
 	_tick_dall_ultimo_consiglio += 1
@@ -772,6 +848,245 @@ func _lavora_forestali() -> void:
 		terreno_cambiato.emit(cambiate)
 
 
+# --- Tende, senzatetto, piazza ------------------------------------------------------
+
+## Le tende reggono una stagione: poi si strappano e vanno smontate.
+func _consuma_tende() -> void:
+	for b in buildings.duplicate():
+		var durata := int(edifici[b.tipo].get("durata_stagioni", 0))
+		if durata <= 0 or b.progresso < 1.0:
+			continue
+		b.eta = int(b.get("eta", 0)) + 1
+		if b.eta >= durata:
+			var chi := ""
+			if int(b.get("famiglia", -1)) >= 0:
+				chi = " dei " + famiglie[b.famiglia].casata
+			if terreno:
+				terreno.libera(b)
+			buildings.erase(b)
+			building_removed.emit(b.id)
+			message.emit("La tenda%s è logora e va smontata: servono case vere" % chi)
+
+
+func senza_casa() -> int:
+	return maxi(0, abitanti - alloggi())
+
+
+## Chi dorme all'aperto resta al massimo mezza stagione, poi se ne va.
+func _controlla_senzatetto() -> void:
+	var fuori := senza_casa()
+	if fuori <= 0:
+		tick_senza_casa = 0
+		return
+	tick_senza_casa += 1
+	var limite := int(bil.senza_casa.tick_prima_di_andarsene)
+	if tick_senza_casa == 1:
+		message.emit("%d persone dormono all'aperto: se entro mezza stagione non hanno un tetto, se ne vanno" % fuori)
+	elif tick_senza_casa >= limite:
+		_togli_abitanti(fuori)
+		tick_senza_casa = 0
+		message.emit("%d persone senza casa hanno lasciato il villaggio" % fuori)
+
+
+## Dopo il primo anno il falò diventa la piazza del borgo.
+func _falo_diventa_piazza() -> void:
+	for b in buildings:
+		if b.tipo == "falo":
+			building_removed.emit(b.id)
+			b.tipo = "piazza"
+			building_added.emit(b)
+			message.emit("Un anno è passato: attorno al vecchio falò ora c'è la piazza del borgo")
+			return
+
+
+# --- Carte evento ----------------------------------------------------------------------
+
+## A inizio stagione si decide se e quando arriverà una carta (una a stagione al massimo).
+func _programma_evento() -> void:
+	_tick_evento = -1
+	if capo < 0 or dati_eventi.is_empty():
+		return
+	if _rng.randf() < float(dati_eventi.probabilita_per_stagione):
+		var tps := int(bil.tick_per_stagione)
+		_tick_evento = _rng.randi_range(tps / 6, tps * 2 / 3)
+
+
+## Le carte che possono uscire adesso (stagione, edifici, anno, felicità; mai la stessa due volte
+## finché non sono uscite tutte).
+func carte_possibili() -> Array:
+	var lista := []
+	for carta in dati_eventi.get("carte", []):
+		if carta.id in eventi_usati:
+			continue
+		if carta.has("stagioni") and not CHIAVI_STAGIONI[stagione] in carta.stagioni:
+			continue
+		if anno < int(carta.get("min_anno", 1)) or felicita < float(carta.get("min_felicita", 0)):
+			continue
+		var ok := true
+		for tipo in carta.get("richiede", {}).get("edifici", []):
+			if conta_completati(tipo) == 0:
+				ok = false
+		if ok:
+			lista.append(carta)
+	return lista
+
+
+func _pesca_evento() -> void:
+	_tick_evento = -1
+	var lista := carte_possibili()
+	if lista.is_empty() and not eventi_usati.is_empty():
+		eventi_usati = []  # tutte uscite: il mazzo si rimescola
+		lista = carte_possibili()
+	if lista.is_empty():
+		return
+	mostra_evento(lista[_rng.randi_range(0, lista.size() - 1)])
+
+
+## Mostra una carta: la racconta il consigliere della sua area (o l'altro), e il tempo si ferma
+## finché non si sceglie.
+func mostra_evento(carta: Dictionary) -> void:
+	var narratore := -1
+	for f in consiglieri():
+		if narratore < 0 or tratto(f).get("area", "") == carta.area:
+			narratore = f
+	evento_attivo = carta.duplicate(true)
+	evento_attivo.narratore = narratore
+	eventi_usati.append(carta.id)
+	if velocita > 0:
+		_velocita_prima = velocita
+	velocita = 0
+	evento.emit(evento_attivo)
+	changed.emit()
+
+
+## Vero se le risorse bastano per questa scelta (le scelte che costano troppo sono disattivate).
+func scelta_possibile(indice: int) -> bool:
+	var scelte: Array = evento_attivo.get("scelte", [])
+	if indice < 0 or indice >= scelte.size():
+		return false
+	var r: Dictionary = scelte[indice].effetti.get("risorse", {})
+	for k in r:
+		if float(r[k]) < 0.0 and risorse[k] < -float(r[k]):
+			return false
+	return true
+
+
+func scegli_evento(indice: int) -> void:
+	if evento_attivo.is_empty() or not scelta_possibile(indice):
+		return
+	var e: Dictionary = evento_attivo.scelte[indice].effetti
+	var cap := capacita()
+	var r: Dictionary = e.get("risorse", {})
+	for k in r:
+		risorse[k] = clampf(risorse[k] + float(r[k]), 0.0, maxf(cap, risorse[k]))
+	if e.has("felicita"):
+		felicita = clampf(felicita + float(e.felicita), 0.0, 100.0)
+	var n := int(e.get("abitanti", 0))
+	if n > 0:
+		abitanti += n
+	elif n < 0:
+		_togli_abitanti(-n)
+	if e.has("distruggi"):
+		for b in buildings:
+			if b.tipo == e.distruggi and b.progresso >= 1.0:
+				if terreno:
+					terreno.libera(b)
+				buildings.erase(b)
+				building_removed.emit(b.id)
+				break
+	if e.has("modificatore"):
+		var m: Dictionary = e.modificatore.duplicate()
+		m.stagioni = int(m.stagioni)
+		modificatori.append(m)
+	evento_attivo = {}
+	velocita = maxi(1, _velocita_prima)
+	if abitanti <= 0:
+		_fine(false, "Il villaggio è rimasto vuoto.")
+		return
+	changed.emit()
+
+
+## Prodotto dei modificatori attivi di un tipo ("edificio" con il tipo di edificio,
+## "coltura", "riscaldamento", "tassa_re").
+func molt_modificatore(chiave: String, tipo := "") -> float:
+	var m := 1.0
+	for mod in modificatori:
+		if chiave == "edificio":
+			if tipo != "" and mod.get("edificio", "") == tipo:
+				m *= float(mod.molt)
+		elif chiave == "coltura":
+			if mod.has("coltura"):
+				m *= float(mod.molt)
+		elif mod.has(chiave):
+			m *= float(mod[chiave])
+	return m
+
+
+func _scadono_modificatori() -> void:
+	for mod in modificatori:
+		mod.stagioni = int(mod.stagioni) - 1
+	modificatori = modificatori.filter(func(mod): return int(mod.stagioni) > 0)
+
+
+# --- Collegamento alla piazza ---------------------------------------------------------
+
+## Vero se l'edificio è attaccato alla piazza (o alla dimora), oppure tocca una strada
+## che ci arriva. Chi non è collegato lavora un po' peggio (malus in bilanciamento.strade).
+func collegato(b: Dictionary) -> bool:
+	if terreno == null:
+		return true
+	if edifici[b.tipo].get("centro", false):
+		return true
+	if not _rete_valida:
+		_calcola_rete()
+	for c in _bordo(b):
+		if _rete_strade.has(c) or _centro_in(c):
+			return true
+	return false
+
+
+func _calcola_rete() -> void:
+	_rete_valida = true
+	_rete_strade = {}
+	var da_visitare: Array[Vector2i] = []
+	for b in buildings:
+		if edifici[b.tipo].get("centro", false):
+			for c in _bordo(b):
+				if terreno.strada_a(c) and not _rete_strade.has(c):
+					_rete_strade[c] = true
+					da_visitare.append(c)
+	while not da_visitare.is_empty():
+		var c: Vector2i = da_visitare.pop_back()
+		for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var v: Vector2i = c + dir
+			if terreno.strada_a(v) and not _rete_strade.has(v):
+				_rete_strade[v] = true
+				da_visitare.append(v)
+
+
+## Le celle che toccano i lati dell'edificio.
+func _bordo(b: Dictionary) -> Array[Vector2i]:
+	var t: Array = edifici[b.tipo].taglia
+	var w := int(t[0])
+	var h := int(t[1])
+	var bordo: Array[Vector2i] = []
+	for x in w:
+		bordo.append(b.cella + Vector2i(x, -1))
+		bordo.append(b.cella + Vector2i(x, h))
+	for y in h:
+		bordo.append(b.cella + Vector2i(-1, y))
+		bordo.append(b.cella + Vector2i(w, y))
+	return bordo
+
+
+func _centro_in(c: Vector2i) -> bool:
+	var id := terreno.edificio_a(c)
+	if id < 0:
+		return false
+	var altro := trova(id)
+	return not altro.is_empty() and edifici[altro.tipo].get("centro", false)
+
+
 # --- Strade ---------------------------------------------------------------------
 
 ## Costo in pietra di una strada lungo queste celle (1 in piano, 2 in salita); -1 se non si può.
@@ -881,6 +1196,8 @@ func _fine_stagione() -> void:
 	_disbosca()
 	_fine_colture()
 	_lavora_forestali()
+	_consuma_tende()
+	_scadono_modificatori()
 	if stagione == AUTUNNO:
 		_riscuoti_tasse()
 	if finita:
@@ -893,7 +1210,10 @@ func _fine_stagione() -> void:
 	tick_in_stagione = 0
 	if stagione == PRIMAVERA:
 		anno += 1
+		if anno == 1 + int(bil.piazza.dopo_anni):
+			_falo_diventa_piazza()
 	mercato.nuova_stagione(seme_mappa, anno, stagione)
+	_programma_evento()
 	if not mercato.evento.is_empty():
 		message.emit("Dal mercato: " + mercato.evento.testo)
 	_controlla_livello()
@@ -1007,6 +1327,7 @@ func salva() -> void:
 			"famiglia": b.get("famiglia", -1), "livello": b.get("livello", 1),
 			"bosco_iniziale": b.get("bosco_iniziale", 0),
 			"coltura": b.get("coltura", ""), "seminato": b.get("seminato", false),
+			"eta": b.get("eta", 0),
 		})
 	var dati := {
 		"versione": VERSIONE_SALVATAGGIO, "famiglie": famiglie, "capo": capo, "risorse": risorse,
@@ -1016,6 +1337,9 @@ func salva() -> void:
 		"stagione": stagione, "anno": anno, "tick_in_stagione": tick_in_stagione,
 		"livello": livello, "tasse": tasse, "tasse_non_pagate": tasse_non_pagate,
 		"seme_mappa": seme_mappa, "prossimo_id": _prossimo_id, "buildings": lista,
+		"tick_senza_casa": tick_senza_casa, "modificatori": modificatori,
+		"eventi_usati": eventi_usati, "tick_evento": _tick_evento,
+		"evento_attivo": evento_attivo.get("id", ""),
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -1063,8 +1387,27 @@ func carica() -> bool:
 		if str(x.get("coltura", "")) != "":
 			b.coltura = x.coltura
 			b.seminato = bool(x.get("seminato", false))
+		if int(edifici[b.tipo].get("durata_stagioni", 0)) > 0:
+			b.eta = int(x.get("eta", 0))
 		buildings.append(b)
+	tick_senza_casa = int(dati.get("tick_senza_casa", 0))
+	modificatori = dati.get("modificatori", [])
+	eventi_usati = dati.get("eventi_usati", [])
+	_tick_evento = int(dati.get("tick_evento", -1))
+	# una carta lasciata a metà torna quando si rientra nel feudo (vedi riprendi_evento)
+	_evento_da_riprendere = str(dati.get("evento_attivo", ""))
 	return true
+
+
+## Se la partita è stata chiusa con una carta aperta, la ripropone.
+func riprendi_evento() -> void:
+	if _evento_da_riprendere == "":
+		return
+	for carta in dati_eventi.get("carte", []):
+		if carta.id == _evento_da_riprendere:
+			eventi_usati.erase(carta.id)
+			mostra_evento(carta)
+	_evento_da_riprendere = ""
 
 
 func cancella_salvataggio() -> void:

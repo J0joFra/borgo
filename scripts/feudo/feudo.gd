@@ -83,6 +83,8 @@ func _ready() -> void:
 	GameState.changed.emit()  # l'HUD è pronto: rinfresca i numeri
 	if GameState.capo < 0:
 		_inizia_prologo()
+	else:
+		GameState.riprendi_evento()
 
 
 ## Partita nuova: tempo fermo, visuale vicina al falò e scelta della casata che guida.

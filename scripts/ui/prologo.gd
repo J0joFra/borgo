@@ -113,7 +113,7 @@ func _mostra_consiglio() -> void:
 		var f: Dictionary = GameState.famiglie[i]
 		nomi.append("%s (%s)" % [f.capo, GameState.tratto(i).get("nome", "").to_lower()])
 	col.add_child(_testo(
-		"Le altre due casate non se ne vanno: %s siederanno nel tuo consiglio e ti daranno suggerimenti, ognuno sulla propria arte.\nUn giorno, quando conquisterai nuove terre, potrai affidarne una a loro come vassalli.\n\n%s\nPrima di tutto: cibo, legna e un tetto prima dell'inverno." % [" e ".join(nomi), _semi_iniziali()],
+		"Le altre due casate non se ne vanno: %s siederanno nel tuo consiglio e ti daranno suggerimenti, ognuno sulla propria arte.\nUn giorno, quando conquisterai nuove terre, potrai affidarne una a loro come vassalli.\n\n%s\nLe tende reggono solo fino all'estate: prima di tutto cibo, legna e case vere, prima dell'inverno." % [" e ".join(nomi), _semi_iniziali()],
 		8, TESTO, 400))
 	var via := Button.new()
 	via.text = "Al lavoro"

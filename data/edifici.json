@@ -9,7 +9,8 @@
 		"felicita": 5,
 		"fisso": true,
 		"forma": "falo",
-		"colore": "e0782c"
+		"colore": "e0782c",
+		"centro": true
 	},
 	"dimora": {
 		"nome": "Dimora del signore",
@@ -25,7 +26,20 @@
 		"colore": "8a3a2a",
 		"miglioramenti": [
 			{"nome": "Torre del signore", "costo": {"legna": 15, "pietra": 30}, "alloggi": 7, "felicita": 8}
-		]
+		],
+		"centro": true
+	},
+	"piazza": {
+		"nome": "Piazza del borgo",
+		"categoria": "speciale",
+		"livello": 0,
+		"taglia": [2, 2],
+		"costo": {},
+		"lavoratori": 0,
+		"felicita": 8,
+		"fisso": true,
+		"centro": true,
+		"colore": "a09a8a"
 	},
 	"tenda": {
 		"nome": "Tenda",
@@ -39,10 +53,7 @@
 		"felicita": -5,
 		"forma": "tenda",
 		"colore": "c8b48a",
-		"miglioramenti": [
-			{"nome": "Tenda rinforzata", "costo": {"legna": 4, "pietra": 2}, "alloggi": 5, "felicita": -2, "riscaldamento": 4},
-			{"nome": "Capanna", "costo": {"legna": 6, "pietra": 6}, "alloggi": 6, "felicita": 0, "riscaldamento": 6}
-		]
+		"durata_stagioni": 1
 	},
 	"casa": {
 		"nome": "Casa",

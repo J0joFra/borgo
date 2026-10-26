@@ -24,7 +24,8 @@
 		"chiesa": ["building_church"],
 		"maniero": ["building_castle"],
 		"dimora": ["building_tower_a"],
-		"forestale": ["building_home_b"]
+		"forestale": ["building_home_b"],
+		"piazza": ["building_well"]
 	},
 	"per_livello": {"dimora": {"2": ["building_tower_b"]}}
 }

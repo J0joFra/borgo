@@ -4,6 +4,9 @@ City builder medievale in 3D low-poly per mobile in orizzontale, fatto con **God
 Il design completo è nel documento "Borgo — Game Design Document".
 
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
+![Una carta evento raccontata da un consigliere](docs/carta_evento.png)
+![Dopo un anno il falò diventa la piazza; la gente cammina lungo le strade](docs/piazza.png)
+![Le tende reggono una stagione: servono case vere](docs/tende.png)
 ![Il falò, la torre del signore e le tende](docs/falo.png)
 ![Campo di rape: coltura, semi e resa](docs/colture.png)
 ![Il mercato del regno](docs/mercato.png)
@@ -49,6 +52,11 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Prologo**: tre casate pescate a caso fra sei (data/famiglie.json), ognuna con capofamiglia, storia, motto e un tratto
   che vale se guida (es. Boscaioli +20% legna, Costruttori cantieri più veloci). Si parte con un falò e una tenda per famiglia,
   con la bandiera del suo colore.
+- **Carte evento**: quasi ogni stagione un consigliere racconta qualcosa che succede (profughi alle porte, lupi nel bosco,
+  la festa del raccolto, un inverno rigido, le nozze del barone...) e tu scegli cosa fare. Il tempo si ferma finché non
+  scegli; le scelte che non puoi permetterti sono spente. Alcune hanno effetti che durano qualche stagione
+  (un edificio rallentato, raccolti migliori, più legna per scaldarsi, tassa del re dimezzata). Racconta il consigliere
+  esperto di quella materia. Le carte sono in `data/eventi.json` e se ne aggiungono facilmente.
 - **Consiglio**: i due consiglieri guardano il villaggio e suggeriscono cosa fare, ognuno sulla sua arte (cibo, legna,
   case, oro, felicità, costruire); non ripetono mai lo stesso consiglio. In futuro potranno diventare vassalli delle terre conquistate.
 - **Dimora del signore**: scelta la guida, la tenda della sua famiglia diventa una torre a forma di castello attaccata al falò:
@@ -64,14 +72,22 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   incendi, nuove miniere...). D'inverno il cibo rincara. Con un edificio "mercato" si fanno prezzi migliori.
 - **Forestale**: ripianta gli alberi nelle radure lasciate dai taglialegna (poi sui prati); in un anno tornano bosco.
 - **Strade** (pulsante "Strade"): tocchi l'inizio e la fine, il percorso è a L. Costano 1 pietra per cella in piano e 2 in salita;
-  sulle strade non si costruisce e la gente cammina più svelta. Toccando una strada la si può togliere.
-- **Abitanti che camminano**: ognuno ha una casa e, se lavora, va e viene dal suo edificio; i disoccupati stanno attorno al falò.
+  sulle strade non si costruisce. Toccando una strada la si può togliere. Un edificio con lavoratori che non tocca una strada
+  collegata alla piazza (o che non è attaccato alla piazza o alla dimora) lavora il **2% in meno**: il pannello lo dice.
+  All'inizio dalla dimora parte già una strada corta, l'inizio del borgo.
+- **Piazza**: dopo il primo anno il falò diventa la piazza del borgo (un pozzo sul selciato), il centro delle strade.
+- **Tende e senzatetto**: le tende reggono una sola stagione, poi si strappano: bisogna costruire case. Chi resta
+  senza un tetto aspetta al massimo mezza stagione, poi se ne va.
+- **Abitanti che camminano**: ognuno ha una casa e, se lavora, va e viene dal suo edificio; i disoccupati stanno attorno
+  al falò (poi in piazza). Se vicino a partenza e arrivo c'è una strada, camminano lungo le strade.
+- **Simboli**: ogni risorsa ha il suo simbolino (legna, pietra, mela, spiga, rapa, lingotto, martello, moneta), così come
+  abitanti/posti letto, persone senza lavoro e la felicità (una faccina che sorride o si imbroncia).
 - **Zone del territorio**: ogni cella ha una fertilità (più alta vicino all'acqua, la terra fertile è un verde più scuro).
   Taglialegna, cava, cacciatore e raccoglitore rendono di più con tanto bosco o tante rocce attorno; il pescatore rende di
   più sul lago che sul fiume, ma d'inverno il lago gela e la pesca crolla; il campo rende in base alla fertilità.
   Mentre scegli dove costruire, le celle che contano si colorano e il pannello mostra la resa stimata.
 - **Disboscamento**: il taglialegna abbatte il bosco attorno; un bosco grande rende tanto ma sparisce in 3 anni (restano i ceppi).
-- **Miglioramenti** a due livelli: tende (fino alla capanna), case, magazzini e tutti gli edifici della natura. Costano legna e
+- **Miglioramenti** a due livelli: case, magazzini e tutti gli edifici della natura. Costano legna e
   **pietra**, che ora serve anche per case, magazzini e quasi tutti gli edifici.
 - **Campi** disponibili da subito: il grano si raccoglie in autunno e sfama quando il cibo finisce (con mulino e forno vale il doppio).
 - **Mondo esteso**: il feudo (48×48 celle) sta al centro di un mondo di 112×112; oltre la linea gialla del confine
@@ -80,7 +96,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Feudo in 3D** con modelli KayKit, telecamera isometrica con zoom e rotazione, stagioni visibili (erba, chiome, neve, luce).
 - **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
 
-**Da fare**: carte evento, banditi e difese, conquista delle regioni e vassalli, audio.
+**Da fare**: banditi e difese (in guerra la gente non segue le strade), conquista delle regioni e vassalli, audio.
 
 ## Dove cambiare le cose
 
@@ -92,6 +108,8 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 | Casate, tratti, nome del regno caduto | `data/famiglie.json` |
 | Colture: stagioni, resa, semi | `data/colture.json` |
 | Mercato: prezzi, margini, eventi del regno | `data/mercato.json` |
+| Carte evento: testi, scelte, effetti | `data/eventi.json` |
+| Simbolini delle risorse | `scripts/ui/icona_risorsa.gd` |
 | Regole del mercato | `scripts/mercato.gd` |
 | Regioni della mappa (condivise da mappa e mercato) | `scripts/regno/regioni.gd` |
 | Consigli dei consiglieri | `scripts/consiglio.gd` |

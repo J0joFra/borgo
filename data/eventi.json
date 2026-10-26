@@ -1,0 +1,116 @@
+{
+	"probabilita_per_stagione": 0.85,
+	"carte": [
+		{
+			"id": "eremo", "area": "felicita", "titolo": "L'eremo nel bosco",
+			"testo": "Un monaco di passaggio chiede legna per costruire un eremo sulla collina. Dice che pregherà per noi ogni giorno.",
+			"scelte": [
+				{"testo": "Diamogli la legna", "effetti": {"risorse": {"legna": -20}, "felicita": 10}},
+				{"testo": "Non possiamo permettercelo", "effetti": {"felicita": -5}}
+			]
+		},
+		{
+			"id": "mercante", "area": "oro", "titolo": "Un carro di mercanti",
+			"testo": "Un mercante si ferma al falò con un carro di provviste. Tratta volentieri, ma vuole oro o legna buona.",
+			"scelte": [
+				{"testo": "Compriamo cibo", "effetti": {"risorse": {"oro": -10, "cibo": 30}}},
+				{"testo": "Vendiamogli legna", "effetti": {"risorse": {"legna": -30, "oro": 14}}}
+			]
+		},
+		{
+			"id": "profughi", "area": "case", "titolo": "Profughi alle porte",
+			"testo": "Una famiglia scappata da Valmora ci ha trovati. Sono stanchi e affamati, ma sanno lavorare.",
+			"scelte": [
+				{"testo": "Accogliamoli", "effetti": {"abitanti": 4, "risorse": {"cibo": -20}}},
+				{"testo": "Non c'è posto per loro", "effetti": {"felicita": -10}}
+			]
+		},
+		{
+			"id": "lupi", "area": "legna", "titolo": "Lupi nel bosco",
+			"testo": "Di notte si sentono i lupi. I taglialegna hanno paura di addentrarsi tra gli alberi.",
+			"richiede": {"edifici": ["taglialegna"]},
+			"scelte": [
+				{"testo": "Organizziamo una battuta", "effetti": {"risorse": {"cibo": 15, "legna": -10}}},
+				{"testo": "Restiamo ai margini del bosco", "effetti": {"modificatore": {"edificio": "taglialegna", "molt": 0.5, "stagioni": 1}}}
+			]
+		},
+		{
+			"id": "festa", "area": "felicita", "titolo": "La festa del raccolto",
+			"testo": "Il raccolto è nei granai. La gente vorrebbe una festa attorno al fuoco, con musica e pane per tutti.",
+			"stagioni": ["autunno"],
+			"scelte": [
+				{"testo": "Facciamo festa", "effetti": {"risorse": {"cibo": -30}, "felicita": 20}},
+				{"testo": "Il cibo serve per l'inverno", "effetti": {"felicita": -5}}
+			]
+		},
+		{
+			"id": "incendio", "area": "case", "titolo": "Fuoco in una casa",
+			"testo": "Una scintilla dal camino ha preso il tetto di paglia. Se corriamo con l'acqua e il legno possiamo salvarla.",
+			"richiede": {"edifici": ["casa"]},
+			"scelte": [
+				{"testo": "Ricostruiamo subito", "effetti": {"risorse": {"legna": -10, "pietra": -4}}},
+				{"testo": "Lasciamola andare", "effetti": {"distruggi": "casa", "felicita": -5}}
+			]
+		},
+		{
+			"id": "matrimonio", "area": "oro", "titolo": "Le nozze del barone",
+			"testo": "Il figlio di un barone vicino si sposa. Un dono ricco ci farebbe amici a corte: si dice che il re ascolti suo padre.",
+			"min_anno": 2,
+			"scelte": [
+				{"testo": "Mandiamo 25 oro", "effetti": {"risorse": {"oro": -25}, "modificatore": {"tassa_re": 0.5, "stagioni": 4}}},
+				{"testo": "Non abbiamo oro da regalare", "effetti": {"felicita": -5}}
+			]
+		},
+		{
+			"id": "viandante", "area": "cibo", "titolo": "Il viandante con le sementi",
+			"testo": "Un viandante porta un sacchetto di semi di grano buono, raccolti nelle terre del sud. Li cede per poco.",
+			"scelte": [
+				{"testo": "Compriamoli", "effetti": {"risorse": {"oro": -8, "semi_grano": 10}}},
+				{"testo": "No, grazie", "effetti": {}}
+			]
+		},
+		{
+			"id": "pioggia", "area": "cibo", "titolo": "Pioggia buona",
+			"testo": "È piovuto per tre giorni, piano e senza grandine. La terra è morbida e i campi promettono bene.",
+			"stagioni": ["primavera", "estate"],
+			"scelte": [
+				{"testo": "Ringraziamo il cielo", "effetti": {"modificatore": {"coltura": true, "molt": 1.3, "stagioni": 1}}}
+			]
+		},
+		{
+			"id": "frana", "area": "costruire", "titolo": "Frana alla cava",
+			"testo": "Dopo la pioggia una parete della cava è franata. Con un po' di legno possiamo puntellarla.",
+			"richiede": {"edifici": ["cava"]},
+			"scelte": [
+				{"testo": "Puntelliamo la parete", "effetti": {"risorse": {"legna": -12}}},
+				{"testo": "Lavoriamo dove si può", "effetti": {"modificatore": {"edificio": "cava", "molt": 0.5, "stagioni": 1}}}
+			]
+		},
+		{
+			"id": "inverno_rigido", "area": "legna", "titolo": "Un inverno rigido",
+			"testo": "Le oche sono partite presto e gli anziani dicono che l'inverno sarà duro: servirà molta più legna per scaldarsi.",
+			"stagioni": ["autunno"],
+			"scelte": [
+				{"testo": "Tutti al bosco a raccogliere", "effetti": {"risorse": {"legna": 15, "cibo": -10}, "modificatore": {"riscaldamento": 1.5, "stagioni": 2}}},
+				{"testo": "Ce la faremo", "effetti": {"modificatore": {"riscaldamento": 1.5, "stagioni": 2}}}
+			]
+		},
+		{
+			"id": "malattia", "area": "felicita", "titolo": "La febbre",
+			"testo": "Alcuni bambini hanno la febbre alta. Al mercato vendono erbe medicinali, ma costano care.",
+			"scelte": [
+				{"testo": "Compriamo le erbe", "effetti": {"risorse": {"oro": -15}}},
+				{"testo": "Speriamo che passi", "effetti": {"abitanti": -2, "felicita": -5}}
+			]
+		},
+		{
+			"id": "nascite", "area": "case", "titolo": "Nuove nascite",
+			"testo": "In questa stagione sono nati due bambini. Le madri chiedono un po' di cibo in più per festeggiare.",
+			"min_felicita": 55,
+			"scelte": [
+				{"testo": "Che gioia: cibo per tutti", "effetti": {"abitanti": 2, "risorse": {"cibo": -10}, "felicita": 5}},
+				{"testo": "Benvenuti", "effetti": {"abitanti": 2}}
+			]
+		}
+	]
+}

@@ -171,6 +171,7 @@ func _ready() -> void:
 	_verifica(is_equal_approx(GameState.bonus_guida("legna"), 1.2) and is_equal_approx(GameState.bonus_guida("cibo"), 1.0), "il tratto della guida vale per la sua risorsa")
 	var tl := GameState.aggiungi_gratis("taglialegna", Vector2i(0, 0), 1.0)
 	tl.lavoratori = 2
+	GameState.aggiungi_gratis("casa", Vector2i(4, 0), 1.0)  # chi è senza casa se ne va
 	GameState.abitanti = 2
 	GameState.risorse.cibo = 1000.0
 	GameState.risorse.legna = 0.0
@@ -285,18 +286,18 @@ func _ready() -> void:
 	_verifica(tz.tagliati.size() == max_bosco, "i tagli sono ricordati per il salvataggio")
 	GameState.terreno = null
 
-	# Miglioramenti: tenda -> tenda rinforzata -> capanna.
+	# Le tende non si migliorano: durano una stagione e poi vanno sostituite da case.
 	GameState.nuova_partita(42)
 	var tenda := GameState.aggiungi_gratis("tenda", Vector2i(0, 0), 1.0)
-	var alloggi_prima := GameState.alloggi()
 	GameState.risorse.legna = 100.0
 	GameState.risorse.pietra = 100.0
-	GameState.migliora(tenda.id)
-	_verifica(int(tenda.livello) == 2 and GameState.alloggi() == alloggi_prima + 1, "tenda rinforzata: un posto in più")
-	GameState.migliora(tenda.id)
-	_verifica(GameState.def_di(tenda).nome == "Capanna" and GameState.alloggi() == alloggi_prima + 2, "terzo livello: capanna")
-	_verifica(GameState.prossimo_miglioramento(tenda).is_empty() and not GameState.puo_migliorare(tenda), "oltre la capanna non si va")
-	_verifica(int(GameState.risorse.legna) == 90 and int(GameState.risorse.pietra) == 92, "i miglioramenti costano legna e pietra")
+	_verifica(GameState.prossimo_miglioramento(tenda).is_empty() and not GameState.puo_migliorare(tenda), "le tende non si migliorano")
+	var casa_m := GameState.aggiungi_gratis("casa", Vector2i(3, 0), 1.0)
+	var alloggi_prima := GameState.alloggi()
+	var prossimo_casa := GameState.prossimo_miglioramento(casa_m)
+	GameState.migliora(casa_m.id)
+	_verifica(int(casa_m.livello) == 2 and GameState.alloggi() > alloggi_prima, "casa migliorata: più posti")
+	_verifica(GameState.risorse.legna == 100.0 - float(prossimo_casa.costo.get("legna", 0)) and GameState.risorse.pietra == 100.0 - float(prossimo_casa.costo.get("pietra", 0)), "i miglioramenti costano legna e pietra")
 	var mag := GameState.aggiungi_gratis("magazzino", Vector2i(4, 0), 1.0)
 	var cap := GameState.capacita()
 	GameState.migliora(mag.id)
@@ -350,7 +351,8 @@ func _ready() -> void:
 	var semi_tot := 0.0
 	for nome in GameState.nomi_colture():
 		semi_tot += GameState.risorse[GameState.colture[nome].semi]
-	_verifica(semi_tot == float(GameState.colture.semi_iniziali), "si parte con i semi della pianta selvatica vicina")
+	var attesi := float(GameState.colture.semi_iniziali) if GameState.terreno.selvatica_piu_vicina(TerrenoFeudo.centro_feudo()) != "" else 0.0
+	_verifica(semi_tot == attesi, "si parte con i semi della pianta selvatica vicina (%s di %s, seme %d)" % [semi_tot, attesi, GameState.seme_mappa])
 
 	# Popolazione: arrivano persone se si è felici e pieni di scorte, e c'è posto.
 	GameState.nuova_partita(3)
@@ -389,6 +391,7 @@ func _ready() -> void:
 	var campo := GameState.aggiungi_gratis("campo", Vector2i(0, 0), 1.0)
 	campo.coltura = "rape"
 	campo.lavoratori = 2
+	GameState.aggiungi_gratis("casa", Vector2i(4, 0), 1.0)
 	GameState.abitanti = 1  # un villaggio vuoto chiude la partita: serve almeno una persona
 	GameState.risorse.cibo = 1000.0
 	GameState.risorse.semi_rape = 6.0
@@ -482,6 +485,107 @@ func _ready() -> void:
 	var cmp2: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "campo")[0]
 	_verifica(cmp2.coltura == "grano" and cmp2.seminato, "coltura e semina si salvano")
 	_verifica(is_equal_approx(GameState.mercato.fattori.legna, 1.37), "i prezzi del mercato si salvano")
+	GameState.cancella_salvataggio()
+
+	# Strada iniziale, tende che si strappano, piazza dopo un anno.
+	GameState.ricomincia()
+	GameState.avvia()
+	GameState.scegli_capo(1)
+	var dimora: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "dimora")[0]
+	var tocca := false
+	for c in GameState._bordo(dimora):
+		tocca = tocca or GameState.terreno.strada_a(c)
+	_verifica(GameState.terreno.strade.size() == int(GameState.bil.strade.strada_iniziale) and tocca, "dalla dimora parte una strada corta")
+	var tende_prima := GameState.buildings.filter(func(b): return b.tipo == "tenda").size()
+	GameState.abitanti = 4
+	GameState._fine_stagione()
+	_verifica(tende_prima == 2 and GameState.buildings.filter(func(b): return b.tipo == "tenda").is_empty(), "dopo una stagione le tende si strappano")
+	var tenda_tardi := GameState.piazza("tenda", GameState.terreno.trova_posto("tenda", TerrenoFeudo.centro_feudo() + Vector2i(6, 0)), 1.0)
+	GameState.tick_in_stagione = 40
+	tenda_tardi.progresso = 1.0
+	GameState._completa(tenda_tardi)
+	GameState._fine_stagione()
+	_verifica(GameState.buildings.has(tenda_tardi), "una tenda finita a stagione inoltrata regge anche la stagione dopo")
+	GameState._fine_stagione()
+	_verifica(not GameState.buildings.has(tenda_tardi), "...poi si strappa")
+	GameState.stagione = GameState.INVERNO
+	GameState._fine_stagione()
+	_verifica(GameState.anno == 2 and GameState.buildings.filter(func(b): return b.tipo == "piazza").size() == 1 \
+		and GameState.buildings.filter(func(b): return b.tipo == "falo").is_empty(), "dopo un anno il falò diventa la piazza")
+
+	# Collegamento alla piazza: senza strada si lavora il 2% in meno.
+	var piazza_b: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "piazza")[0]
+	var lontano := GameState.aggiungi_gratis("raccoglitore", GameState.terreno.trova_posto("raccoglitore", piazza_b.cella + Vector2i(0, 9)), 1.0)
+	_verifica(not GameState.collegato(lontano) and is_equal_approx(GameState.efficienza(lontano), 0.98), "lontano dalle strade: -2%")
+	_verifica(GameState.collegato(dimora) and GameState.collegato(piazza_b), "piazza e dimora sono il centro")
+	var verso := TerrenoFeudo.percorso(GameState._bordo(piazza_b)[0], GameState._bordo(lontano)[0])
+	GameState.terreno_cambiato.emit(GameState.terreno.aggiungi_strada(verso))
+	_verifica(GameState.collegato(lontano) and is_equal_approx(GameState.efficienza(lontano), 1.0), "con la strada fino alla piazza il malus sparisce")
+
+	# Senza casa: mezza stagione, poi se ne vanno.
+	GameState.nuova_partita(5)
+	GameState.aggiungi_gratis("casa", Vector2i(0, 0), 1.0)
+	GameState.abitanti = GameState.alloggi() + 3
+	GameState.risorse.cibo = 1000.0
+	var limite := int(GameState.bil.senza_casa.tick_prima_di_andarsene)
+	for i in limite - 1:
+		GameState._tick()
+	var ancora := GameState.abitanti
+	GameState._tick()
+	_verifica(ancora == GameState.alloggi() + 3 and GameState.abitanti == GameState.alloggi(), "chi è senza casa se ne va dopo mezza stagione (%d -> %d)" % [ancora, GameState.abitanti])
+
+	# Carte evento raccontate dai consiglieri.
+	GameState.nuova_partita(8)
+	GameState.capo = 0
+	var carte := {}
+	for carta in GameState.dati_eventi.carte:
+		carte[carta.id] = carta
+	_verifica(carte.size() >= 10, "ci sono le carte evento (%d)" % carte.size())
+	GameState.risorse.legna = 0.0
+	GameState.mostra_evento(carte.eremo)
+	var narra := int(GameState.evento_attivo.narratore)
+	_verifica(GameState.velocita == 0 and narra in GameState.consiglieri(), "la carta la racconta un consigliere e il tempo si ferma")
+	_verifica(not GameState.scelta_possibile(0) and GameState.scelta_possibile(1), "le scelte troppo care sono disattivate")
+	GameState.risorse.legna = 30.0
+	var fel := GameState.felicita
+	GameState.scegli_evento(0)
+	_verifica(GameState.risorse.legna == 10.0 and GameState.felicita == fel + 10.0 and GameState.velocita > 0 and GameState.evento_attivo.is_empty(), "la scelta applica i suoi effetti")
+	GameState.mostra_evento(carte.lupi)
+	GameState.scegli_evento(1)
+	_verifica(GameState.molt_modificatore("edificio", "taglialegna") == 0.5 and GameState.molt_modificatore("edificio", "cava") == 1.0, "un effetto può rallentare un edificio")
+	var tassa := GameState.tassa_del_re()
+	GameState.mostra_evento(carte.matrimonio)
+	GameState.risorse.oro = 30.0
+	GameState.scegli_evento(0)
+	_verifica(GameState.tassa_del_re() == int(tassa * 0.5), "il dono alle nozze dimezza la tassa del re")
+	GameState._scadono_modificatori()
+	_verifica(GameState.molt_modificatore("edificio", "taglialegna") == 1.0 and GameState.modificatori.size() == 1, "gli effetti scadono con le stagioni")
+	GameState.stagione = GameState.PRIMAVERA
+	var ids := GameState.carte_possibili().map(func(c): return c.id)
+	_verifica(not "festa" in ids and not "eremo" in ids and not "lupi" in ids, "le carte seguono stagione ed edifici, e non si ripetono")
+	var programmate := 0
+	for i in 20:
+		GameState._programma_evento()
+		if GameState._tick_evento > 0 and GameState._tick_evento < int(GameState.bil.tick_per_stagione):
+			programmate += 1
+	_verifica(programmate >= 10, "quasi ogni stagione arriva una carta (%d su 20)" % programmate)
+	GameState.mostra_evento(carte.profughi)
+	var gente := GameState.abitanti
+	GameState.risorse.cibo = 50.0
+	GameState.scegli_evento(0)
+	_verifica(GameState.abitanti == gente + 4, "accogliere i profughi porta gente")
+
+	# Salvataggio della versione 5: effetti, carte uscite, età delle tende.
+	GameState.ricomincia()
+	GameState.avvia()
+	GameState.scegli_capo(0)
+	GameState.modificatori = [{"coltura": true, "molt": 1.3, "stagioni": 1}]
+	GameState.eventi_usati = ["festa"]
+	GameState.salva()
+	GameState.in_corso = false
+	GameState.avvia()
+	_verifica(GameState.modificatori.size() == 1 and GameState.eventi_usati == ["festa"], "effetti e carte uscite si salvano")
+	_verifica(GameState.terreno.strade.size() == int(GameState.bil.strade.strada_iniziale), "la strada iniziale si salva")
 	GameState.cancella_salvataggio()
 
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])

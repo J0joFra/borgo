@@ -178,6 +178,8 @@ func _costruisci() -> void:
 					_mucchio(k, d.produce.keys()[0])
 				if d.get("forma", "") == "mulino":
 					_crea_pale()
+	if _completo and b.tipo == "piazza":
+		_selciato(k)
 	if _completo and not _ha_forma("tenda"):
 		_oggetti_del_livello()
 	_corpo.mesh = k.mesh()
@@ -209,6 +211,19 @@ func _oggetti_del_livello() -> void:
 
 
 ## Pietre in cerchio, ciocchi incrociati, fiamme che brillano da sole e una luce calda.
+## Il pavimento in pietra della piazza: lastre un po' storte di grigi diversi, più larghe dell'area.
+func _selciato(k: LowPoly.Costruttore) -> void:
+	var lati := 5
+	var passo := (_larghezza + 1.2) / lati
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(b.id) * 31
+	for y in lati:
+		for x in lati:
+			var p := Vector3((x + 0.5) * passo - (_larghezza + 1.2) / 2.0, 0.04, (y + 0.5) * passo - (_profondita + 1.2) / 2.0)
+			var colore := PIETRA.lightened(rng.randf_range(0.0, 0.25))
+			k.forma(LowPoly.cubo(Vector3(passo * 0.92, 0.08, passo * 0.92)), LowPoly.t(p, Vector3.ONE, rng.randf_range(-0.08, 0.08)), colore)
+
+
 func _falo(k: LowPoly.Costruttore) -> void:
 	var pietra := PIETRA.darkened(0.15)
 	for i in 9:

@@ -24,5 +24,8 @@
 	],
 	"disboscamento": {"stagioni_per_esaurire": 12},
 	"mangiare_grano": true,
-	"piantine": {"stagioni_per_crescere": 4}
+	"piantine": {"stagioni_per_crescere": 4},
+	"senza_casa": {"tick_prima_di_andarsene": 30},
+	"piazza": {"dopo_anni": 1},
+	"strade": {"malus_non_collegato": 0.02, "strada_iniziale": 4}
 }

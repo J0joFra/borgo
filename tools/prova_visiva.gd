@@ -30,6 +30,7 @@ func _via() -> void:
 	await _scatta("3_consiglio_presentato")
 	prologo.finito.emit()
 	prologo.queue_free()
+	GameState._tick_evento = -1  # le carte le mostriamo noi, più avanti
 	await _attendi(1.5)
 	await _scatta("4_falo")
 
@@ -60,17 +61,33 @@ func _via() -> void:
 	await _scatta("7_zona_bosco")
 	f._termina_piazzamento()
 
-	# tende migliorate: una al livello 2, una al 3
-	var tende := GameState.buildings.filter(func(b): return b.tipo == "tenda")
-	GameState.migliora(tende[0].id)
-	GameState.migliora(tende[1].id)
-	GameState.migliora(tende[1].id)
+	# una carta evento raccontata da un consigliere
+	GameState._tick_evento = -1
+	for carta in GameState.dati_eventi.carte:
+		if carta.id == "profughi":
+			GameState.mostra_evento(carta)
+	await _attendi(0.5)
+	await _scatta("8_carta_evento")
+	GameState.scegli_evento(0)
+	GameState._tick_evento = -1
+
+	# le tende si strappano a fine stagione: servono case
 	GameState.migliora(tl.id)
 	var falo: Dictionary = GameState.buildings[0]
 	var pf: Vector3 = f.vista.centro_area(falo.cella, Vector2i(2, 2))
+	for i in 2:
+		var casa := GameState.piazza("casa", t.trova_posto("casa", falo.cella + Vector2i(5, -3 + i * 3)), 1.0)
+		if not casa.is_empty():
+			casa.progresso = 1.0
+	GameState.abitanti += 6
 	f.camera.position = Vector3(pf.x, 0, pf.z)
 	await _attendi(1.0)
-	await _scatta("8_miglioramenti")
+	var tenda: Array = GameState.buildings.filter(func(b): return b.tipo == "tenda")
+	if not tenda.is_empty():
+		f._seleziona(tenda[0].id)
+	await _attendi(0.3)
+	await _scatta("8b_tenda_e_case")
+	f._seleziona(-1)
 
 	# un anno e mezzo di taglio: restano i ceppi
 	for i in 6:
@@ -129,8 +146,26 @@ func _via() -> void:
 	await _scatta("10_largo")
 	for i in 180:
 		GameState._tick()
+		if not GameState.evento_attivo.is_empty():
+			GameState.scegli_evento(GameState.evento_attivo.scelte.size() - 1)
 	await _attendi(1.5)
 	await _scatta("11_inverno")
+
+	# dopo un anno il falò diventa la piazza; la gente cammina lungo le strade
+	for i in 60:
+		GameState._tick()
+		if not GameState.evento_attivo.is_empty():
+			GameState.scegli_evento(GameState.evento_attivo.scelte.size() - 1)
+	GameState.velocita = 1
+	GameState._tick_evento = -1
+	f.camera.position = Vector3(pf.x + 4, 0, pf.z + 4)
+	f.camera.cambia_zoom(1)
+	await _attendi(6.0)
+	await _scatta("17_piazza_strade")
+	f._seleziona(fo.id)
+	await _attendi(0.3)
+	await _scatta("18_non_collegato")
+	f._seleziona(-1)
 
 	f._vai_al_regno()
 	await _attendi(1.0)

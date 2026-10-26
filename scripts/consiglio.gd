@@ -61,10 +61,11 @@ static func attivi() -> Array:
 		lista.append(_c("legna", 80, "L'inverno chiederà %d legna per scaldarci; ne abbiamo %d." % [serve_inverno, int(gs.risorse.legna)]))
 
 	# Case
-	if gs.abitanti > gs.alloggi():
-		lista.append(_c("case", 85, "%d dei nostri dormono all'aperto: servono tende o case." % (gs.abitanti - gs.alloggi())))
-	if gs.conta_completati("tenda") > 0 and gs.conta_completati("casa") == 0:
-		lista.append(_c("case", 60, "Le tende sono fredde e scontentano la gente. Una casa vera ospita 4 persone."))
+	if gs.senza_casa() > 0:
+		var resta := int(gs.bil.senza_casa.tick_prima_di_andarsene) - gs.tick_senza_casa
+		lista.append(_c("case", 92, "%d dei nostri dormono all'aperto: se tra %d giorni non hanno un tetto se ne vanno. Servono case." % [gs.senza_casa(), maxi(1, resta)]))
+	if gs.conta_completati("tenda") > 0:
+		lista.append(_c("case", 82 if gs.conta_completati("casa") == 0 else 60, "Le tende reggono una sola stagione, poi si strappano: prima che cadano servono case vere (ospitano 4 persone)."))
 	if gs.calcola_attrattiva() > 0.3 and gs.alloggi() - gs.abitanti <= 0:
 		lista.append(_c("case", 40, "La voce gira: altra gente verrebbe a vivere qui, ma non c'è nemmeno un posto letto libero."))
 
@@ -110,8 +111,13 @@ static func attivi() -> Array:
 		lista.append(_c("oro", 72, "Abbiamo oro ma poco cibo: al mercato se ne può comprare."))
 
 	# Strade
-	if gs.terreno and gs.terreno.strade.is_empty() and gs.buildings.size() >= 8:
-		lista.append(_c("case", 35, "Il villaggio cresce disordinato: qualche strada in pietra lo terrebbe in ordine, e si cammina più svelti."))
+	if gs.terreno:
+		var staccati := 0
+		for b in gs.buildings:
+			if b.progresso >= 1.0 and int(gs.def_di(b).lavoratori) > 0 and not gs.collegato(b):
+				staccati += 1
+		if staccati > 0:
+			lista.append(_c("costruire", 36, "%d edifici non sono collegati alla piazza da una strada: lavorano il 2%% in meno. Una strada che li tocchi e arrivi in piazza toglie il ritardo." % staccati))
 
 	# Felicità
 	if gs.felicita < 40.0:
