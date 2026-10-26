@@ -50,7 +50,9 @@ jobs:
         run: ~/godot/godot --headless --import || true
 
       - name: Test della logica
-        run: ~/godot/godot --headless --path . res://tools/test_logica.tscn | tee test.log && grep -q "TEST: OK" test.log
+        run: |
+          ~/godot/godot --headless --path . res://tools/test_logica.tscn | tee test.log
+          grep -q "TEST: OK" test.log
 
       - name: Esporta per il web
         run: |
