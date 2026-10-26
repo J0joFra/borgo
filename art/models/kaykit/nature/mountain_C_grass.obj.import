@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://daf0ku5e8e30h"
+path="res://.godot/imported/mountain_C_grass.obj-c86136ab89deb9f63ec1b0d7e50a856c.mesh"
+
+[deps]
+
+files=["res://.godot/imported/mountain_C_grass.obj-c86136ab89deb9f63ec1b0d7e50a856c.mesh"]
+
+source_file="res://art/models/kaykit/nature/mountain_C_grass.obj"
+dest_files=["res://.godot/imported/mountain_C_grass.obj-c86136ab89deb9f63ec1b0d7e50a856c.mesh", "res://.godot/imported/mountain_C_grass.obj-c86136ab89deb9f63ec1b0d7e50a856c.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

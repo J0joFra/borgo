@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://bpysh6edb5jex"
+path="res://.godot/imported/trees_A_cut.obj-91c05753c8b912d5a01a8402271c518d.mesh"
+
+[deps]
+
+files=["res://.godot/imported/trees_A_cut.obj-91c05753c8b912d5a01a8402271c518d.mesh"]
+
+source_file="res://art/models/kaykit/nature/trees_A_cut.obj"
+dest_files=["res://.godot/imported/trees_A_cut.obj-91c05753c8b912d5a01a8402271c518d.mesh", "res://.godot/imported/trees_A_cut.obj-91c05753c8b912d5a01a8402271c518d.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

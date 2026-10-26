@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://cui8ys6wgepd3"
+path="res://.godot/imported/building_archeryrange_red.obj-ee289782ee7fa80407c5b99bffeae589.mesh"
+
+[deps]
+
+files=["res://.godot/imported/building_archeryrange_red.obj-ee289782ee7fa80407c5b99bffeae589.mesh"]
+
+source_file="res://art/models/kaykit/buildings/red/building_archeryrange_red.obj"
+dest_files=["res://.godot/imported/building_archeryrange_red.obj-ee289782ee7fa80407c5b99bffeae589.mesh", "res://.godot/imported/building_archeryrange_red.obj-ee289782ee7fa80407c5b99bffeae589.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

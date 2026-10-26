@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://cu11h2tximkho"
+path="res://.godot/imported/crate_B_big.obj-5e4a9838f5157b1304b12bdd7ea6d58a.mesh"
+
+[deps]
+
+files=["res://.godot/imported/crate_B_big.obj-5e4a9838f5157b1304b12bdd7ea6d58a.mesh"]
+
+source_file="res://art/models/kaykit/props/crate_B_big.obj"
+dest_files=["res://.godot/imported/crate_B_big.obj-5e4a9838f5157b1304b12bdd7ea6d58a.mesh", "res://.godot/imported/crate_B_big.obj-5e4a9838f5157b1304b12bdd7ea6d58a.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

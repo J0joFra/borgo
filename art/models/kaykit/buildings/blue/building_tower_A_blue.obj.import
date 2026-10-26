@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://cp0m3kek67mf8"
+path="res://.godot/imported/building_tower_A_blue.obj-fc61d82431811f6ba2c37702cbc980da.mesh"
+
+[deps]
+
+files=["res://.godot/imported/building_tower_A_blue.obj-fc61d82431811f6ba2c37702cbc980da.mesh"]
+
+source_file="res://art/models/kaykit/buildings/blue/building_tower_A_blue.obj"
+dest_files=["res://.godot/imported/building_tower_A_blue.obj-fc61d82431811f6ba2c37702cbc980da.mesh", "res://.godot/imported/building_tower_A_blue.obj-fc61d82431811f6ba2c37702cbc980da.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

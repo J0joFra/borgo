@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://y6hp52fogreh"
+path="res://.godot/imported/building_tower_catapult_yellow_catapult_turret_yellow.obj-682cb36cec8065fa2a4dd8f9fa7d4cfe.mesh"
+
+[deps]
+
+files=["res://.godot/imported/building_tower_catapult_yellow_catapult_turret_yellow.obj-682cb36cec8065fa2a4dd8f9fa7d4cfe.mesh"]
+
+source_file="res://art/models/kaykit/buildings/yellow/building_tower_catapult_yellow_catapult_turret_yellow.obj"
+dest_files=["res://.godot/imported/building_tower_catapult_yellow_catapult_turret_yellow.obj-682cb36cec8065fa2a4dd8f9fa7d4cfe.mesh", "res://.godot/imported/building_tower_catapult_yellow_catapult_turret_yellow.obj-682cb36cec8065fa2a4dd8f9fa7d4cfe.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

@@ -20,6 +20,8 @@ var vista: VistaTerreno
 var _corpo: MeshInstance3D
 var _modello: Node3D  # modello vero, se trovato
 var _altezza_modello := 0.0
+var _parti_che_girano: Array[Node3D] = []
+var _fase := -1  # fase del cantiere mostrata (con i modelli veri)
 var _pale: MeshInstance3D
 var _barra: MeshInstance3D
 var _avviso: MeshInstance3D
@@ -49,7 +51,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_tempo += delta
 	var completo: bool = b.progresso >= 1.0
-	if completo != _completo or (_stagione != GameState.stagione and _ha_forma("campo")):
+	var fase := _fase_cantiere()
+	var campo_da_ridisegnare := _stagione != GameState.stagione and _ha_forma("campo") and not _modello
+	if completo != _completo or campo_da_ridisegnare or (not completo and fase != _fase):
 		var appena_finito := completo and not _completo
 		_costruisci()
 		if appena_finito:
@@ -64,6 +68,8 @@ func _process(delta: float) -> void:
 		_barra.position.x = -(_larghezza - 0.8) * (1.0 - p) / 2.0
 	if _pale:
 		_pale.rotate_z(-delta * 1.5 * GameState.velocita)
+	for parte in _parti_che_girano:
+		parte.rotate_object_local(parte.get_meta("gira"), -delta * 1.5 * GameState.velocita)
 	if _avviso.visible:
 		_avviso.position.y = _altezza_tetto() + 0.8 + sin(_tempo * 4.0) * 0.15
 
@@ -87,6 +93,8 @@ func _ha_forma(forma: String) -> bool:
 func _costruisci() -> void:
 	_completo = b.progresso >= 1.0
 	_stagione = GameState.stagione
+	_fase = _fase_cantiere()
+	_parti_che_girano.clear()
 	if _pale:
 		_pale.queue_free()
 		_pale = null
@@ -99,9 +107,14 @@ func _costruisci() -> void:
 	var k := LowPoly.Costruttore.new()
 	if _completo:
 		_modello = CatalogoModelli.istanzia(b.tipo, _larghezza, _profondita)
+	else:
+		_modello = CatalogoModelli.istanzia_cantiere(b.progresso, _larghezza, _profondita)
 	if _modello:
 		add_child(_modello)
-		_altezza_modello = CatalogoModelli._ingombro(_modello, Transform3D.IDENTITY).end.y
+		_altezza_modello = CatalogoModelli.ingombro(_modello).end.y
+		_trova_parti_che_girano(_modello)
+		if not _completo:
+			_barra_avanzamento(k, _altezza_modello + 0.6)
 	elif not _completo:
 		_cantiere(k)
 	else:
@@ -125,6 +138,19 @@ func _costruisci() -> void:
 					_crea_pale()
 	_corpo.mesh = k.mesh()
 	aggiorna()
+
+
+func _fase_cantiere() -> int:
+	if b.progresso >= 1.0:
+		return -1
+	return int(b.progresso * CatalogoModelli.numero_fasi_cantiere())
+
+
+func _trova_parti_che_girano(nodo: Node) -> void:
+	if nodo.has_meta("gira"):
+		_parti_che_girano.append(nodo)
+	for figlio in nodo.get_children():
+		_trova_parti_che_girano(figlio)
 
 
 func _altezza_muri() -> float:
@@ -220,10 +246,14 @@ func _cantiere(k: LowPoly.Costruttore) -> void:
 	k.forma(LowPoly.cubo(Vector3(ww * 0.9, 0.14, 0.14)), LowPoly.t(Vector3(0, 2.0, dd / 2.3)), LEGNO)
 	k.forma(LowPoly.cubo(Vector3(ww * 0.9, 0.14, 0.14)), LowPoly.t(Vector3(0, 2.0, -dd / 2.3)), LEGNO)
 	k.forma(LowPoly.cubo(Vector3(0.9, 0.3, 0.6)), LowPoly.t(Vector3(-ww / 4, 0.35, 0)), COLORI_RISORSE.legna)
-	# barra di avanzamento sopra il cantiere
+	_barra_avanzamento(k, 2.8)
+
+
+## Barra gialla sopra il cantiere: lo sfondo va nella mesh del corpo, la parte che cresce è a parte.
+func _barra_avanzamento(k: LowPoly.Costruttore, quota: float) -> void:
 	var lunga := _larghezza - 0.8
-	k.forma(LowPoly.cubo(Vector3(lunga + 0.1, 0.16, 0.16)), LowPoly.t(Vector3(0, 2.8, 0)), Color(0.15, 0.1, 0.05))
-	_barra = _mesh(LowPoly.Costruttore.new().forma(LowPoly.cubo(Vector3(lunga, 0.2, 0.2)), LowPoly.t(Vector3(0, 2.8, 0)), ORO).mesh())
+	k.forma(LowPoly.cubo(Vector3(lunga + 0.1, 0.16, 0.16)), LowPoly.t(Vector3(0, quota, 0)), Color(0.15, 0.1, 0.05))
+	_barra = _mesh(LowPoly.Costruttore.new().forma(LowPoly.cubo(Vector3(lunga, 0.2, 0.2)), LowPoly.t(Vector3(0, quota, 0)), ORO).mesh())
 
 
 func _crea_pale() -> void:

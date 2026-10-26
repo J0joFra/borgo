@@ -3,4 +3,4 @@
 /android/
 *.apk
 *.aab
-export_presets.cfg
+/build/

@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://86p2633t3hh1"
+path="res://.godot/imported/building_watermill_green_building_watermill_wheel_green.obj-5b6003e49e328a7d79558d99ef67faa8.mesh"
+
+[deps]
+
+files=["res://.godot/imported/building_watermill_green_building_watermill_wheel_green.obj-5b6003e49e328a7d79558d99ef67faa8.mesh"]
+
+source_file="res://art/models/kaykit/buildings/green/building_watermill_green_building_watermill_wheel_green.obj"
+dest_files=["res://.godot/imported/building_watermill_green_building_watermill_wheel_green.obj-5b6003e49e328a7d79558d99ef67faa8.mesh", "res://.godot/imported/building_watermill_green_building_watermill_wheel_green.obj-5b6003e49e328a7d79558d99ef67faa8.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

@@ -6,11 +6,23 @@ Il design completo è nel documento "Borgo — Game Design Document".
 ![Il feudo](docs/feudo.png)
 ![La mappa del regno](docs/regno.png)
 
-## Come aprirlo
+## Provare il gioco
 
-1. Scarica Godot 4.4 (versione standard, non .NET) da <https://godotengine.org/download>.
-2. Nel Project Manager: **Importa** → scegli il file `project.godot` di questa cartella.
-3. Premi **F5** per giocare.
+**Nel browser (anteprima):** a ogni push su `main` il workflow "Anteprima web" esporta il gioco e lo pubblica su
+<https://j0jofra.github.io/borgo/>. Funziona anche dal telefono. Va attivato una volta sola:
+**Settings → Pages → Source: GitHub Actions**. (Su un repository privato GitHub Pages richiede un piano a pagamento;
+altrimenti rendi pubblico il repository.)
+
+**In Godot:**
+
+1. Installa [GitHub Desktop](https://desktop.github.com/) e clona questo repository (**File → Clone repository → borgo**).
+2. Scarica Godot 4.4 (versione standard, non .NET) da <https://godotengine.org/download>.
+3. Nel Project Manager di Godot: **Importa** → scegli il file `project.godot` nella cartella clonata. Premi **F5** per giocare.
+
+**Tenere GitHub e Godot allineati:** Godot lavora sui file della cartella clonata, non su GitHub.
+- Per avere sul tuo PC le modifiche arrivate su GitHub: in GitHub Desktop **Fetch origin**, poi **Pull origin**.
+  Torna su Godot: si accorge da solo dei file cambiati e li reimporta (se una scena era aperta, chiudila e riaprila).
+- Per mandare su GitHub le tue modifiche: in GitHub Desktop scrivi un messaggio, **Commit to main**, poi **Push origin**.
 
 Il gioco parte dalla **mappa del regno**: tocca la tua regione (bordata di rosso) per entrare nel **feudo**.
 Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zoom minimo.
@@ -50,25 +62,30 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 
 La logica di gioco lavora su una griglia 2D di celle; il 3D è solo la sua rappresentazione.
 
-### Mettere i modelli veri (KayKit)
+### Modelli 3D (KayKit)
 
-Il gioco cerca da solo i modelli in `art/models/` e li usa al posto delle forme provvisorie.
-Ogni modello viene centrato, appoggiato a terra e scalato per stare nell'area dell'edificio.
+Gli edifici usano il **KayKit Medieval Hexagon Pack** (CC0, di Kay Lousberg) in `art/models/kaykit/`:
 
-1. Scarica gratis **KayKit Medieval Hexagon Pack** da <https://kaylousberg.itch.io/kaykit-medieval-hexagon>
-   ("Download Now", poi "No thanks, just take me to the downloads"). Licenza CC0.
-2. Scompatta lo zip e copia la cartella dei modelli `gltf` (quella con le sottocartelle `buildings`, `decoration`…)
-   dentro `art/models/` del progetto, ad esempio `art/models/kaykit/`.
-3. Apri il progetto in Godot: importa i file da solo (la prima volta ci mette un po'). Premi F5.
+| Cartella | Contenuto |
+| --- | --- |
+| `buildings/red`, `blue`, `green`, `yellow` | edifici nei 4 colori delle fazioni |
+| `buildings/neutral` | cantieri, campo di grano, mura, ponti |
+| `props` | casse, barili, tende, bandiere |
+| `nature` | alberi, rocce, colline, montagne |
+| `info` | licenza, guida e immagini del pacchetto (Godot la ignora) |
 
-Quale file va a quale edificio lo decide `data/modelli.json`: per ogni edificio c'è un elenco di parole
-cercate nel nome del file, in ordine (es. la chiesa cerca `church`). `colore_preferito` sceglie la variante
-di colore della fazione (`red`, `blue`, `green`, `yellow`). Se un edificio non trova nulla resta la forma
-provvisoria, quindi puoi aggiungere modelli un po' alla volta. Il campo resta sempre provvisorio,
-perché cambia colore con le stagioni.
+Il gioco cerca i modelli da solo: `data/modelli.json` dice, per ogni edificio, quale parola cercare nel nome del file
+(es. la chiesa cerca `building_church`). Si possono cambiare liberamente:
 
-Se un modello è girato dalla parte sbagliata, cambia `rotazione` (in gradi); se è troppo grande o piccolo,
-`riempimento` (0,9 = occupa il 90% dell'area).
+- `colore_preferito`: il colore della tua fazione (`red`, `blue`, `green`, `yellow`).
+- `scala`: quanti metri vale un'unità del pacchetto (4 = una casa grande come 2×2 celle). Uguale per tutti, così le proporzioni restano giuste.
+- `riempimento`: se un modello è più grande della sua area viene rimpicciolito fino a questa quota (0,92 = 92%).
+- `rotazione`: gira tutti i modelli (in gradi).
+- `cantiere`: i modelli mostrati durante la costruzione, uno per fase.
+
+Gli OBJ di KayKit sono divisi in pezzi (es. mulino: base, tetto, pale): il gioco li unisce e fa girare pale e ruote.
+Se per un edificio non trova nulla usa la forma provvisoria in codice. Alberi e rocce del terreno restano quelli
+generati in codice, perché cambiano colore con le stagioni; anche il campo di grano KayKit resta dorato tutto l'anno.
 
 ## Test
 
@@ -86,4 +103,4 @@ Controlla produzione, fame, inverno, tasse, livelli, salvataggio e regole del te
 2. Installa Android Studio (serve l'SDK) e imposta i percorsi in **Editor → Impostazioni editor → Esporta → Android**.
 3. **Progetto → Esporta → Aggiungi → Android**, poi esporta l'APK, oppure usa il pulsante di deploy con il telefono collegato via USB.
 
-L'orientamento è già bloccato in orizzontale. Il renderer è "Compatibility", il più adatto ai telefoni economici.
+L'orientamento è già bloccato in orizzontale. Il renderer è "Compatibility", il più adatto ai telefoni economici e al browser.

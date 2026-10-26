@@ -36,6 +36,23 @@ func _via() -> void:
 	f._seleziona(GameState.buildings[3].id)
 	await _attendi(0.8)
 	await _scatta("5_costruito")
+	# vetrina: un esemplare di ogni edificio, già finito
+	GameState.livello = 2
+	for r in GameState.risorse:
+		GameState.risorse[r] = 500.0
+	var vicino := Vector2i(24, 24)
+	for tipo in ["mulino", "chiesa", "mercato", "maniero", "campo", "taverna", "fabbro", "cacciatore", "magazzino"]:
+		var p := t.trova_posto(tipo, vicino)
+		if p.x >= 0:
+			var nuovo := GameState.piazza(tipo, p, 1.0)
+			nuovo.progresso = 1.0 if tipo != "taverna" else 0.5
+	await _attendi(1.5)
+	f.camera.position = Vector3(50, 0, 50)
+	await _scatta("5b_vetrina")
+	f.camera.cambia_zoom(1)
+	await _attendi(0.5)
+	await _scatta("5c_vetrina_vicino")
+	f.camera.cambia_zoom(-1)
 	f.camera.cambia_zoom(1)
 	f.camera.ruota(1)
 	await _attendi(1.0)
