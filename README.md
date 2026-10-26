@@ -5,6 +5,8 @@ Il design completo è nel documento "Borgo — Game Design Document".
 
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
 ![Una carta evento raccontata da un consigliere](docs/carta_evento.png)
+![Banditi in arrivo con le torce: la gente corre alla dimora](docs/banditi.png)
+![Tasse della stagione e difesa nel pannello Info](docs/info_tasse.png)
 ![Dopo un anno il falò diventa la piazza; la gente cammina lungo le strade](docs/piazza.png)
 ![Le tende reggono una stagione: servono case vere](docs/tende.png)
 ![Il falò, la torre del signore e le tende](docs/falo.png)
@@ -57,6 +59,21 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   scegli; le scelte che non puoi permetterti sono spente. Alcune hanno effetti che durano qualche stagione
   (un edificio rallentato, raccolti migliori, più legna per scaldarsi, tassa del re dimezzata). Racconta il consigliere
   esperto di quella materia. Le carte sono in `data/eventi.json` e se ne aggiungono facilmente.
+- **Banditi e difese** (dal Borgo in poi, o comunque dal terzo anno): ogni tanto una banda viene avvistata al confine.
+  Un consigliere avvisa da dove arriva, quanti sono e quanto siamo forti; in alto resta il conto alla rovescia.
+  I banditi (con le torce) camminano verso la dimora e la gente corre a rifugiarsi lì, dritta, senza seguire le strade.
+  La difesa è la somma di milizia (tutti gli abitanti), guardie nelle **torri di guardia** (valgono molto di più, ×1,5 se
+  armate) e **palizzate**. L'**armeria** fa armi con ferro e legna. La torre avvista la banda prima: più giorni per
+  prepararsi. Se vinciamo la gente festeggia; se perdiamo rubano una parte delle scorte (tanto più quanto eravamo deboli),
+  qualcuno muore e, se eravamo molto deboli, bruciano un edificio (restano le rovine da sgomberare).
+- **Tasse a ogni stagione**: a fine stagione si incassa oro secondo la media fra risorse, popolazione e gradimento.
+  La media cade in una fascia (bassa, media, buona, massima) e ogni stagione ha le sue monete per fascia: in primavera,
+  estate e autunno 1-2-3-4, in inverno 2-3-4-5, per ogni 10 abitanti. Tasse basse ne danno la metà (ma la gente è più
+  contenta), alte una volta e mezza. In autunno si paga anche il re. Il pannello Info mostra fascia e voci.
+- **Crescita fino al Borgo**: finché si è Villaggio la gente arriva più facilmente, così in circa un anno e mezzo, due
+  (con case, cibo e un magazzino) si diventa Borgo e si sbloccano mulino, armeria, difese e il resto.
+- **Raccoglitori e piante selvatiche**: vicino a una macchia di orzo, grano o rape selvatici, nella stagione di quella
+  pianta il raccoglitore porta 2 raccolti su 3 di quella pianta e 1 di cibo; fuori stagione, o lontano dalle piante, solo cibo.
 - **Consiglio**: i due consiglieri guardano il villaggio e suggeriscono cosa fare, ognuno sulla sua arte (cibo, legna,
   case, oro, felicità, costruire); non ripetono mai lo stesso consiglio. In futuro potranno diventare vassalli delle terre conquistate.
 - **Dimora del signore**: scelta la guida, la tenda della sua famiglia diventa una torre a forma di castello attaccata al falò:
@@ -96,7 +113,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Feudo in 3D** con modelli KayKit, telecamera isometrica con zoom e rotazione, stagioni visibili (erba, chiome, neve, luce).
 - **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
 
-**Da fare**: banditi e difese (in guerra la gente non segue le strade), conquista delle regioni e vassalli, audio.
+**Da fare**: conquista delle regioni e vassalli, mura in pietra, audio.
 
 ## Dove cambiare le cose
 
@@ -110,6 +127,8 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 | Mercato: prezzi, margini, eventi del regno | `data/mercato.json` |
 | Carte evento: testi, scelte, effetti | `data/eventi.json` |
 | Simbolini delle risorse | `scripts/ui/icona_risorsa.gd` |
+| Banditi, tasse stagionali, crescita prima del Borgo | `data/bilanciamento.json` (`banditi`, `tasse_stagionali`, `crescita_prima_del_borgo`) |
+| Banditi che si vedono sul feudo | `scripts/feudo/banditi.gd` |
 | Regole del mercato | `scripts/mercato.gd` |
 | Regioni della mappa (condivise da mappa e mercato) | `scripts/regno/regioni.gd` |
 | Consigli dei consiglieri | `scripts/consiglio.gd` |

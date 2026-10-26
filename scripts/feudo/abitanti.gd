@@ -23,6 +23,8 @@ func _ready() -> void:
 	for tunica in TUNICHE:
 		_mesh.append(_crea_mesh(tunica))
 	GameState.changed.connect(_ricalcola)
+	GameState.banditi_avvistati.connect(func(_d): _tutti_si_muovono())
+	GameState.incursione.connect(func(_e): _tutti_si_muovono())
 	_ricalcola()
 
 
@@ -85,7 +87,7 @@ func _process(delta: float) -> void:
 			continue
 		var verso: Vector3 = p.destinazione - nodo.position
 		verso.y = 0.0
-		var passo := VELOCITA * dt
+		var passo := VELOCITA * dt * (2.0 if not GameState.banditi.is_empty() else 1.0)
 		if verso.length() <= passo:
 			nodo.position = Vector3(p.destinazione.x, _quota(p.destinazione), p.destinazione.z)
 			if p.tappe.is_empty():
@@ -101,8 +103,21 @@ func _process(delta: float) -> void:
 		nodo.rotation.y = atan2(direzione.x, direzione.z)
 
 
+## Quando cambia qualcosa di grosso (arrivano i banditi, se ne vanno) ognuno riparte subito.
+func _tutti_si_muovono() -> void:
+	for p in _persone:
+		p.attesa = randf_range(0.0, 0.6)
+		p.tappe = []
+		p.destinazione = p.nodo.position
+
+
 ## Dove va ora: chi lavora fa avanti e indietro tra lavoro e casa, gli altri girano attorno al falò.
+## Con i banditi in arrivo tutti corrono a rifugiarsi attorno alla dimora del signore.
 func _prossima_meta(p: Dictionary) -> Vector3:
+	if not GameState.banditi.is_empty():
+		for b in GameState.buildings:
+			if b.tipo == "dimora":
+				return _punto_attorno(b.id)
 	if p.lavoro >= 0 and (p.verso_lavoro or p.casa < 0):
 		p.verso_lavoro = randf() < 0.75  # di solito resta a lavorare, ogni tanto torna a casa
 		return _punto_attorno(p.lavoro)
@@ -139,8 +154,8 @@ func _punto_attorno(id: int) -> Vector3:
 ## si segue la strada (cella per cella), altrimenti si va dritti.
 func _cammino(da: Vector3, a: Vector3) -> Array:
 	var terreno := vista.terreno
-	if terreno.strade.is_empty():
-		return [a]
+	if terreno.strade.is_empty() or not GameState.banditi.is_empty():
+		return [a]  # in guerra si corre dritti, strade o no
 	var cella_da := _cella(da)
 	var cella_a := _cella(a)
 	var inizio := _strada_vicina(cella_da)

@@ -166,7 +166,8 @@
 		"miglioramenti": [
 			{"nome": "Capanno dei raccoglitori", "costo": {"legna": 6, "pietra": 4}, "produzione": 1.4},
 			{"nome": "Dispensa del bosco", "costo": {"legna": 8, "pietra": 10}, "produzione": 1.8, "lavoratori": 3}
-		]
+		],
+		"selvatiche": {"quota": 0.67, "minimo_celle": 2}
 	},
 	"pescatore": {
 		"nome": "Pescatore",
@@ -282,5 +283,49 @@
 		"vittoria": true,
 		"forma": "castello",
 		"colore": "6a2e4a"
+	},
+	"torre_guardia": {
+		"nome": "Torre di guardia",
+		"categoria": "difese",
+		"livello": 1,
+		"taglia": [2, 2],
+		"costo": {"legna": 12, "pietra": 18},
+		"lavoratori": 2,
+		"difesa_per_guardia": 6,
+		"avvista": true,
+		"riscaldamento": 2,
+		"colore": "7a6a5a"
+	},
+	"palizzata": {
+		"nome": "Palizzata",
+		"categoria": "difese",
+		"livello": 1,
+		"taglia": [1, 1],
+		"costo": {"legna": 3},
+		"lavoratori": 0,
+		"difesa": 1.5,
+		"colore": "8b5a2b"
+	},
+	"armeria": {
+		"nome": "Armeria",
+		"categoria": "difese",
+		"livello": 1,
+		"taglia": [2, 2],
+		"costo": {"legna": 15, "pietra": 20},
+		"lavoratori": 2,
+		"consuma": {"ferro": 8, "legna": 6},
+		"produce": {"armi": 12},
+		"riscaldamento": 3,
+		"colore": "5a4a3a"
+	},
+	"rovine": {
+		"nome": "Rovine",
+		"categoria": "speciale",
+		"livello": 9,
+		"taglia": [2, 2],
+		"costo": {},
+		"lavoratori": 0,
+		"felicita": -3,
+		"colore": "3a3028"
 	}
 }

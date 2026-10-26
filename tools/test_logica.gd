@@ -71,7 +71,7 @@ func _ready() -> void:
 	_verifica(GameState.risorse.legna < 0.01, "inverno: 3 case consumano 0,5 legna a tick")
 	_verifica(GameState.fattori_felicita().has("Freddo"), "freddo quando la legna finisce")
 
-	# Tasse in autunno: 10 abitanti x 1 oro, re chiede 15.
+	# Tasse d'autunno: quelle della stagione, poi il re ne chiede 10.
 	GameState.nuova_partita(42)
 	GameState.abitanti = 10
 	for i in 3:
@@ -80,7 +80,8 @@ func _ready() -> void:
 	GameState.risorse.cibo = 1000.0
 	for i in 60:
 		GameState._tick()
-	_verifica(int(GameState.risorse.oro) == 15, "tasse: 20 + 10 - 15 = 15 oro (era %d)" % GameState.risorse.oro)
+	var attese := 20 + int(GameState.ultime_tasse.monete) - 10
+	_verifica(int(GameState.risorse.oro) == attese and int(GameState.ultime_tasse.monete) > 0, "tasse: 20 + %d - 10 = %d oro (era %d)" % [GameState.ultime_tasse.monete, attese, GameState.risorse.oro])
 	_verifica(GameState.stagione == GameState.INVERNO, "autunno -> inverno")
 
 	# Due autunni senza pagare: sconfitta.
@@ -354,8 +355,9 @@ func _ready() -> void:
 	var attesi := float(GameState.colture.semi_iniziali) if GameState.terreno.selvatica_piu_vicina(TerrenoFeudo.centro_feudo()) != "" else 0.0
 	_verifica(semi_tot == attesi, "si parte con i semi della pianta selvatica vicina (%s di %s, seme %d)" % [semi_tot, attesi, GameState.seme_mappa])
 
-	# Popolazione: arrivano persone se si è felici e pieni di scorte, e c'è posto.
+	# Popolazione (regole da Borgo in poi): arrivano persone se si è felici e pieni di scorte, e c'è posto.
 	GameState.nuova_partita(3)
+	GameState.livello = 1
 	GameState.abitanti = 4
 	GameState.aggiungi_gratis("casa", Vector2i(0, 0), 1.0)
 	GameState.aggiungi_gratis("casa", Vector2i(3, 0), 1.0)
@@ -586,6 +588,184 @@ func _ready() -> void:
 	GameState.avvia()
 	_verifica(GameState.modificatori.size() == 1 and GameState.eventi_usati == ["festa"], "effetti e carte uscite si salvano")
 	_verifica(GameState.terreno.strade.size() == int(GameState.bil.strade.strada_iniziale), "la strada iniziale si salva")
+	GameState.cancella_salvataggio()
+
+	# Tasse ogni stagione: fascia secondo risorse, popolazione e gradimento.
+	GameState.nuova_partita(12)
+	GameState.abitanti = 10
+	GameState.felicita = 100.0
+	GameState.risorse.cibo = 500.0
+	GameState.risorse.legna = 100.0
+	GameState.risorse.pietra = 100.0
+	GameState.abitanti = 25
+	var alta := GameState.valutazione_tasse()
+	GameState.abitanti = 10
+	GameState.stagione = GameState.INVERNO
+	GameState.felicita = 100.0
+	var v_alta := GameState.valutazione_tasse()
+	_verifica(alta.fascia == 3, "tutto bene: fascia massima")
+	GameState.abitanti = 10
+	GameState.felicita = 90.0
+	GameState.risorse.pietra = 100.0
+	var inv := GameState.valutazione_tasse()
+	GameState.stagione = GameState.PRIMAVERA
+	var pri := GameState.valutazione_tasse()
+	_verifica(inv.monete == int(GameState.bil.tasse_stagionali.monete.inverno[inv.fascia]) and pri.monete == int(GameState.bil.tasse_stagionali.monete.primavera[pri.fascia]),
+		"le monete dipendono da stagione e fascia (inverno %d, primavera %d)" % [inv.monete, pri.monete])
+	GameState.felicita = 10.0
+	GameState.risorse.cibo = 0.0
+	GameState.risorse.legna = 0.0
+	GameState.risorse.pietra = 0.0
+	GameState.abitanti = 3
+	var bassa := GameState.valutazione_tasse()
+	_verifica(bassa.fascia == 0 and bassa.monete == 1, "villaggio in miseria: fascia bassa, 1 moneta")
+	GameState.abitanti = 30
+	GameState.felicita = 100.0
+	GameState.risorse.cibo = 1000.0
+	GameState.risorse.legna = 100.0
+	GameState.risorse.pietra = 100.0
+	GameState.stagione = GameState.INVERNO
+	var grande := GameState.valutazione_tasse()
+	_verifica(grande.monete == 15 and v_alta.monete >= 4, "più abitanti, più monete: 30 abitanti in inverno al massimo = 15 (%d)" % grande.monete)
+	GameState.tasse = "alte"
+	_verifica(GameState.valutazione_tasse().monete > grande.monete, "tasse alte: più oro")
+	var oro_prima: float = GameState.risorse.oro
+	GameState.stagione = GameState.PRIMAVERA
+	GameState._riscuoti_tasse()
+	_verifica(GameState.risorse.oro > oro_prima, "a fine primavera si incassa")
+
+	# Prima del Borgo la gente arriva più in fretta: da 10 a 25 in un anno e mezzo, due.
+	var stagioni_per_borgo: Array[int] = []
+	for seme in [1, 2, 3, 4, 5]:
+		GameState.nuova_partita(seme)
+		GameState.abitanti = 10
+		GameState.felicita = 56.0
+		for i in 7:
+			GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
+		var stagioni := 0
+		while GameState.abitanti < 25 and stagioni < 20:
+			GameState.risorse.cibo = GameState.abitanti * 6.0  # scorte per una stagione
+			for controllo in 4:
+				GameState._arrivi()
+			stagioni += 1
+		stagioni_per_borgo.append(stagioni)
+	var media := 0.0
+	for n in stagioni_per_borgo:
+		media += n
+	media /= stagioni_per_borgo.size()
+	_verifica(media >= 4.5 and media <= 9.0, "da 10 a 25 abitanti in circa 6-8 stagioni (%s)" % str(stagioni_per_borgo))
+	GameState.livello = 1
+	var attr_dopo := GameState.calcola_attrattiva()
+	GameState.livello = 0
+	_verifica(GameState.calcola_attrattiva() > attr_dopo, "da Borgo in poi si cresce più piano")
+
+	# Raccoglitori vicino alle piante selvatiche: nella loro stagione, 2 raccolti su 3.
+	GameState.ricomincia()
+	GameState.avvia()
+	GameState.cancella_salvataggio()
+	var tr := GameState.terreno
+	var posto_r := Vector2i(-1, -1)
+	var pianta := ""
+	for i in tr.selvatiche:
+		var cella_s := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		var cand := tr.trova_posto("raccoglitore", cella_s)
+		if cand.x < 0:
+			continue
+		var vicine := tr.selvatiche_attorno(cand, Vector2i(2, 2), 4)
+		if vicine.size() == 1 and int(vicine.values()[0]) >= 2:
+			posto_r = cand
+			pianta = vicine.keys()[0]
+			break
+	_verifica(posto_r.x >= 0, "c'è un posto vicino a un solo tipo di pianta selvatica")
+	if posto_r.x >= 0:
+		var rac := GameState.aggiungi_gratis("raccoglitore", posto_r, 1.0)
+		rac.lavoratori = 2
+		var col: Dictionary = GameState.colture[pianta]
+		GameState.stagione = GameState.CHIAVI_STAGIONI.find(col.stagioni[0])
+		_verifica(GameState.selvatica_di_stagione(rac) == pianta, "nella stagione di %s il raccoglitore lo raccoglie" % pianta)
+		var risorsa_p: String = col.risorsa
+		var cibo_p: float = GameState.risorse.cibo
+		var pianta_p: float = GameState.risorse[risorsa_p]
+		GameState._tick()
+		var d_cibo: float = GameState.risorse.cibo - cibo_p + GameState.abitanti * float(GameState.bil.cibo_per_abitante_tick)
+		var d_pianta: float = GameState.risorse[risorsa_p] - pianta_p
+		_verifica(d_cibo > 0.0 and absf(d_pianta / d_cibo - 2.0) < 0.15, "%s e cibo 2 a 1 (%.2f / %.2f)" % [pianta, d_pianta, d_cibo])
+		var fuori_st := -1
+		for st in 4:
+			if not GameState.CHIAVI_STAGIONI[st] in col.stagioni and st != GameState.INVERNO:
+				fuori_st = st
+		GameState.stagione = fuori_st
+		_verifica(GameState.selvatica_di_stagione(rac) == "", "fuori stagione solo cibo")
+		var lontano_r := GameState.aggiungi_gratis("raccoglitore", tr.trova_posto("raccoglitore", TerrenoFeudo.centro_feudo() + Vector2i(0, 12)), 1.0)
+		GameState.stagione = GameState.CHIAVI_STAGIONI.find(col.stagioni[0])
+		var vicine_l := tr.selvatiche_attorno(lontano_r.cella, Vector2i(2, 2), 4)
+		_verifica(vicine_l.values().any(func(n): return n >= 2) or GameState.selvatica_di_stagione(lontano_r) == "", "lontano dalle piante solo cibo")
+	GameState.cancella_salvataggio()
+
+	# Banditi e difese.
+	GameState.nuova_partita(21)
+	GameState.capo = 0
+	_verifica(not GameState.banditi_possibili(), "da villaggio, i primi anni, niente banditi")
+	GameState.livello = 1
+	_verifica(GameState.banditi_possibili(), "da Borgo arrivano i banditi")
+	GameState.abitanti = 10
+	for i in 3:
+		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
+	var d0 := GameState.difesa()
+	_verifica(is_equal_approx(d0.totale, 3.0), "senza difese c'è solo la milizia: 10 x 0,3 = 3")
+	var torre := GameState.aggiungi_gratis("torre_guardia", Vector2i(0, 4), 1.0)
+	torre.lavoratori = 2
+	GameState.aggiungi_gratis("palizzata", Vector2i(4, 4), 1.0)
+	GameState.aggiungi_gratis("palizzata", Vector2i(5, 4), 1.0)
+	_verifica(is_equal_approx(GameState.difesa().totale, 3.0 + 12.0 + 3.0), "torre con 2 guardie (+12) e 2 palizzate (+3)")
+	GameState.risorse.armi = 2.0
+	_verifica(is_equal_approx(GameState.difesa().forza_guardie, 18.0), "guardie armate: x1,5")
+	GameState._avvista_banditi()
+	var bd: Dictionary = GameState.banditi
+	_verifica(not bd.is_empty() and TerrenoFeudo.FEUDO.has_point(bd.entrata) and int(bd.mancano) == int(GameState.bil.banditi.preavviso_con_torre),
+		"la torre avvista i banditi prima (%d giorni)" % int(bd.get("mancano", 0)))
+	var esiti := []
+	GameState.incursione.connect(func(e): esiti.append(e))
+	GameState.banditi.forza = 10.0
+	GameState.banditi.mancano = 3
+	var fel_b := GameState.felicita
+	GameState.risorse.cibo = 1000.0
+	for i in 3:
+		GameState._tick()
+	_verifica(esiti.size() == 1 and esiti[0].vinto and GameState.banditi.is_empty(), "arrivati i banditi, la difesa li respinge")
+	_verifica(GameState.felicita > fel_b, "una vittoria fa piacere")
+	torre.lavoratori = 0
+	GameState.risorse.armi = 0.0
+	GameState.risorse.oro = 100.0
+	GameState.risorse.legna = 100.0
+	var gente_b := GameState.abitanti
+	GameState._avvista_banditi()
+	GameState.banditi.forza = 60.0
+	GameState._incursione()
+	var e2: Dictionary = esiti[1]
+	_verifica(not e2.vinto and GameState.risorse.oro < 100.0 and e2.rubato.has("oro"), "sconfitti: rubano l'oro (%s)" % str(e2.rubato))
+	_verifica(GameState.abitanti < gente_b, "qualcuno ci lascia la pelle")
+	_verifica(e2.bruciato >= 0 and GameState.trova(e2.bruciato).tipo == "rovine", "molto più deboli: bruciano un edificio")
+	GameState.demolisci(e2.bruciato)
+	_verifica(GameState.trova(e2.bruciato).is_empty(), "le rovine si sgomberano")
+	var uscite := 0
+	for i in 40:
+		GameState._programma_banditi()
+		if GameState._tick_banditi >= 0:
+			uscite += 1
+	_verifica(uscite > 5 and uscite < 35, "non tutte le stagioni arrivano banditi (%d su 40)" % uscite)
+
+	# Salvataggio della versione 6: banditi in arrivo.
+	GameState.ricomincia()
+	GameState.avvia()
+	GameState.scegli_capo(0)
+	GameState.livello = 1
+	GameState._avvista_banditi()
+	var entrata_b: Vector2i = GameState.banditi.entrata
+	GameState.salva()
+	GameState.in_corso = false
+	GameState.avvia()
+	_verifica(not GameState.banditi.is_empty() and GameState.banditi.entrata == entrata_b, "i banditi in arrivo si salvano")
 	GameState.cancella_salvataggio()
 
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])

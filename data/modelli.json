@@ -15,7 +15,7 @@
 		"fabbro": ["building_blacksmith"],
 		"raccoglitore": ["building_home_b"],
 		"pescatore": ["building_home_b"],
-		"cacciatore": ["building_archeryrange"],
+		"cacciatore": ["building_home_b"],
 		"campo": [],
 		"mulino": ["building_windmill"],
 		"forno": ["building_home_b"],
@@ -25,7 +25,11 @@
 		"maniero": ["building_castle"],
 		"dimora": ["building_tower_a"],
 		"forestale": ["building_home_b"],
-		"piazza": ["building_well"]
+		"piazza": ["building_well"],
+		"torre_guardia": ["building_tower_base"],
+		"palizzata": ["fence_wood_straight"],
+		"armeria": ["building_archeryrange"],
+		"rovine": ["building_destroyed"]
 	},
 	"per_livello": {"dimora": {"2": ["building_tower_b"]}}
 }

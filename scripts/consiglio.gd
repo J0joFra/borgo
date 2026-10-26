@@ -80,9 +80,13 @@ static func attivi() -> Array:
 		lista.append(_c("lavoro", 50, "Abbiamo %d braccia libere: un nuovo edificio darebbe loro lavoro." % gs.disoccupati()))
 
 	# Oro
-	var incasso := int(gs.abitanti * int(gs.bil.tasse[gs.tasse].oro) * float(gs.tratto(gs.capo).get("tasse", 1.0)))
+	var v := gs.valutazione_tasse()
+	var incasso := int(v.monete) * (gs.AUTUNNO - gs.stagione + 1)
 	if gs.stagione in [gs.ESTATE, gs.AUTUNNO] and gs.risorse.oro + incasso < gs.tassa_del_re():
 		lista.append(_c("oro", 75, "In autunno il re vorrà %d oro e ne avremo circa %d. Un mercato o tasse più alte ci servirebbero." % [gs.tassa_del_re(), int(gs.risorse.oro) + incasso]))
+	if v.fascia <= 1 and gs.abitanti > 0:
+		var debole: String = "le scorte" if v.risorse <= minf(v.popolazione, v.gradimento) else ("la popolazione" if v.popolazione <= v.gradimento else "il gradimento")
+		lista.append(_c("oro", 38, "Le tasse rendono poco (%d oro a stagione, fascia %s): pesa soprattutto %s." % [v.monete, gs.NOMI_FASCE[v.fascia], debole]))
 
 	# Campi: cibo per l'inverno
 	if not _esiste(["campo"]) and gs.stagione == gs.PRIMAVERA:
@@ -118,6 +122,22 @@ static func attivi() -> Array:
 				staccati += 1
 		if staccati > 0:
 			lista.append(_c("costruire", 36, "%d edifici non sono collegati alla piazza da una strada: lavorano il 2%% in meno. Una strada che li tocchi e arrivi in piazza toglie il ritardo." % staccati))
+
+	# Banditi e difese
+	if not gs.banditi.is_empty():
+		var dif: Dictionary = gs.difesa()
+		if dif.totale < float(gs.banditi.forza):
+			lista.append(_c("costruire", 99, "I banditi arrivano tra %d giorni e siamo più deboli (%d contro %d). Metti guardie nella torre, alza palizzate, compra armi." % [int(gs.banditi.mancano), roundi(dif.totale), roundi(gs.banditi.forza)]))
+		else:
+			lista.append(_c("costruire", 60, "I banditi arrivano tra %d giorni, ma siamo pronti: %d contro %d." % [int(gs.banditi.mancano), roundi(dif.totale), roundi(gs.banditi.forza)]))
+	elif gs.livello >= 1 and not _esiste(["torre_guardia", "palizzata"]):
+		lista.append(_c("costruire", 74, "Ora che siamo un borgo si parla di noi, anche tra i banditi. Una torre di guardia con due guardie e qualche palizzata ci proteggerebbero."))
+	elif gs.livello >= 1 and _esiste(["torre_guardia"]) and not _esiste(["armeria"]) and gs.risorse.armi < 1.0:
+		lista.append(_c("costruire", 34, "Le guardie combattono meglio armate: un'armeria fa armi con ferro e legna."))
+	for b in gs.buildings:
+		if b.tipo == "rovine":
+			lista.append(_c("case", 48, "Le rovine bruciate dai banditi intristiscono la gente: sgomberiamole (tocca le rovine, Demolisci)."))
+			break
 
 	# Felicità
 	if gs.felicita < 40.0:

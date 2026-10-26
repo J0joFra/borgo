@@ -19,7 +19,7 @@ signal ruota(direzione: int)
 signal vai_al_regno
 signal nuova_partita
 
-const CATEGORIE := [["Case", "case"], ["Risorse", "risorse"], ["Cibo", "cibo"], ["Servizi", "servizi"]]
+const CATEGORIE := [["Case", "case"], ["Risorse", "risorse"], ["Cibo", "cibo"], ["Servizi", "servizi"], ["Difese", "difese"]]
 const COLORI := {
 	"legna": Color("8b5a2b"), "pietra": Color("9a9a9a"), "cibo": Color("c0392b"), "grano": Color("e0b84a"),
 	"orzo": Color("d8c070"), "rape": Color("8a5a9a"),
@@ -29,7 +29,7 @@ const COLORI := {
 const NOMI_RISORSE := {
 	"legna": "Legna", "pietra": "Pietra", "cibo": "Cibo", "grano": "Grano", "orzo": "Orzo", "rape": "Rape",
 	"semi_orzo": "Semi d'orzo", "semi_grano": "Semi di grano", "semi_rape": "Semi di rapa",
-	"ferro": "Ferro", "utensili": "Utensili", "oro": "Oro",
+	"ferro": "Ferro", "utensili": "Utensili", "armi": "Armi", "oro": "Oro",
 }
 const TESTO := Color("f3e3c3")
 const TESTO_ALLARME := Color("ff6b5b")
@@ -66,6 +66,7 @@ var _consiglio: PanelContainer
 var _consiglio_testo: Label
 var _tasse: Array[Button] = []
 var _avviso: Label
+var _allarme: Label  # banditi in arrivo
 var _tempo_avviso := 0.0
 var _fine: PanelContainer
 var _fine_titolo: Label
@@ -91,6 +92,7 @@ func _ready() -> void:
 	_crea_barra()
 	_crea_lati()
 	_crea_avviso()  # prima dei pannelli, così gli avvisi stanno sotto di loro
+	_crea_allarme()
 	_crea_menu()
 	_crea_pannello()
 	_crea_info()
@@ -219,13 +221,14 @@ func _crea_barra() -> void:
 	barra.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_radice.add_child(barra)
 	var riga := HBoxContainer.new()
+	riga.add_theme_constant_override("separation", 2)
 	barra.add_child(riga)
 	for chiave in GameState.RISORSE_VISIBILI + ["abitanti", "disponibili", "felicita"]:
 		var icona := _icona(chiave)
 		_icone[chiave] = icona
 		riga.add_child(icona)
 		var l := Label.new()
-		l.custom_minimum_size.x = 22 if chiave != "abitanti" else 30
+		l.custom_minimum_size.x = 18 if chiave != "abitanti" else 28
 		l.tooltip_text = IconaRisorsa.NOMI.get(chiave, chiave)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		riga.add_child(l)
@@ -236,7 +239,7 @@ func _crea_barra() -> void:
 	_tempo = Label.new()
 	riga.add_child(_tempo)
 	for i in 4:
-		var b := _bottone(["||", "x1", "x2", "x3"][i], 16, 12)
+		var b := _bottone(["||", "x1", "x2", "x3"][i], 14, 12)
 		b.toggle_mode = true
 		b.pressed.connect(_imposta_velocita.bind(i))
 		riga.add_child(b)
@@ -505,6 +508,22 @@ func _crea_avviso() -> void:
 	_radice.add_child(_avviso)
 
 
+func _crea_allarme() -> void:
+	_allarme = Label.new()
+	_allarme.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_allarme.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_allarme.offset_top = 46
+	_allarme.offset_left = -170
+	_allarme.offset_right = 170
+	_allarme.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_allarme.add_theme_color_override("font_color", Color("ffb0a0"))
+	_allarme.add_theme_color_override("font_outline_color", Color("3a0a08"))
+	_allarme.add_theme_constant_override("outline_size", 3)
+	_allarme.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_allarme.visible = false
+	_radice.add_child(_allarme)
+
+
 func _crea_fine() -> void:
 	_fine = PanelContainer.new()
 	_fine.set_anchors_preset(Control.PRESET_CENTER)
@@ -545,6 +564,11 @@ func _aggiorna() -> void:
 	_numeri.abitanti.add_theme_color_override("font_color", TESTO_ALLARME if GameState.senza_casa() > 0 else TESTO)
 	_numeri.disponibili.text = str(GameState.disoccupati())
 	_numeri.felicita.text = str(int(GameState.felicita))
+	_allarme.visible = not GameState.banditi.is_empty()
+	if _allarme.visible:
+		var dif: Dictionary = GameState.difesa()
+		_allarme.text = "Banditi da %s tra %d giorni · loro %d, noi %d" % [GameState.banditi.da, int(GameState.banditi.mancano),
+			roundi(GameState.banditi.forza), roundi(dif.totale)]
 	_numeri.felicita.add_theme_color_override("font_color", TESTO_ALLARME if GameState.felicita < 35.0 else TESTO)
 	(_icone.felicita.get_child(0) as IconaRisorsa).imposta_valore(GameState.felicita)
 	_tempo.text = "%s, anno %d" % [GameState.STAGIONI[GameState.stagione], GameState.anno]
@@ -571,10 +595,12 @@ func _da_mostrare(r: String) -> bool:
 		return true
 	if GameState.risorse.get(r, 0.0) >= 1.0:
 		return true
-	if r in ["ferro", "utensili"]:
-		return GameState.livello >= 1
+	# ferro, utensili, armi e raccolti: solo se c'è chi li produce o li usa
 	for b in GameState.buildings:
-		if GameState.coltura_di(b).get("risorsa", "") == r:
+		var d: Dictionary = GameState.edifici[b.tipo]
+		if GameState.coltura_di(b).get("risorsa", "") == r or d.get("produce", {}).has(r) or d.get("consuma", {}).has(r):
+			return true
+		if r == "armi" and d.has("difesa_per_guardia"):
 			return true
 	return false
 
@@ -690,6 +716,12 @@ func _aggiorna_pannello() -> void:
 		_btn_migliora.text = "Migliora (%s)" % GameState._elenco(prossimo.costo)
 		_btn_migliora.disabled = not GameState.puo_migliorare(b)
 		testo += "\nProssimo livello: %s" % prossimo.nome
+	if d.has("difesa_per_guardia"):
+		testo = "Ogni guardia vale %d di difesa (x%.1f con le armi); avvista i banditi prima: più giorni per prepararsi" % [int(d.difesa_per_guardia), float(GameState.bil.banditi.bonus_armi)]
+	elif d.has("difesa"):
+		testo = "Difesa +%.1f contro i banditi" % float(d.difesa)
+	elif b.tipo == "rovine":
+		testo = "Bruciato dai banditi. Demolisci per sgomberare le rovine."
 	if int(d.lavoratori) > 0 and not GameState.collegato(b):
 		testo += "\nNon collegato alla piazza: -%d%% di lavoro (serve una strada che lo tocchi)" % roundi(float(GameState.bil.strade.malus_non_collegato) * 100)
 	var durata := int(GameState.edifici[b.tipo].get("durata_stagioni", 0))
@@ -740,7 +772,14 @@ func _aggiorna_info() -> void:
 	righe.append("Felicità %d → %s" % [int(GameState.felicita), ", ".join(voci)])
 	righe.append("Nuovi arrivi: attrattiva %d%% (felicità sopra %d e scorte abbondanti, posti liberi %d)" % [
 		int(GameState.calcola_attrattiva() * 100), int(GameState.bil.crescita.soglia_arrivi), maxi(0, GameState.alloggi() - GameState.abitanti)])
-	righe.append("Tasse al re in autunno: %d oro · capacità magazzino %d" % [GameState.tassa_del_re(), GameState.capacita()])
+	var v := GameState.valutazione_tasse()
+	righe.append("Tasse a fine stagione: %d oro, fascia %s (risorse %d%%, popolazione %d%%, gradimento %d%%)" % [v.monete,
+		GameState.NOMI_FASCE[v.fascia], roundi(v.risorse * 100), roundi(v.popolazione * 100), roundi(v.gradimento * 100)])
+	righe.append("Tassa al re in autunno: %d oro · capacità magazzino %d" % [GameState.tassa_del_re(), GameState.capacita()])
+	var dif := GameState.difesa()
+	righe.append("Difesa %d: milizia %d, guardie %d (forza %d), palizzate %d%s" % [roundi(dif.totale), roundi(dif.milizia),
+		dif.guardie, roundi(dif.forza_guardie), roundi(dif.palizzate),
+		"" if GameState.banditi_possibili() else " · i banditi arriveranno quando saremo un Borgo"])
 	_info_testo.text = "\n".join(righe)
 	for i in _tasse.size():
 		_tasse[i].set_pressed_no_signal(["basse", "normali", "alte"][i] == GameState.tasse)

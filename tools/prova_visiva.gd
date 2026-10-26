@@ -167,6 +167,53 @@ func _via() -> void:
 	await _scatta("18_non_collegato")
 	f._seleziona(-1)
 
+	# Borgo: difese e banditi
+	GameState.livello = 1
+	GameState.risorse.legna = 200.0
+	GameState.risorse.pietra = 200.0
+	GameState.abitanti = maxi(GameState.abitanti, 14)
+	var dimora_v: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "dimora")[0]
+	var torre := GameState.piazza("torre_guardia", t.trova_posto("torre_guardia", dimora_v.cella + Vector2i(-4, 3)), 1.0)
+	torre.progresso = 1.0
+	torre.lavoratori = 2
+	for i in 4:
+		var pal := GameState.piazza("palizzata", t.trova_posto("palizzata", dimora_v.cella + Vector2i(-6 + i, 6)), 1.0)
+		if not pal.is_empty():
+			pal.progresso = 1.0
+	var arm := GameState.piazza("armeria", t.trova_posto("armeria", dimora_v.cella + Vector2i(4, 5)), 1.0)
+	arm.progresso = 1.0
+	GameState.risorse.armi = 4.0
+	f.hud._apri_categoria("difese")
+	await _attendi(0.5)
+	await _scatta("19_menu_difese")
+	f.hud._chiudi_menu()
+	GameState._tick_evento = -1
+	GameState._avvista_banditi()
+	GameState.banditi.mancano = 6
+	GameState.banditi.totale = 8
+	var pd: Vector3 = f.vista.centro_area(dimora_v.cella, Vector2i(2, 2))
+	var pe: Vector3 = f.vista.centro_area(GameState.banditi.entrata, Vector2i.ONE)
+	f.camera.position = pd.lerp(pe, 0.35)
+	f.camera.cambia_zoom(-1)
+	GameState.velocita = 1
+	await _attendi(3.0)
+	print("BANDITI figure: ", f.banditi._figure.size(), " entrata ", GameState.banditi.entrata, " pos ", f.banditi._figure[0].position if not f.banditi._figure.is_empty() else Vector3.ZERO)
+	if not f.banditi._figure.is_empty():
+		var pb: Vector3 = f.banditi._figure[0].position
+		f.camera.position = Vector3(pb.x, 0, pb.z).lerp(pd, 0.3)
+	await _attendi(0.5)
+	await _scatta("20_banditi_in_arrivo")
+	f.hud._info.visible = true
+	f.hud._aggiorna()
+	await _attendi(0.3)
+	await _scatta("21_info_tasse_difesa")
+	f.hud._info.visible = false
+	GameState.banditi.forza = 999.0
+	GameState._incursione()
+	f.camera.position = pd
+	await _attendi(1.5)
+	await _scatta("22_saccheggio")
+
 	f._vai_al_regno()
 	await _attendi(1.0)
 	print("SCENA ", get_tree().current_scene.name)

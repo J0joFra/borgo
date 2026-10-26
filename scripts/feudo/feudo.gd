@@ -10,6 +10,7 @@ const COLORI_LUCE := [Color("fff6e8"), Color("fff0d0"), Color("ffd6a8"), Color("
 var vista: VistaTerreno
 var camera: CameraIso
 var hud: Hud
+var banditi: Banditi3D
 var luce: DirectionalLight3D
 
 var modo := Modo.NORMALE
@@ -41,6 +42,9 @@ func _ready() -> void:
 	var abitanti := Abitanti3D.new()
 	abitanti.vista = vista
 	add_child(abitanti)
+	banditi = Banditi3D.new()
+	banditi.vista = vista
+	add_child(banditi)
 	_anteprima = MeshInstance3D.new()
 	_anteprima.visible = false
 	add_child(_anteprima)

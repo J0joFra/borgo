@@ -8,11 +8,11 @@
 	"felicita_base": 50,
 	"felicita": {"senza_casa": -10, "cibo_vario": 10, "pane": 10, "fame": -20, "freddo": -15, "disoccupazione": -10, "soglia_disoccupazione": 0.2},
 	"tasse": {
-		"basse": {"oro": 0, "felicita": 10},
-		"normali": {"oro": 1, "felicita": 0},
-		"alte": {"oro": 2, "felicita": -15}
+		"basse": {"molt": 0.5, "felicita": 10},
+		"normali": {"molt": 1.0, "felicita": 0},
+		"alte": {"molt": 1.5, "felicita": -15}
 	},
-	"re": {"tassa_iniziale": 15, "incremento": 10, "mancati_per_sconfitta": 2, "malus_felicita": 15},
+	"re": {"tassa_iniziale": 10, "incremento": 8, "mancati_per_sconfitta": 2, "malus_felicita": 15},
 	"crescita": {"soglia_arrivi": 55, "controllo_ogni": 15, "probabilita_massima": 0.6, "massimo_per_volta": 3, "fame_partenza_ogni": 10, "soglia_partenze": 30, "scontenti_partenza_ogni": 20},
 	"vicinanza": {"raggio": 4, "malus_lontano": 0.5},
 	"costruzione": {"secondi_per_4_tile": 10, "minimo": 10, "massimo": 40, "molt_inverno": 2},
@@ -27,5 +27,13 @@
 	"piantine": {"stagioni_per_crescere": 4},
 	"senza_casa": {"tick_prima_di_andarsene": 30},
 	"piazza": {"dopo_anni": 1},
-	"strade": {"malus_non_collegato": 0.02, "strada_iniziale": 4}
+	"strade": {"malus_non_collegato": 0.02, "strada_iniziale": 4},
+	"crescita_prima_del_borgo": {"soglia_arrivi": 25, "probabilita_massima": 1.0, "abbondanza_minima": 0.8},
+	"tasse_stagionali": {
+		"soglie": [0.3, 0.5, 0.7],
+		"abitanti_per_quota": 10,
+		"monete": {"primavera": [1, 2, 3, 4], "estate": [1, 2, 3, 4], "autunno": [1, 2, 3, 4], "inverno": [2, 3, 4, 5]},
+		"pietra_buona": 30
+	},
+	"banditi": {"dal_livello": 1, "dall_anno": 3, "probabilita": 0.35, "in_piu_per_anno": 0.05, "probabilita_massima": 0.7, "preavviso": 10, "preavviso_con_torre": 25, "forza_base": 8, "forza_per_anno": 4, "oro_per_forza": 10, "variazione": 0.25, "milizia_per_abitante": 0.3, "bonus_armi": 1.5, "bottino_massimo": 0.5, "felicita_vittoria": 5, "felicita_sconfitta": -12, "incendio_sotto": 0.5}
 }

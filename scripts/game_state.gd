@@ -11,7 +11,9 @@ signal message(testo: String)
 signal game_ended(vittoria: bool, motivo: String)
 signal capo_scelto(indice: int)
 signal consiglio(famiglia: int, testo: String)
-signal evento(carta: Dictionary)  # una carta evento da mostrare (il gioco è in pausa)
+signal evento(carta: Dictionary)
+signal banditi_avvistati(dati: Dictionary)  # una banda è in arrivo (vedi banditi)
+signal incursione(esito: Dictionary)        # la banda è arrivata: com'è andata  # una carta evento da mostrare (il gioco è in pausa)
 signal terreno_cambiato(celle: Array)  # celle cambiate: bosco abbattuto o ricresciuto, piantine, strade
 
 const PRIMAVERA := 0
@@ -21,13 +23,13 @@ const INVERNO := 3
 const STAGIONI := ["Primavera", "Estate", "Autunno", "Inverno"]
 const CHIAVI_STAGIONI := ["primavera", "estate", "autunno", "inverno"]
 const RISORSE := ["legna", "pietra", "cibo", "ferro", "utensili", "oro", "grano", "farina",
-	"orzo", "rape", "semi_orzo", "semi_grano", "semi_rape"]
+	"orzo", "rape", "semi_orzo", "semi_grano", "semi_rape", "armi"]
 ## Cosa si mangia, nell'ordine: prima il cibo pronto, poi le rape, l'orzo e per ultimo il grano (che serve al pane).
 const CIBI := ["cibo", "rape", "orzo", "grano"]
 ## Le risorse mostrate nella barra in alto (grano e farina restano nascosti).
-const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "grano", "orzo", "rape", "ferro", "utensili", "oro"]
+const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "grano", "orzo", "rape", "ferro", "utensili", "armi", "oro"]
 const SAVE_PATH := "user://save.json"
-const VERSIONE_SALVATAGGIO := 5
+const VERSIONE_SALVATAGGIO := 6
 
 var edifici: Dictionary = {}  # tipo -> definizione (data/edifici.json)
 var bil: Dictionary = {}      # data/bilanciamento.json
@@ -74,6 +76,9 @@ var _velocita_prima := 1
 var _evento_da_riprendere := ""
 var _rete_strade: Dictionary = {}  # celle di strada collegate alla piazza (calcolate quando servono)
 var _rete_valida := false
+var banditi: Dictionary = {}  # banda in arrivo: {forza, numero, entrata: Vector2i, mancano, totale} (tick)
+var _tick_banditi := -1       # in quale tick della stagione vengono avvistati (-1: nessuno)
+var ultime_tasse: Dictionary = {}  # l'ultima riscossione, per il pannello Info
 
 var _prossimo_id: int = 1
 var _accumulo: float = 0.0
@@ -286,6 +291,9 @@ func nuova_partita(seme: int = -1) -> void:
 	_tick_evento = -1
 	_evento_da_riprendere = ""
 	_rete_valida = false
+	banditi = {}
+	_tick_banditi = -1
+	ultime_tasse = {}
 	attrattiva = 0.0
 	mercato = Mercato.new(seme_mappa)
 	_scegli_famiglie()
@@ -409,7 +417,21 @@ func stima_produzione(tipo: String, cella: Vector2i, livello_b := 1, coltura := 
 		var valore := float(produce[r]) * float(info.resa) * float(d.get("produzione", 1.0)) * bonus_guida(r)
 		parti.append("%d %s" % [roundi(valore), r])
 	var quando := "al raccolto d'autunno" if raccolto else "a stagione"
-	return "Resa: %s %s · %s" % [", ".join(parti), quando, info.testo]
+	var testo := "Resa: %s %s · %s" % [", ".join(parti), quando, info.testo]
+	if d.has("selvatiche"):
+		var finta := {"tipo": tipo, "cella": cella}
+		var sel := selvatica_di_stagione(finta)
+		if sel != "":
+			testo += " · ora 2 raccolti su 3 sono %s selvatico" % colture[sel].nome.to_lower()
+		else:
+			var vicine := terreno.selvatiche_attorno(cella, Vector2i(int(d.taglia[0]), int(d.taglia[1])), int(d.zona.raggio))
+			var nomi: Array[String] = []
+			for nome in vicine:
+				if int(vicine[nome]) >= int(d.selvatiche.minimo_celle):
+					nomi.append("%s (%s)" % [colture[nome].nome.to_lower(), " e ".join(colture[nome].stagioni)])
+			if not nomi.is_empty():
+				testo += " · qui cresce %s: lo raccoglie nella sua stagione" % ", ".join(nomi)
+	return testo
 
 
 func _stima_campo(d: Dictionary, cella: Vector2i, nome: String) -> String:
@@ -616,6 +638,10 @@ func testo_effetto(tipo: String) -> String:
 		var spiegazioni := {"bosco": "rende di più con tanto bosco attorno", "roccia": "rende di più tra le rocce",
 			"acqua": "rende di più vicino a lago o fiume", "fertilita": "rende di più su terra fertile"}
 		parti.append(spiegazioni.get(d.zona.tipo, ""))
+	if d.has("difesa_per_guardia"):
+		parti.append("difesa %d per guardia" % int(d.difesa_per_guardia))
+	if d.has("difesa"):
+		parti.append("difesa +%s" % str(d.difesa))
 	if d.has("su"):
 		parti.append("solo su " + d.su)
 	if d.get("vittoria", false):
@@ -667,8 +693,16 @@ func _tick() -> void:
 		for r in consuma:
 			risorse[r] = maxf(0.0, risorse[r] - consuma[r] / tps * molt)
 		var produce: Dictionary = d.get("produce", {})
+		var selvatica := selvatica_di_stagione(b)
 		for r in produce:
-			risorse[r] = minf(cap, risorse[r] + produce[r] / tps * molt * bonus_guida(r))
+			var quanto: float = produce[r] / tps * molt
+			if selvatica != "" and r == "cibo":
+				# vicino alle piante selvatiche nella loro stagione: su 3 raccolti, 2 sono di quella pianta
+				var quota := float(d.selvatiche.quota)
+				var c_r: String = colture[selvatica].risorsa
+				risorse[c_r] = minf(cap, risorse[c_r] + quanto * quota * bonus_guida(c_r))
+				quanto *= 1.0 - quota
+			risorse[r] = minf(cap, risorse[r] + quanto * bonus_guida(r))
 		if b.tipo == "raccoglitore":
 			_raccogli_semi(b, molt, cap, tps)
 		if d.get("pane", false):
@@ -734,6 +768,14 @@ func _tick() -> void:
 	tick_in_stagione += 1
 	if tick_in_stagione == _tick_evento:
 		_pesca_evento()
+	if tick_in_stagione == _tick_banditi:
+		_avvista_banditi()
+	elif not banditi.is_empty():
+		banditi.mancano = int(banditi.mancano) - 1
+		if banditi.mancano <= 0:
+			_incursione()
+			if finita:
+				return
 	if tick_in_stagione >= tps:
 		_fine_stagione()
 	_tick_dall_ultimo_consiglio += 1
@@ -1028,6 +1070,150 @@ func _scadono_modificatori() -> void:
 	modificatori = modificatori.filter(func(mod): return int(mod.stagioni) > 0)
 
 
+# --- Banditi e difese -----------------------------------------------------------------
+
+## I banditi arrivano dal Borgo in poi (o comunque dal terzo anno): più passano gli anni, più spesso.
+func banditi_possibili() -> bool:
+	var c: Dictionary = bil.banditi
+	return capo >= 0 and (livello >= int(c.dal_livello) or anno >= int(c.dall_anno))
+
+
+func _programma_banditi() -> void:
+	_tick_banditi = -1
+	if not banditi_possibili() or not banditi.is_empty():
+		return
+	var c: Dictionary = bil.banditi
+	var p := minf(float(c.probabilita_massima), float(c.probabilita) + float(c.in_piu_per_anno) * (anno - 1))
+	if _rng.randf() < p:
+		var tps := int(bil.tick_per_stagione)
+		_tick_banditi = _rng.randi_range(tps / 10, tps / 2)
+
+
+## Una banda è avvistata al confine: arriva tra qualche giorno (di più se una torre di guardia
+## la vede prima). La forza cresce con gli anni e con l'oro che abbiamo.
+func _avvista_banditi() -> void:
+	_tick_banditi = -1
+	var c: Dictionary = bil.banditi
+	var forza: float = (float(c.forza_base) + float(c.forza_per_anno) * (anno - 1) + risorse.oro / float(c.oro_per_forza))
+	forza *= _rng.randf_range(1.0 - float(c.variazione), 1.0 + float(c.variazione))
+	var avvistati_prima := false
+	for b in buildings:
+		if b.progresso >= 1.0 and edifici[b.tipo].get("avvista", false) and b.lavoratori > 0:
+			avvistati_prima = true
+	var preavviso := int(c.preavviso_con_torre if avvistati_prima else c.preavviso)
+	var lati := ["nord", "est", "sud", "ovest"]
+	var lato := _rng.randi_range(0, 3)
+	var f := TerrenoFeudo.FEUDO
+	var lungo := _rng.randi_range(4, f.size.x - 5)
+	var entrata: Vector2i = [Vector2i(f.position.x + lungo, f.position.y), Vector2i(f.end.x - 1, f.position.y + lungo),
+		Vector2i(f.position.x + lungo, f.end.y - 1), Vector2i(f.position.x, f.position.y + lungo)][lato]
+	banditi = {"forza": forza, "numero": clampi(roundi(forza / 3.0), 4, 14), "entrata": entrata,
+		"mancano": preavviso, "totale": preavviso, "da": lati[lato]}
+	var chi := _consigliere_per("costruire")
+	var testo := "Banditi avvistati a %s! Saranno qui tra %d giorni. Sono circa %d (forza %d); noi ci difendiamo con %d." % [
+		banditi.da, preavviso, banditi.numero, roundi(forza), roundi(difesa().totale)]
+	if chi >= 0:
+		consiglio.emit(chi, testo)
+	else:
+		message.emit(testo)
+	banditi_avvistati.emit(banditi)
+	changed.emit()
+
+
+func _consigliere_per(area: String) -> int:
+	var scelto := -1
+	for f in consiglieri():
+		if scelto < 0 or tratto(f).get("area", "") == area:
+			scelto = f
+	return scelto
+
+
+## Quanto sa difendersi il villaggio: tutti danno una mano (milizia), le guardie nelle torri
+## valgono molto di più (e ancora di più con le armi), le palizzate fermano i banditi.
+func difesa() -> Dictionary:
+	var c: Dictionary = bil.banditi
+	var guardie := 0
+	var forza_guardie := 0.0
+	var palizzate := 0.0
+	for b in buildings:
+		if b.progresso < 1.0:
+			continue
+		var d := def_di(b)
+		if d.has("difesa_per_guardia"):
+			guardie += int(b.lavoratori)
+			forza_guardie += int(b.lavoratori) * float(d.difesa_per_guardia)
+		palizzate += float(d.get("difesa", 0.0))
+	var armate := mini(guardie, int(risorse.armi))
+	if guardie > 0:
+		forza_guardie *= 1.0 + (float(c.bonus_armi) - 1.0) * armate / guardie
+	# le armi avanzate vanno alla milizia: mezzo punto ciascuna, una per persona
+	var armi_milizia := mini(int(risorse.armi) - armate, maxi(0, abitanti - guardie))
+	var milizia := abitanti * float(c.milizia_per_abitante) + armi_milizia * 0.5
+	return {"milizia": milizia, "guardie": guardie, "forza_guardie": forza_guardie, "palizzate": palizzate,
+		"armi_usate": armate + armi_milizia, "totale": milizia + forza_guardie + palizzate}
+
+
+## La banda arriva. Se la difesa basta la respingiamo; altrimenti rubano una parte delle scorte
+## (tanto più quanto eravamo deboli), qualcuno ci lascia la pelle e, se eravamo molto deboli,
+## danno fuoco a una casa.
+func _incursione() -> void:
+	var c: Dictionary = bil.banditi
+	var dif := difesa()
+	var forza := float(banditi.forza)
+	var rapporto: float = dif.totale / maxf(1.0, forza)
+	var esito := {"vinto": rapporto >= 1.0, "entrata": banditi.entrata, "numero": banditi.numero,
+		"forza": forza, "difesa": dif.totale, "rubato": {}, "bruciato": -1, "morti": 0}
+	# le armi si consumano un po' in battaglia (una su tre)
+	risorse.armi = maxf(0.0, risorse.armi - ceilf(dif.armi_usate / 3.0))
+	if esito.vinto:
+		felicita = minf(100.0, felicita + float(c.felicita_vittoria))
+		message.emit("Banditi respinti! %d contro %d: la gente festeggia" % [roundi(dif.totale), roundi(forza)])
+	else:
+		var quota: float = float(c.bottino_massimo) * (1.0 - rapporto)
+		for r in ["oro", "cibo", "rape", "orzo", "grano", "farina", "legna", "pietra", "ferro", "utensili", "armi"]:
+			var tolto := floorf(risorse[r] * quota)
+			if tolto >= 1.0:
+				risorse[r] -= tolto
+				esito.rubato[r] = int(tolto)
+		felicita = maxf(0.0, felicita + float(c.felicita_sconfitta))
+		esito.morti = mini(abitanti - 1, roundi((1.0 - rapporto) * 3.0))
+		if esito.morti > 0:
+			_togli_abitanti(esito.morti)
+		if rapporto < float(c.incendio_sotto):
+			esito.bruciato = _brucia_qualcosa()
+		var parti: Array[String] = []
+		for r in esito.rubato:
+			parti.append("%d %s" % [esito.rubato[r], r])
+		message.emit("I banditi hanno saccheggiato il villaggio: %s%s" % [", ".join(parti) if not parti.is_empty() else "poco o niente",
+			", e hanno dato fuoco a un edificio" if esito.bruciato >= 0 else ""])
+	banditi = {}
+	incursione.emit(esito)
+	changed.emit()
+	if abitanti <= 0:
+		_fine(false, "I banditi hanno distrutto il villaggio.")
+
+
+## Un edificio 2×2 qualunque (non il centro) va a fuoco e restano le rovine, da sgomberare.
+func _brucia_qualcosa() -> int:
+	var candidati := []
+	for b in buildings:
+		var d: Dictionary = edifici[b.tipo]
+		if b.progresso >= 1.0 and not d.get("fisso", false) and not d.get("centro", false) \
+				and str(d.taglia) == str(edifici.rovine.taglia) and b.tipo != "rovine":
+			candidati.append(b)
+	if candidati.is_empty():
+		return -1
+	var b: Dictionary = candidati[_rng.randi_range(0, candidati.size() - 1)]
+	building_removed.emit(b.id)
+	b.tipo = "rovine"
+	b.lavoratori = 0
+	b.livello = 1
+	b.erase("coltura")
+	b.erase("eta")
+	building_added.emit(b)
+	return b.id
+
+
 # --- Collegamento alla piazza ---------------------------------------------------------
 
 ## Vero se l'edificio è attaccato alla piazza (o alla dimora), oppure tocca una strada
@@ -1149,6 +1335,23 @@ func vendi(r: String) -> bool:
 
 
 ## Il raccoglitore vicino alle piante selvatiche porta a casa anche i loro semi.
+## La pianta selvatica che un raccoglitore raccoglie adesso: quella con più celle attorno, se è la sua
+## stagione (quella in cui la coltura cresce) e ce n'è abbastanza; "" altrimenti (solo cibo).
+func selvatica_di_stagione(b: Dictionary) -> String:
+	var d: Dictionary = edifici[b.tipo]
+	if not d.has("selvatiche") or terreno == null:
+		return ""
+	var t := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
+	var conteggio := terreno.selvatiche_attorno(b.cella, t, int(d.zona.raggio))
+	var migliore := ""
+	var piu := int(d.selvatiche.minimo_celle) - 1
+	for nome in conteggio:
+		if CHIAVI_STAGIONI[stagione] in colture[nome].stagioni and int(conteggio[nome]) > piu:
+			piu = int(conteggio[nome])
+			migliore = nome
+	return migliore
+
+
 func _raccogli_semi(b: Dictionary, molt: float, cap: float, tps: float) -> void:
 	if terreno == null:
 		return
@@ -1198,8 +1401,7 @@ func _fine_stagione() -> void:
 	_lavora_forestali()
 	_consuma_tende()
 	_scadono_modificatori()
-	if stagione == AUTUNNO:
-		_riscuoti_tasse()
+	_riscuoti_tasse()
 	if finita:
 		return
 	if abitanti <= 0:
@@ -1214,6 +1416,7 @@ func _fine_stagione() -> void:
 			_falo_diventa_piazza()
 	mercato.nuova_stagione(seme_mappa, anno, stagione)
 	_programma_evento()
+	_programma_banditi()
 	if not mercato.evento.is_empty():
 		message.emit("Dal mercato: " + mercato.evento.testo)
 	_controlla_livello()
@@ -1221,14 +1424,49 @@ func _fine_stagione() -> void:
 	salva()
 
 
+## Ogni fine stagione la gente paga le tasse: quanto dipende dalla media fra risorse, popolazione
+## e gradimento, che cade in una fascia (da 0, la più bassa, a 3). Ogni stagione ha le sue monete
+## per fascia (bilanciamento.tasse_stagionali), per ogni gruppo di abitanti; il livello delle
+## tasse e il tratto della guida le moltiplicano. In autunno si paga anche il re.
+func valutazione_tasse() -> Dictionary:
+	var t: Dictionary = bil.tasse_stagionali
+	var consumo := maxf(1.0, abitanti * float(bil.cibo_per_abitante_tick) * float(bil.tick_per_stagione))
+	var cibo := 0.0
+	for r in CIBI:
+		cibo += risorse[r]
+	var voce_risorse := (minf(1.0, cibo / consumo) + minf(1.0, risorse.legna / maxf(20.0, riscaldamento_invernale()))
+		+ minf(1.0, risorse.pietra / float(t.pietra_buona))) / 3.0
+	var obiettivo := float(bil.livelli[mini(livello + 1, bil.livelli.size() - 1)].get("abitanti", 25))
+	var voce_popolazione := minf(1.0, abitanti / maxf(1.0, obiettivo))
+	var voce_gradimento := felicita / 100.0
+	var media := (voce_risorse + voce_popolazione + voce_gradimento) / 3.0
+	var fascia := 0
+	for soglia in t.soglie:
+		if media >= float(soglia):
+			fascia += 1
+	var per_quota := int(t.monete[CHIAVI_STAGIONI[stagione]][fascia])
+	var gruppi := maxf(1.0, abitanti / float(t.abitanti_per_quota))
+	var molt := float(bil.tasse[tasse].molt) * float(tratto(capo).get("tasse", 1.0))
+	var monete := maxi(1, roundi(per_quota * gruppi * molt)) if abitanti > 0 else 0
+	return {"risorse": voce_risorse, "popolazione": voce_popolazione, "gradimento": voce_gradimento,
+		"media": media, "fascia": fascia, "monete": monete}
+
+
+const NOMI_FASCE := ["bassa", "media", "buona", "massima"]
+
+
 func _riscuoti_tasse() -> void:
-	var incasso := int(abitanti * int(bil.tasse[tasse].oro) * float(tratto(capo).get("tasse", 1.0)))
-	risorse.oro = minf(capacita(), risorse.oro + incasso)
+	var v := valutazione_tasse()
+	ultime_tasse = v
+	risorse.oro = minf(capacita(), risorse.oro + v.monete)
+	if stagione != AUTUNNO:
+		message.emit("Tasse di %s: +%d oro (fascia %s)" % [STAGIONI[stagione].to_lower(), v.monete, NOMI_FASCE[v.fascia]])
+		return
 	var dovuto := tassa_del_re()
 	if risorse.oro >= dovuto:
 		risorse.oro -= dovuto
 		tasse_non_pagate = 0
-		message.emit("Tasse: +%d oro dagli abitanti, %d oro al re" % [incasso, dovuto])
+		message.emit("Tasse d'autunno: +%d oro dagli abitanti, %d oro al re" % [v.monete, dovuto])
 		return
 	tasse_non_pagate += 1
 	felicita = maxf(0.0, felicita - bil.re.malus_felicita)
@@ -1246,7 +1484,8 @@ func _arrivi() -> void:
 	var posti := alloggi() - abitanti
 	if posti <= 0 or attrattiva <= 0.0:
 		return
-	if _rng.randf() < attrattiva * float(c.probabilita_massima):
+	var probabilita := float(_crescita().get("probabilita_massima", c.probabilita_massima))
+	if _rng.randf() < attrattiva * probabilita:
 		var n := _rng.randi_range(1, mini(int(c.massimo_per_volta), posti))
 		abitanti += n
 		message.emit("%s arrivat%s al villaggio: si parla bene di noi" % ["È" if n == 1 else "Sono", "a una persona" if n == 1 else "e %d persone" % n])
@@ -1255,15 +1494,24 @@ func _arrivi() -> void:
 ## 0..1: felicità sopra la soglia per abbondanza di scorte di cibo (e di legna d'inverno).
 func calcola_attrattiva() -> float:
 	var c: Dictionary = bil.crescita
+	var presto := _crescita()
+	if _fame:
+		return 0.0
 	var consumo_stagione := maxf(1.0, abitanti * float(bil.cibo_per_abitante_tick) * float(bil.tick_per_stagione))
 	var scorte := 0.0
 	for r in CIBI:
 		scorte += risorse[r]
-	var abbondanza := clampf(scorte / consumo_stagione, 0.0, 2.0) / 2.0
+	var abbondanza := maxf(clampf(scorte / consumo_stagione, 0.0, 2.0) / 2.0, float(presto.get("abbondanza_minima", 0.0)))
 	if stagione in [AUTUNNO, INVERNO] and risorse.legna < riscaldamento_invernale():
 		abbondanza *= 0.5
-	var soglia := float(c.soglia_arrivi)
+	var soglia := float(presto.get("soglia_arrivi", c.soglia_arrivi))
 	return clampf((felicita - soglia) / (100.0 - soglia), 0.0, 1.0) * abbondanza
+
+
+## Finché non si è Borgo la gente arriva più facilmente (bilanciamento.crescita_prima_del_borgo):
+## così in un anno e mezzo, due, si può diventare Borgo. Dopo valgono le regole normali.
+func _crescita() -> Dictionary:
+	return bil.get("crescita_prima_del_borgo", {}) if livello == 0 else {}
 
 
 ## Legna che serve per scaldare tutto il villaggio per un inverno.
@@ -1340,6 +1588,7 @@ func salva() -> void:
 		"tick_senza_casa": tick_senza_casa, "modificatori": modificatori,
 		"eventi_usati": eventi_usati, "tick_evento": _tick_evento,
 		"evento_attivo": evento_attivo.get("id", ""),
+		"banditi": _banditi_salvati(), "tick_banditi": _tick_banditi,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -1394,6 +1643,12 @@ func carica() -> bool:
 	modificatori = dati.get("modificatori", [])
 	eventi_usati = dati.get("eventi_usati", [])
 	_tick_evento = int(dati.get("tick_evento", -1))
+	_tick_banditi = int(dati.get("tick_banditi", -1))
+	banditi = dati.get("banditi", {})
+	if not banditi.is_empty():
+		banditi.entrata = Vector2i(int(banditi.entrata[0]), int(banditi.entrata[1]))
+		for k in ["numero", "mancano", "totale"]:
+			banditi[k] = int(banditi[k])
 	# una carta lasciata a metà torna quando si rientra nel feudo (vedi riprendi_evento)
 	_evento_da_riprendere = str(dati.get("evento_attivo", ""))
 	return true
@@ -1408,6 +1663,14 @@ func riprendi_evento() -> void:
 			eventi_usati.erase(carta.id)
 			mostra_evento(carta)
 	_evento_da_riprendere = ""
+
+
+func _banditi_salvati() -> Dictionary:
+	if banditi.is_empty():
+		return {}
+	var copia := banditi.duplicate()
+	copia.entrata = [banditi.entrata.x, banditi.entrata.y]
+	return copia
 
 
 func cancella_salvataggio() -> void:

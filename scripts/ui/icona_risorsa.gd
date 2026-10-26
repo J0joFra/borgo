@@ -20,7 +20,7 @@ func _init(t := "", lato := LATO) -> void:
 const NOMI := {
 	"legna": "Legna", "pietra": "Pietra", "cibo": "Cibo", "grano": "Grano", "orzo": "Orzo", "rape": "Rape",
 	"semi_orzo": "Semi d'orzo", "semi_grano": "Semi di grano", "semi_rape": "Semi di rapa",
-	"ferro": "Ferro", "utensili": "Utensili", "oro": "Oro", "farina": "Farina", "pane": "Pane",
+	"ferro": "Ferro", "utensili": "Utensili", "armi": "Armi", "oro": "Oro", "farina": "Farina", "pane": "Pane",
 	"abitanti": "Abitanti / posti letto", "disponibili": "Persone senza lavoro", "felicita": "Felicità",
 }
 
@@ -68,6 +68,12 @@ func _draw() -> void:
 		"utensili":
 			draw_line(Vector2(2, 9), Vector2(6.5, 4.5), Color("8b5a2b"), 1.5)
 			_poligono([Vector2(4, 2), Vector2(7, 1), Vector2(9, 3), Vector2(8, 6), Vector2(6.5, 4.5)], Color("c8ccd0"))
+		"armi":
+			# una spada: lama, guardia, impugnatura
+			_poligono([Vector2(8.6, 0.8), Vector2(9.2, 1.4), Vector2(4, 6.6), Vector2(3.4, 6)], Color("d8dce0"))
+			draw_line(Vector2(2.2, 4.6), Vector2(5.4, 7.8), Color("a8801a"), 1.2)
+			draw_line(Vector2(3.6, 6.4), Vector2(1.4, 8.6), Color("5a3a1a"), 1.3)
+			draw_circle(Vector2(1.2, 8.8), 0.8, Color("a8801a"))
 		"oro":
 			draw_circle(Vector2(5, 5), 4.0, Color("a8801a"))
 			draw_circle(Vector2(5, 5), 3.2, Color("e5b53a"))
