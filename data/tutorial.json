@@ -1,0 +1,42 @@
+{
+	"passi": [
+		{"titolo": "Il tuo feudo", "evidenzia": "",
+			"testo": "Benvenuto! Trascina per muoverti, pizzica (o rotellina) per lo zoom, < e > girano la visuale. In alto: risorse, abitanti, felicità e stagione."},
+		{"titolo": "Taglialegna", "evidenzia": "Risorse", "condizione": "edificio:taglialegna",
+			"testo": "Prima di tutto la legna. Apri Risorse e scegli il Taglialegna: mettilo vicino al bosco più fitto (le celle gialle contano). Ruota con il pulsante Ruota, poi Costruisci."},
+		{"titolo": "Raccoglitore", "evidenzia": "Cibo", "condizione": "edificio:raccoglitore",
+			"testo": "Ora il cibo: Cibo → Raccoglitore. Rende di più vicino al bosco; vicino alle piante selvatiche raccoglie anche orzo, grano o rape."},
+		{"titolo": "Al lavoro", "evidenzia": "", "condizione": "lavora",
+			"testo": "Aspetta che il cantiere finisca: chi non ha lavoro ci va da solo. Tocca un edificio: con + e − sposti i lavoratori; il segnale rosso vuol dire che nessuno ci lavora."},
+		{"titolo": "Strade", "evidenzia": "Strade", "condizione": "collegati",
+			"testo": "Collega gli edifici: Strade, tocca un angolo vicino alla dimora (o al falò) e poi uno accanto all'edificio. Le strade corrono fra le celle; chi non è collegato lavora il 2% in meno."},
+		{"titolo": "Una casa vera", "evidenzia": "Case", "condizione": "edificio:casa",
+			"testo": "Le tende reggono una sola stagione, poi si strappano! Costruisci una Casa (Case → Casa): ospita 4 persone e chiede legna e pietra."},
+		{"titolo": "Cava", "evidenzia": "Risorse", "condizione": "edificio:cava",
+			"testo": "La pietra serve per case, strade e quasi tutto. Una Cava in mezzo alle rocce (Risorse → Cava)."},
+		{"titolo": "Un campo", "evidenzia": "Cibo", "condizione": "edificio:campo",
+			"testo": "Per l'inverno serve cibo di scorta: un Campo sulla terra scura e fertile. Si semina all'inizio della stagione della sua coltura e si raccoglie alla fine."},
+		{"titolo": "Consiglio e Info", "evidenzia": "Consiglio",
+			"testo": "I tuoi consiglieri guardano il villaggio e ti dicono cosa manca: apri Consiglio. In Info trovi felicità, tasse, difese e cosa serve per diventare Borgo."},
+		{"titolo": "La strada davanti", "evidenzia": "",
+			"testo": "Obiettivo: diventare Borgo (25 abitanti, felicità 50, un magazzino). Poi mulino, difese, esercito e i regni vicini. Ogni tanto ti darò ancora qualche suggerimento. Buon governo!"}
+	],
+	"suggerimenti": [
+		"Le tende si strappano dopo una stagione: costruisci case prima che cadano, o la gente dormirà all'aperto.",
+		"Chi resta senza casa aspetta al massimo mezza stagione, poi se ne va.",
+		"D'inverno le case bruciano legna: mettine da parte in autunno.",
+		"La gente arriva quando è felice e le dispense sono piene. Prima del Borgo arriva più facilmente.",
+		"Tocca un edificio per vedere quanto rende: la zona attorno (bosco, rocce, acqua, terra fertile) conta molto.",
+		"Il taglialegna consuma il bosco attorno: un forestale lo ripianta.",
+		"Più cibi diversi in dispensa (cibo, orzo, rape, grano) rendono la gente più felice.",
+		"A fine stagione si incassano le tasse: più risorse, gente e felicità, più oro. In autunno il re vuole la sua parte.",
+		"Al Mercato si compra e si vende a lotti; con un edificio mercato i prezzi sono migliori.",
+		"Strade sul fiume diventano ponti, sul lago passerelle (al massimo 3 tratti).",
+		"Mentre piazzi un edificio puoi girarlo con Ruota (o il tasto R).",
+		"Dal Borgo arrivano i banditi: torri di guardia con gli arcieri lungo la loro strada, palizzate e mura in pietra.",
+		"Le carte evento fermano il tempo finché non scegli: leggi bene cosa costa ogni scelta.",
+		"Il pulsante Info spiega da cosa dipende la felicità e cosa manca per il prossimo livello.",
+		"Con x2 e x3 in alto il tempo scorre più veloce; || lo ferma.",
+		"Dalla mappa del Regno, dal Borgo in poi, si mandano spie, si cercano alleati e si conquistano terre."
+	]
+}

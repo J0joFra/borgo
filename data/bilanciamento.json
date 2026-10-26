@@ -62,5 +62,7 @@
 		"soglia_ribellione": 30,
 		"bonus_tratto": 5,
 		"leva": 8
-	}
+	},
+	"primo_inverno": {"cibo": 50},
+	"suggerimenti": {"ogni": 45}
 }

@@ -20,8 +20,9 @@ func _ready() -> void:
 	GameState._tick()
 	_verifica(GameState.tick_fame > 0, "fame registrata")
 
-	# Fame per una stagione intera: muore il 20%.
+	# Fame (dal secondo anno: il primo il signore tiene tutti nel castello).
 	GameState.nuova_partita(42)
+	GameState.anno = 2
 	GameState.abitanti = 10
 	for i in 3:
 		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
@@ -461,10 +462,17 @@ func _ready() -> void:
 	var collina_s := Vector2i(-1, -1)
 	for i in ts.celle.size():
 		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
-		if ts.celle[i] == TerrenoFeudo.Tipo.COLLINA and ts.nel_feudo(c) and ts.nel_feudo(c - Vector2i(0, 1)):
+		if ts.celle[i] == TerrenoFeudo.Tipo.COLLINA and ts.nel_feudo(c) and ts.tipo_a(c - Vector2i(0, 1)) == TerrenoFeudo.Tipo.COLLINA:
 			collina_s = c
 			break
 	_verifica(ts.costo_strada([collina_s, collina_s + Vector2i(1, 0)]) == 2, "in salita costa 2 pietra")
+	var bordo_collina := Vector2i(-1, -1)
+	for i in ts.celle.size():
+		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		if ts.celle[i] == TerrenoFeudo.Tipo.COLLINA and ts.nel_feudo(c) and ts.tipo_a(c - Vector2i(0, 1)) == TerrenoFeudo.Tipo.ERBA:
+			bordo_collina = c
+			break
+	_verifica(not ts.verifica_strada([bordo_collina, bordo_collina + Vector2i(1, 0)]).ok, "niente strade sul bordo di una collina")
 	var casa_sopra := piano - Vector2i(0, 1)
 	_verifica(ts.posizione_valida("casa", casa_sopra), "prima della strada la casa ci sta")
 	ts.aggiungi_strada(percorso)
@@ -630,6 +638,82 @@ func _ready() -> void:
 			GameState._riscuoti_tributi()
 	_verifica(not GameState.regni[chiave_v].conquistato and not vassallo_v in GameState.consiglieri(), "con lealtà a zero il vassallo si ribella e lascia il consiglio")
 
+	# Il primo inverno, se finisce il cibo, il signore apre il castello: +50, una volta, e nessuno se ne va.
+	GameState.nuova_partita(40)
+	GameState.capo = 0
+	GameState.abitanti = 10
+	for i in 3:
+		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
+	GameState.stagione = GameState.INVERNO
+	for cibo_v in GameState.CIBI:
+		GameState.risorse[cibo_v] = 0.0
+	GameState._tick()
+	_verifica(GameState.aiuto_inverno_dato and GameState.evento_attivo.get("id", "") == "aiuto_inverno" and GameState.risorse.cibo > 45.0,
+		"primo inverno senza cibo: il castello apre le dispense (+50)")
+	_verifica(int(GameState.evento_attivo.narratore) == GameState.capo, "lo annuncia la guida")
+	GameState.scegli_evento(0)
+	for cibo_v in GameState.CIBI:
+		GameState.risorse[cibo_v] = 0.0
+	for i in 40:
+		GameState._tick()
+	_verifica(GameState.abitanti == 10 and GameState.risorse.cibo < 1.0, "il primo anno nessuno se ne va per la fame, e l'aiuto non torna")
+	GameState.nuova_partita(40)
+	GameState.capo = 0
+	GameState.anno = 2
+	GameState.abitanti = 10
+	for i in 3:
+		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
+	GameState.stagione = GameState.INVERNO
+	for cibo_v in GameState.CIBI:
+		GameState.risorse[cibo_v] = 0.0
+	for i in 12:
+		GameState._tick()
+	_verifica(not GameState.aiuto_inverno_dato and GameState.abitanti < 10, "dal secondo anno la fame fa partire la gente")
+
+	# Le carte evento non bloccano mai il gioco.
+	GameState.nuova_partita(41)
+	GameState.capo = 0
+	for ris_v in GameState.RISORSE:
+		GameState.risorse[ris_v] = 0.0
+	var tutte_ok := GameState.carte_possibili().all(func(c): return c.scelte.any(func(sc): return GameState._effetti_possibili(sc.effetti)))
+	_verifica(tutte_ok and not GameState.carte_possibili().any(func(c): return c.id == "mercante"), "senza risorse escono solo carte in cui si può scegliere qualcosa")
+	var carta_m: Dictionary = GameState.dati_eventi.carte.filter(func(c): return c.id == "mercante")[0]
+	GameState.mostra_evento(carta_m)
+	_verifica(GameState.evento_senza_scelta(), "una carta rimasta senza scelte possibili...")
+	GameState.scegli_evento(-1)
+	_verifica(GameState.evento_attivo.is_empty() and GameState.velocita > 0, "...si chiude senza effetti e il tempo riparte")
+
+	# Tutorial e suggerimenti.
+	GameState.nuova_partita(42)
+	GameState.capo = 0
+	GameState.inizia_tutorial()
+	_verifica(GameState.tutorial_passo == 0 and GameState.dati_tutorial.size() >= 8, "il tutorial parte dal primo passo")
+	GameState.avanti_tutorial()
+	_verifica(GameState.tutorial_passo == 1, "Avanti sui passi da leggere")
+	GameState.avanti_tutorial()
+	_verifica(GameState.tutorial_passo == 1, "ma non su quelli che chiedono un'azione")
+	GameState.aggiungi_gratis("taglialegna", Vector2i(0, 0), 1.0)
+	GameState.aggiungi_gratis("casa", Vector2i(3, 0), 1.0)
+	GameState.aggiungi_gratis("casa", Vector2i(6, 0), 1.0)
+	GameState.abitanti = 5
+	GameState.risorse.cibo = 100.0
+	GameState._tick()
+	_verifica(GameState.tutorial_passo == 2, "costruito il taglialegna, si passa al raccoglitore")
+	GameState.salta_tutorial()
+	_verifica(GameState.tutorial_passo == -1, "il tutorial si salta")
+	var detti := []
+	GameState.suggerimento.connect(func(t): detti.append(t))
+	GameState.dati_eventi.probabilita_per_stagione = 0.0
+	GameState._tick_evento = -1
+	for i in int(GameState.bil.suggerimenti.ogni) * 2:
+		GameState._tick()
+	_verifica(detti.size() == 2 and detti[0] != detti[1], "ogni tanto un suggerimento, sempre diverso (%d)" % detti.size())
+	GameState.suggerimenti_attivi = false
+	for i in int(GameState.bil.suggerimenti.ogni) * 2:
+		GameState._tick()
+	_verifica(detti.size() == 2, "i suggerimenti si spengono")
+	GameState.dati_eventi.probabilita_per_stagione = 0.85
+
 	# Salvataggio della versione 8: esercito, regni, missioni, ponti, mura, rotazione.
 	GameState.ricomincia()
 	GameState.avvia()
@@ -651,8 +735,11 @@ func _ready() -> void:
 	GameState.avvia()
 	var c0 := TerrenoFeudo.centro_feudo() + Vector2i(6, 6)
 	GameState.risorse.pietra = 50.0
-	var inizio_s := GameState.terreno.trova_posto("casa", c0)
-	var strada_ok := GameState.costruisci_strada(TerrenoFeudo.percorso(inizio_s, inizio_s + Vector2i(2, 0)))
+	var strada_ok := false
+	for dy in 10:
+		var inizio_s := GameState.terreno.trova_posto("casa", c0 + Vector2i(0, dy))
+		if not strada_ok:
+			strada_ok = GameState.costruisci_strada(TerrenoFeudo.percorso(inizio_s, inizio_s + Vector2i(2, 0)))
 	GameState.terreno.taglia_bosco(TerrenoFeudo.centro_feudo(), Vector2i.ONE, 15, 3)
 	GameState.terreno.pianta(TerrenoFeudo.centro_feudo(), Vector2i.ONE, 15, 2, 4)
 	var cmp := GameState.aggiungi_gratis("campo", GameState.terreno.trova_posto("campo", c0 + Vector2i(4, 0)), 1.0)

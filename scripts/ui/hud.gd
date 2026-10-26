@@ -53,6 +53,13 @@ var _strada_testo := ""
 var _strada_valida := false
 var _strada_titolo := "Strada"  # anche le mura usano questo pannello
 var _btn_ruota: Button
+var _pulsanti: Dictionary = {}  # testo -> Button dei lati (il tutorial li fa lampeggiare)
+var _tutorial: PanelContainer
+var _tutorial_titolo: Label
+var _tutorial_testo: Label
+var _tutorial_avanti: Button
+var _lampeggia: Tween
+var _btn_suggerimenti: Button
 var _tempo: Label
 var _velocita: Array[Button] = []
 var _menu: PanelContainer
@@ -108,8 +115,11 @@ func _ready() -> void:
 	_crea_mercato()
 	_crea_esercito()
 	_crea_carta()
+	_crea_tutorial()
 	_crea_fine()
 	GameState.evento.connect(_mostra_carta)
+	GameState.tutorial_cambiato.connect(_mostra_tutorial)
+	GameState.suggerimento.connect(func(t): mostra_avviso("Suggerimento: " + t, 8.0))
 	GameState.changed.connect(_aggiorna)
 	GameState.season_changed.connect(func(_s, _a): _aggiorna())
 	GameState.message.connect(mostra_avviso)
@@ -118,6 +128,7 @@ func _ready() -> void:
 	_aggiorna()
 	if not GameState.evento_attivo.is_empty():
 		_mostra_carta(GameState.evento_attivo)
+	_mostra_tutorial(GameState.tutorial_passo)
 
 
 func _process(delta: float) -> void:
@@ -265,7 +276,9 @@ func _crea_lati() -> void:
 		var b := _bottone(c[0], 46, 30)
 		b.pressed.connect(_apri_categoria.bind(c[1]))
 		sinistra.add_child(b)
+		_pulsanti[c[0]] = b
 	var strada := _bottone("Strade", 46, 30)
+	_pulsanti["Strade"] = strada
 	strada.pressed.connect(func(): _chiudi_menu(); strade.emit())
 	sinistra.add_child(strada)
 
@@ -276,18 +289,23 @@ func _crea_lati() -> void:
 	destra.offset_top = 24
 	_radice.add_child(destra)
 	var regno := _bottone("Regno", 46, 30)
+	_pulsanti["Regno"] = regno
 	regno.pressed.connect(func(): vai_al_regno.emit())
 	destra.add_child(regno)
 	var info := _bottone("Info", 46, 30)
+	_pulsanti["Info"] = info
 	info.pressed.connect(func(): _apri_finestra(_info))
 	destra.add_child(info)
 	var consiglio := _bottone("Consiglio", 46, 30)
+	_pulsanti["Consiglio"] = consiglio
 	consiglio.pressed.connect(func(): _apri_finestra(_consiglio))
 	destra.add_child(consiglio)
 	var mercato := _bottone("Mercato", 46, 30)
+	_pulsanti["Mercato"] = mercato
 	mercato.pressed.connect(func(): _apri_finestra(_mercato))
 	destra.add_child(mercato)
 	var esercito := _bottone("Esercito", 46, 30)
+	_pulsanti["Esercito"] = esercito
 	esercito.pressed.connect(func(): _apri_finestra(_esercito))
 	destra.add_child(esercito)
 	var giro := HBoxContainer.new()
@@ -457,6 +475,15 @@ func _crea_info() -> void:
 		var n := Label.new()
 		n.text = IconaRisorsa.NOMI.get(chiave, chiave).split(" ")[0].to_lower()
 		legenda.add_child(n)
+	_btn_suggerimenti = _bottone("", 0, 16)
+	_btn_suggerimenti.toggle_mode = true
+	_btn_suggerimenti.pressed.connect(func():
+		GameState.suggerimenti_attivi = _btn_suggerimenti.button_pressed
+		_aggiorna())
+	col.add_child(_btn_suggerimenti)
+	var tutorial := _bottone("Rivedi il tutorial", 0, 16)
+	tutorial.pressed.connect(func(): _info.visible = false; GameState.inizia_tutorial())
+	col.add_child(tutorial)
 	var chiudi := _bottone("Chiudi")
 	chiudi.pressed.connect(func(): _info.visible = false)
 	col.add_child(chiudi)
@@ -653,6 +680,8 @@ func _aggiorna() -> void:
 		_velocita[i].set_pressed_no_signal(i == GameState.velocita)
 	if GameState.evento_attivo.is_empty():
 		_carta.visible = false
+	# il tutorial si fa da parte mentre c'è una carta da leggere
+	_tutorial.visible = GameState.tutorial_passo >= 0 and not _carta.visible
 	if _pannello.visible:
 		_aggiorna_pannello()
 	if _menu.visible:
@@ -883,6 +912,69 @@ func _aggiorna_info() -> void:
 	_info_testo.text = "\n".join(righe)
 	for i in _tasse.size():
 		_tasse[i].set_pressed_no_signal(["basse", "normali", "alte"][i] == GameState.tasse)
+	_btn_suggerimenti.set_pressed_no_signal(GameState.suggerimenti_attivi)
+	_btn_suggerimenti.text = "Suggerimenti ogni tanto: %s" % ("sì" if GameState.suggerimenti_attivi else "no")
+
+
+# --- Tutorial -------------------------------------------------------------------
+
+## Il riquadro del tutorial, in alto a destra: un passo alla volta. Il pulsante da usare lampeggia.
+func _crea_tutorial() -> void:
+	_tutorial = PanelContainer.new()
+	_tutorial.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e")))
+	_tutorial.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_tutorial.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_tutorial.offset_right = -54
+	_tutorial.offset_top = 58
+	_tutorial.visible = false
+	_radice.add_child(_tutorial)
+	var col := VBoxContainer.new()
+	col.custom_minimum_size.x = 130
+	col.add_theme_constant_override("separation", 1)
+	_tutorial.add_child(col)
+	var inchiostro := Color("3b2a1e")
+	_tutorial_titolo = Label.new()
+	_tutorial_titolo.add_theme_color_override("font_color", Color("7a4a2a"))
+	col.add_child(_tutorial_titolo)
+	_tutorial_testo = Label.new()
+	_tutorial_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tutorial_testo.custom_minimum_size.x = 130
+	_tutorial_testo.add_theme_color_override("font_color", inchiostro)
+	_tutorial_testo.add_theme_font_size_override("font_size", 6)
+	_tutorial_titolo.add_theme_font_size_override("font_size", 7)
+	col.add_child(_tutorial_testo)
+	var riga := HBoxContainer.new()
+	riga.alignment = BoxContainer.ALIGNMENT_END
+	col.add_child(riga)
+	var salta := _bottone("Salta", 0, 12)
+	salta.pressed.connect(func(): GameState.salta_tutorial())
+	riga.add_child(salta)
+	_tutorial_avanti = _bottone("Avanti", 0, 12)
+	_tutorial_avanti.pressed.connect(func(): GameState.avanti_tutorial())
+	riga.add_child(_tutorial_avanti)
+
+
+func _mostra_tutorial(passo: int) -> void:
+	if _lampeggia:
+		_lampeggia.kill()
+		_lampeggia = null
+	for b in _pulsanti.values():
+		b.modulate = Color.WHITE
+	_tutorial.visible = passo >= 0
+	if passo < 0:
+		return
+	var p: Dictionary = GameState.dati_tutorial[passo]
+	_tutorial_titolo.text = "Tutorial %d/%d · %s" % [passo + 1, GameState.dati_tutorial.size(), p.titolo]
+	_tutorial_testo.text = p.testo
+	var manuale: bool = p.get("condizione", "") == ""
+	_tutorial_avanti.visible = manuale
+	_tutorial_avanti.text = "Fine" if passo == GameState.dati_tutorial.size() - 1 else "Avanti"
+	var nome: String = p.get("evidenzia", "")
+	if _pulsanti.has(nome):
+		var b: Button = _pulsanti[nome]
+		_lampeggia = create_tween().set_loops()
+		_lampeggia.tween_property(b, "modulate", Color(1.6, 1.4, 0.6), 0.45)
+		_lampeggia.tween_property(b, "modulate", Color.WHITE, 0.45)
 
 
 # --- Carte evento --------------------------------------------------------------
@@ -924,7 +1016,9 @@ func _mostra_carta(carta: Dictionary) -> void:
 	_mercato.visible = false
 	_esercito.visible = false
 	var n := int(carta.get("narratore", -1))
-	if n >= 0:
+	if n >= 0 and n == GameState.capo:
+		_carta_chi.text = "%s, tuo signore e guida, annuncia:" % GameState.famiglie[n].capo
+	elif n >= 0:
 		var f: Dictionary = GameState.famiglie[n]
 		_carta_chi.text = "%s, del consiglio, racconta:" % f.capo
 	else:
@@ -945,6 +1039,13 @@ func _mostra_carta(carta: Dictionary) -> void:
 			_carta.visible = false
 			GameState.scegli_evento(i))
 		_carta_scelte.add_child(b)
+	if GameState.evento_senza_scelta():
+		# mai bloccati: se non possiamo permetterci niente, si lascia perdere
+		var niente := _bottone("Non possiamo fare niente: lasciamo perdere", 0, 20)
+		niente.pressed.connect(func():
+			_carta.visible = false
+			GameState.scegli_evento(-1))
+		_carta_scelte.add_child(niente)
 	_carta.visible = true
 	_aggiorna()
 

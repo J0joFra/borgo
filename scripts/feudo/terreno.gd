@@ -485,6 +485,16 @@ func _acqua(c: Vector2i) -> bool:
 	return tipo_a(c) in [Tipo.ACQUA, Tipo.FIUME]
 
 
+## La quota a cui sta una strada su questo lato: quella delle sue celle di terra.
+func quota_lato(k: int) -> float:
+	var c := celle_del_lato(k)
+	var h := -INF
+	for x in c:
+		if not _acqua(x):
+			h = maxf(h, altezza(x))
+	return 0.0 if h == -INF else h
+
+
 ## "ponte" se il lato passa sul fiume, "passerella" se sul lago, "" sulla terra.
 func tipo_lato(k: int) -> String:
 	var c := celle_del_lato(k)
@@ -527,11 +537,13 @@ func verifica_strada(vertici: Array) -> Dictionary:
 		var aperto := func(x: Vector2i) -> bool: return tipo_a(x) in COSTRUIBILE or _acqua(x)
 		if not (aperto.call(c[0]) or aperto.call(c[1])):
 			return _no(v, "il percorso passa in mezzo al bosco o alle rocce")
+		# lungo il bordo di una collina la strada starebbe a metà del gradino
+		if not _acqua(c[0]) and not _acqua(c[1]) and altezza(c[0]) != altezza(c[1]):
+			return _no(v, "il percorso corre sul bordo di una collina: passa sopra o sotto")
 		if mura.has(c[0].y * LATO + c[0].x) and mura.has(c[1].y * LATO + c[1].x):
 			v.porte += 1
 		if not gia:
-			var salita := tipo_a(c[0]) == Tipo.COLLINA or tipo_a(c[1]) == Tipo.COLLINA \
-				or (not _acqua(c[0]) and not _acqua(c[1]) and altezza(c[0]) != altezza(c[1]))
+			var salita := tipo_a(c[0]) == Tipo.COLLINA or tipo_a(c[1]) == Tipo.COLLINA
 			v.pietra += 2 if salita else 1
 	# ogni passerella (lati di lago di fila, con quelle già fatte attaccate) al massimo 3 lati
 	var nel_percorso := {}

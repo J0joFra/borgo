@@ -4,6 +4,8 @@ City builder medievale in 3D low-poly per mobile in orizzontale, fatto con **God
 Il design completo è nel documento "Borgo — Game Design Document".
 
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
+![Il tutorial dopo il prologo](docs/tutorial.png)
+![Il primo inverno senza cibo: il castello apre le porte](docs/primo_inverno.png)
 ![Una carta evento raccontata da un consigliere](docs/carta_evento.png)
 ![Banditi in arrivo con le torce: la gente corre alla dimora](docs/banditi.png)
 ![Tasse della stagione e difesa nel pannello Info](docs/info_tasse.png)
@@ -60,11 +62,20 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Prologo**: tre casate pescate a caso fra sei (data/famiglie.json), ognuna con capofamiglia, storia, motto e un tratto
   che vale se guida (es. Boscaioli +20% legna, Costruttori cantieri più veloci). Si parte con un falò e una tenda per famiglia,
   con la bandiera del suo colore.
+- **Tutorial**: dopo il prologo un riquadro in alto a destra guida i primi passi (taglialegna, raccoglitore, lavoratori,
+  strade, case, cava, campo, consiglio); il pulsante da usare lampeggia e il passo avanza da solo quando lo fai.
+  Si può saltare, e rivedere dal pannello Info.
+- **Suggerimenti**: ogni tanto, finito il tutorial, compare un consiglio su come si gioca (più spesso i primi due anni).
+  Si spengono dal pannello Info. Testi del tutorial e dei suggerimenti in `data/tutorial.json`.
+- **Il primo inverno**: se il cibo finisce, la guida raduna tutti nel suo castello e divide le sue scorte (+50 cibo,
+  una volta sola). Per tutto il primo anno nessuno se ne va per la fame o per lo scontento.
 - **Carte evento**: quasi ogni stagione un consigliere racconta qualcosa che succede (profughi alle porte, lupi nel bosco,
   la festa del raccolto, un inverno rigido, le nozze del barone...) e tu scegli cosa fare. Il tempo si ferma finché non
   scegli; le scelte che non puoi permetterti sono spente. Alcune hanno effetti che durano qualche stagione
   (un edificio rallentato, raccolti migliori, più legna per scaldarsi, tassa del re dimezzata). Racconta il consigliere
   esperto di quella materia. Le carte sono in `data/eventi.json` e se ne aggiungono facilmente.
+  Escono solo carte in cui almeno una scelta si può fare; se nel frattempo le risorse cambiano, compare
+  "Non possiamo fare niente" e la carta si chiude senza effetti.
 - **Banditi e difese** (dal Borgo in poi, o comunque dal terzo anno): ogni tanto una banda viene avvistata al confine.
   Un consigliere avvisa da dove arriva, quanti sono e quanto siamo forti; in alto resta il conto alla rovescia.
   I banditi (con le torce) camminano verso la dimora, girando attorno a laghi e fiumi (passano solo sui ponti), e la gente corre a rifugiarsi lì, dritta, senza seguire le strade.
@@ -123,7 +134,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   edifici si possono accostare e la strada passa loro accanto. Si tocca un angolo da cui parte e uno dove finisce
   (percorso a L). Partono dal falò o dalla piazza, dalla dimora del signore o da una torre di guardia: un edificio con
   lavoratori che non è collegato a una di queste (con una strada, o toccandole) lavora il **2% in meno**.
-  1 pietra per tratto in piano, 2 in salita. Fra due celle di fiume la strada è un **ponte** (3 legna e 2 pietra), fra
+  1 pietra per tratto in piano, 2 in salita; non si fanno lungo il bordo di una collina (a metà del gradino). Fra due celle di fiume la strada è un **ponte** (3 legna e 2 pietra), fra
   due di lago una **passerella** (3 legna, al massimo 3 tratti di fila). Una strada non può passare dentro un edificio.
   Toccando un tratto di strada lo si può togliere. All'inizio dalla dimora parte già una strada corta.
 - **Ruotare gli edifici**: mentre si piazza, pulsante "Ruota" (o tasto R) per girarlo di 90°.

@@ -94,8 +94,16 @@ const LARGHEZZA_STRADA := 0.9
 const ALTEZZA_MURA := 1.8
 
 
-## Posizione nel mondo di un vertice della griglia, alla quota della terra attorno.
+## Posizione nel mondo di un vertice della griglia: alla quota delle strade che lo toccano
+## (la più bassa), altrimenti a quella della terra attorno.
 func vertice(v: Vector2i) -> Vector3:
+	var su_strada := INF
+	for d in TerrenoFeudo.DIREZIONI:
+		var k := TerrenoFeudo.lato(v, v + d)
+		if terreno.strade.has(k):
+			su_strada = minf(su_strada, QUOTA_PONTE if terreno.tipo_lato(k) != "" else terreno.quota_lato(k))
+	if su_strada != INF:
+		return Vector3(v.x * CELLA, su_strada, v.y * CELLA)
 	var h := 0.0
 	for c in [v, v - Vector2i(1, 0), v - Vector2i(0, 1), v - Vector2i(1, 1)]:
 		if terreno.tipo_a(c) >= 0 and not terreno.tipo_a(c) in [TerrenoFeudo.Tipo.ACQUA, TerrenoFeudo.Tipo.FIUME]:
@@ -121,7 +129,7 @@ func _mesh_lati(lati: Array, colore: Color, con_ponti: bool) -> ArrayMesh:
 		var rot := 0.0 if chiave % 2 == 0 else PI / 2.0
 		var tipo := terreno.tipo_lato(chiave) if con_ponti else ""
 		if tipo == "":
-			var h := maxf(a.y, b.y)
+			var h := terreno.quota_lato(chiave)
 			k.forma(LowPoly.cubo(Vector3(CELLA + LARGHEZZA_STRADA, 0.08, LARGHEZZA_STRADA)), LowPoly.t(Vector3(centro.x, h + 0.02, centro.z), Vector3.ONE, rot), colore)
 		elif tipo == "ponte":
 			k.forma(LowPoly.cubo(Vector3(CELLA + 0.2, 0.16, CELLA * 0.7)), LowPoly.t(Vector3(centro.x, QUOTA_PONTE - 0.08, centro.z), Vector3.ONE, rot), LEGNO_PONTE)

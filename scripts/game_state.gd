@@ -12,6 +12,8 @@ signal game_ended(vittoria: bool, motivo: String)
 signal capo_scelto(indice: int)
 signal consiglio(famiglia: int, testo: String)
 signal evento(carta: Dictionary)
+signal suggerimento(testo: String)          # un consiglio su come si gioca
+signal tutorial_cambiato(passo: int)        # -1: tutorial finito o saltato
 signal banditi_avvistati(dati: Dictionary)  # una banda è in arrivo (vedi banditi)
 signal incursione(esito: Dictionary)        # la banda è arrivata: com'è andata
 signal missione_finita(esito: Dictionary)   # una spia, un messaggero o l'esercito sono tornati  # una carta evento da mostrare (il gioco è in pausa)
@@ -30,7 +32,8 @@ const CIBI := ["cibo", "rape", "orzo", "grano"]
 ## Le risorse mostrate nella barra in alto (grano e farina restano nascosti).
 const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "grano", "orzo", "rape", "ferro", "utensili", "armi", "oro"]
 const SAVE_PATH := "user://save.json"
-const VERSIONE_SALVATAGGIO := 8
+const VERSIONE_SALVATAGGIO := 9
+const VERSIONE_MINIMA := 8  # i salvataggi da qui in poi si caricano ancora (i campi nuovi prendono un valore di base)
 
 var edifici: Dictionary = {}  # tipo -> definizione (data/edifici.json)
 var bil: Dictionary = {}      # data/bilanciamento.json
@@ -81,6 +84,13 @@ var _cinta := -1  # cinta_chiusa() in cache: -1 da ricalcolare, 0 no, 1 sì
 var banditi: Dictionary = {}  # banda in arrivo: {forza, numero, entrata: Vector2i, mancano, totale} (tick)
 var _tick_banditi := -1       # in quale tick della stagione vengono avvistati (-1: nessuno)
 var ultime_tasse: Dictionary = {}  # l'ultima riscossione, per il pannello Info
+var aiuto_inverno_dato := false  # il primo inverno, se finisce il cibo, il signore apre le dispense (una volta)
+var tutorial_passo := -1         # passo del tutorial iniziale (-1: finito, saltato o mai iniziato)
+var suggerimenti_attivi := true
+var _prossimo_suggerimento := 0
+var _tick_suggerimento := 0
+var dati_tutorial: Array = []
+var dati_suggerimenti: Array = []
 var soldati := 0              # abitanti arruolati: non lavorano, difendono e possono attaccare
 var regni: Dictionary = {}    # "indice regione" -> {forza, atteggiamento, spiato, alleato, conquistato, vassallo}
 var missioni: Array = []      # {tipo: spia|alleanza|attacco, regione, mancano, soldati}
@@ -99,6 +109,9 @@ func _ready() -> void:
 	dati_famiglie = (load("res://data/famiglie.json") as JSON).data
 	colture = (load("res://data/colture.json") as JSON).data
 	dati_eventi = (load("res://data/eventi.json") as JSON).data
+	var guida: Dictionary = (load("res://data/tutorial.json") as JSON).data
+	dati_tutorial = guida.passi
+	dati_suggerimenti = guida.suggerimenti
 	building_added.connect(func(_b): _rete_valida = false)
 	building_removed.connect(func(_id): _rete_valida = false)
 	terreno_cambiato.connect(func(_c): _rete_valida = false; _cinta = -1)
@@ -300,6 +313,9 @@ func nuova_partita(seme: int = -1) -> void:
 	banditi = {}
 	_tick_banditi = -1
 	ultime_tasse = {}
+	aiuto_inverno_dato = false
+	tutorial_passo = -1
+	_prossimo_suggerimento = 0
 	soldati = 0
 	missioni = []
 	regni = {}
@@ -766,17 +782,20 @@ func _tick() -> void:
 		manca -= preso
 	_fame = manca > 0.0001
 	var c: Dictionary = bil.crescita
-	# Con la fame la felicità scende piano (vedi fattori) e ogni tanto qualcuno se ne va.
+	if _fame and anno == 1 and stagione == INVERNO and not aiuto_inverno_dato:
+		_aiuto_primo_inverno()
+	# Con la fame la felicità scende piano (vedi fattori) e ogni tanto qualcuno se ne va
+	# (ma non il primo anno: il signore tiene tutti nel suo castello).
 	if _fame:
 		tick_fame += 1
-		if tick_fame % int(c.fame_partenza_ogni) == 0:
+		if tick_fame % int(c.fame_partenza_ogni) == 0 and anno > 1:
 			_togli_abitanti(1)
 			message.emit("Una persona se n'è andata: qui si patisce la fame")
 	else:
 		tick_fame = 0
 	if felicita < float(c.soglia_partenze):
 		_tick_scontento += 1
-		if _tick_scontento % int(c.scontenti_partenza_ogni) == 0:
+		if _tick_scontento % int(c.scontenti_partenza_ogni) == 0 and anno > 1:
 			_togli_abitanti(1)
 			message.emit("Una persona scontenta ha lasciato il villaggio")
 	else:
@@ -815,6 +834,12 @@ func _tick() -> void:
 				return
 	if tick_in_stagione >= tps:
 		_fine_stagione()
+	_controlla_tutorial()
+	if suggerimenti_attivi and capo >= 0 and tutorial_passo < 0:
+		_tick_suggerimento += 1
+		if _tick_suggerimento >= int(bil.suggerimenti.ogni) * (1 if anno <= 2 else 2):
+			_tick_suggerimento = 0
+			_dai_suggerimento()
 	_tick_dall_ultimo_consiglio += 1
 	if _tick_dall_ultimo_consiglio >= 15:
 		_tick_dall_ultimo_consiglio = 0
@@ -977,7 +1002,91 @@ func _falo_diventa_piazza() -> void:
 			return
 
 
+# --- Tutorial e suggerimenti ------------------------------------------------------------
+
+## Il tutorial comincia dopo il prologo, nelle partite nuove.
+func inizia_tutorial() -> void:
+	tutorial_passo = 0
+	tutorial_cambiato.emit(tutorial_passo)
+
+
+func salta_tutorial() -> void:
+	tutorial_passo = -1
+	tutorial_cambiato.emit(tutorial_passo)
+	salva()
+
+
+## "Avanti" sui passi che non aspettano un'azione.
+func avanti_tutorial() -> void:
+	if tutorial_passo >= 0 and dati_tutorial[tutorial_passo].get("condizione", "") == "":
+		_passo_tutorial_fatto()
+
+
+func _passo_tutorial_fatto() -> void:
+	tutorial_passo += 1
+	if tutorial_passo >= dati_tutorial.size():
+		tutorial_passo = -1
+	tutorial_cambiato.emit(tutorial_passo)
+
+
+func _controlla_tutorial() -> void:
+	if tutorial_passo < 0:
+		return
+	var cond: String = dati_tutorial[tutorial_passo].get("condizione", "")
+	if cond != "" and condizione_tutorial(cond):
+		var fatto: String = dati_tutorial[tutorial_passo].titolo
+		_passo_tutorial_fatto()
+		message.emit("Fatto: %s!" % fatto.to_lower())
+
+
+## Le condizioni dei passi del tutorial (data/tutorial.json).
+func condizione_tutorial(cond: String) -> bool:
+	match cond:
+		"lavora":
+			for b in buildings:
+				if b.progresso >= 1.0 and b.tipo in ["taglialegna", "raccoglitore"] and b.lavoratori > 0:
+					return true
+			return false
+		"collegati":
+			var lavoro := 0
+			for b in buildings:
+				if b.progresso >= 1.0 and int(def_di(b).lavoratori) > 0:
+					lavoro += 1
+					if not collegato(b):
+						return false
+			return lavoro > 0
+		_:
+			if cond.begins_with("edificio:"):
+				var tipo := cond.substr(9)
+				for b in buildings:
+					if b.tipo == tipo:
+						return true
+	return false
+
+
+## Ogni tanto un consiglio su come si gioca, a turno (data/tutorial.json, "suggerimenti").
+func _dai_suggerimento() -> void:
+	if dati_suggerimenti.is_empty() or not evento_attivo.is_empty():
+		return
+	suggerimento.emit(dati_suggerimenti[_prossimo_suggerimento % dati_suggerimenti.size()])
+	_prossimo_suggerimento += 1
+
+
 # --- Carte evento ----------------------------------------------------------------------
+
+## Il primo inverno, se il cibo finisce, la guida raduna tutti nel castello e apre le dispense:
+## 50 di cibo, una volta sola. Per tutto il primo anno nessuno se ne va per la fame.
+func _aiuto_primo_inverno() -> void:
+	aiuto_inverno_dato = true
+	var c: Dictionary = bil.primo_inverno
+	risorse.cibo += float(c.cibo)
+	_fame = false
+	tick_fame = 0
+	mostra_evento({"id": "aiuto_inverno", "area": "", "narratore": capo,
+		"titolo": "Le porte del castello si aprono",
+		"testo": "Il cibo è finito e la neve è alta. Apro le porte del mio castello a tutte le famiglie: dormiremo vicini al fuoco e divideremo le scorte della mia dispensa, %d di cibo. Quest'inverno nessuno se ne andrà." % int(c.cibo),
+		"scelte": [{"testo": "Grazie, mio signore", "effetti": {}}]})
+
 
 ## A inizio stagione si decide se e quando arriverà una carta (una a stagione al massimo).
 func _programma_evento() -> void:
@@ -1004,7 +1113,8 @@ func carte_possibili() -> Array:
 		for tipo in carta.get("richiede", {}).get("edifici", []):
 			if conta_completati(tipo) == 0:
 				ok = false
-		if ok:
+		# niente carte in cui non si può scegliere niente
+		if ok and carta.scelte.any(func(sc): return _effetti_possibili(sc.effetti)):
 			lista.append(carta)
 	return lista
 
@@ -1023,10 +1133,11 @@ func _pesca_evento() -> void:
 ## Mostra una carta: la racconta il consigliere della sua area (o l'altro), e il tempo si ferma
 ## finché non si sceglie.
 func mostra_evento(carta: Dictionary) -> void:
-	var narratore := -1
-	for f in consiglieri():
-		if narratore < 0 or tratto(f).get("area", "") == carta.area:
-			narratore = f
+	var narratore := int(carta.get("narratore", -1))
+	if not carta.has("narratore"):
+		for f in consiglieri():
+			if narratore < 0 or tratto(f).get("area", "") == carta.area:
+				narratore = f
 	evento_attivo = carta.duplicate(true)
 	evento_attivo.narratore = narratore
 	eventi_usati.append(carta.id)
@@ -1042,15 +1153,36 @@ func scelta_possibile(indice: int) -> bool:
 	var scelte: Array = evento_attivo.get("scelte", [])
 	if indice < 0 or indice >= scelte.size():
 		return false
-	var r: Dictionary = scelte[indice].effetti.get("risorse", {})
+	return _effetti_possibili(scelte[indice].effetti)
+
+
+func _effetti_possibili(effetti: Dictionary) -> bool:
+	var r: Dictionary = effetti.get("risorse", {})
 	for k in r:
 		if float(r[k]) < 0.0 and risorse[k] < -float(r[k]):
 			return false
 	return true
 
 
+## Vero se nella carta aperta non si può scegliere niente (le risorse sono cambiate): allora
+## si chiude senza effetti con scegli_evento(-1).
+func evento_senza_scelta() -> bool:
+	var scelte: Array = evento_attivo.get("scelte", [])
+	for i in scelte.size():
+		if scelta_possibile(i):
+			return false
+	return true
+
+
 func scegli_evento(indice: int) -> void:
-	if evento_attivo.is_empty() or not scelta_possibile(indice):
+	if evento_attivo.is_empty():
+		return
+	if indice == -1 and evento_senza_scelta():
+		evento_attivo = {}
+		velocita = maxi(1, _velocita_prima)
+		changed.emit()
+		return
+	if not scelta_possibile(indice):
 		return
 	var e: Dictionary = evento_attivo.scelte[indice].effetti
 	var cap := capacita()
@@ -2168,6 +2300,8 @@ func salva() -> void:
 		"evento_attivo": evento_attivo.get("id", ""),
 		"banditi": _banditi_salvati(), "tick_banditi": _tick_banditi,
 		"soldati": soldati, "regni": regni, "missioni": missioni,
+		"aiuto_inverno_dato": aiuto_inverno_dato, "tutorial_passo": tutorial_passo,
+		"suggerimenti_attivi": suggerimenti_attivi, "prossimo_suggerimento": _prossimo_suggerimento,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -2179,7 +2313,7 @@ func carica() -> bool:
 		return false
 	var dati = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
 	# i salvataggi delle versioni precedenti (mappa più piccola, niente famiglie) non si caricano
-	if not dati is Dictionary or int(dati.get("versione", 0)) != VERSIONE_SALVATAGGIO:
+	if not dati is Dictionary or int(dati.get("versione", 0)) < VERSIONE_MINIMA:
 		return false
 	nuova_partita(int(dati.seme_mappa))
 	famiglie = dati.famiglie
@@ -2228,6 +2362,10 @@ func carica() -> bool:
 	_tick_evento = int(dati.get("tick_evento", -1))
 	_tick_banditi = int(dati.get("tick_banditi", -1))
 	soldati = int(dati.get("soldati", 0))
+	aiuto_inverno_dato = bool(dati.get("aiuto_inverno_dato", anno > 1))
+	tutorial_passo = int(dati.get("tutorial_passo", -1))
+	suggerimenti_attivi = bool(dati.get("suggerimenti_attivi", true))
+	_prossimo_suggerimento = int(dati.get("prossimo_suggerimento", 0))
 	var salvati: Dictionary = dati.get("regni", {})
 	for k in salvati:
 		if regni.has(k):

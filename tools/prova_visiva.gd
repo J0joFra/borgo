@@ -70,6 +70,12 @@ func _via() -> void:
 	await _scatta("8_carta_evento")
 	GameState.scegli_evento(0)
 	GameState._tick_evento = -1
+	# il primo inverno senza cibo il signore apre il castello
+	GameState._aiuto_primo_inverno()
+	await _attendi(0.4)
+	await _scatta("8c_primo_inverno")
+	GameState.scegli_evento(0)
+	GameState.salta_tutorial()
 
 	# le tende si strappano a fine stagione: servono case
 	GameState.migliora(tl.id)
