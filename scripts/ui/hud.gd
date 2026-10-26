@@ -10,6 +10,7 @@ signal conferma_piazzamento
 signal annulla_piazzamento
 signal cambia_lavoratori(id: int, delta: int)
 signal demolisci(id: int)
+signal migliora(id: int)
 signal chiudi_pannello
 signal ruota(direzione: int)
 signal vai_al_regno
@@ -17,7 +18,7 @@ signal nuova_partita
 
 const CATEGORIE := [["Case", "case"], ["Risorse", "risorse"], ["Cibo", "cibo"], ["Servizi", "servizi"]]
 const COLORI := {
-	"legna": Color("8b5a2b"), "pietra": Color("9a9a9a"), "cibo": Color("c0392b"),
+	"legna": Color("8b5a2b"), "pietra": Color("9a9a9a"), "cibo": Color("c0392b"), "grano": Color("e0b84a"),
 	"ferro": Color("4a5568"), "utensili": Color("c8ccd0"), "oro": Color("e5b53a"),
 	"abitanti": Color("e8c39e"), "felicita": Color("f2d24b"),
 }
@@ -37,6 +38,7 @@ var _dettagli: Label
 var _btn_meno: Button
 var _btn_piu: Button
 var _btn_demolisci: Button
+var _btn_migliora: Button
 var _btn_ok: Button
 var _btn_annulla: Button
 var _btn_chiudi: Button
@@ -54,6 +56,7 @@ var _fine_testo: Label
 var _edificio := -1          # id mostrato nel pannello, -1 = nessuno
 var _piazzamento := ""       # tipo in piazzamento, "" = nessuno
 var _piazzamento_valido := false
+var _stima_piazzamento := ""
 
 
 func _ready() -> void:
@@ -97,9 +100,10 @@ func mostra_edificio(id: int) -> void:
 	_aggiorna_pannello()
 
 
-func mostra_piazzamento(tipo: String, valido: bool) -> void:
+func mostra_piazzamento(tipo: String, valido: bool, stima := "") -> void:
 	_piazzamento = tipo
 	_piazzamento_valido = valido
+	_stima_piazzamento = stima
 	_edificio = -1
 	_aggiorna_pannello()
 
@@ -236,21 +240,28 @@ func _crea_pannello() -> void:
 	_pannello.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_pannello.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_pannello.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_pannello.offset_left = -140
-	_pannello.offset_right = 140
-	_pannello.offset_top = -40
+	_pannello.offset_left = -160
+	_pannello.offset_right = 160
+	_pannello.offset_top = -56
 	_pannello.offset_bottom = -4
 	_pannello.visible = false
 	_radice.add_child(_pannello)
-	var riga := HBoxContainer.new()
-	_pannello.add_child(riga)
+	var colonna := VBoxContainer.new()
+	_pannello.add_child(colonna)
+	var sopra := HBoxContainer.new()
+	colonna.add_child(sopra)
 	var testi := VBoxContainer.new()
 	testi.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	riga.add_child(testi)
+	sopra.add_child(testi)
+	var riga := HBoxContainer.new()
+	riga.alignment = BoxContainer.ALIGNMENT_END
+	colonna.add_child(riga)
 	_titolo = Label.new()
 	testi.add_child(_titolo)
 	_dettagli = Label.new()
 	_dettagli.modulate = Color(1, 1, 1, 0.8)
+	_dettagli.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_dettagli.custom_minimum_size.x = 280
 	testi.add_child(_dettagli)
 	_btn_meno = _bottone("-", 18, 18)
 	_btn_meno.pressed.connect(func(): cambia_lavoratori.emit(_edificio, -1))
@@ -258,13 +269,17 @@ func _crea_pannello() -> void:
 	_btn_piu.pressed.connect(func(): cambia_lavoratori.emit(_edificio, 1))
 	_btn_demolisci = _bottone("Demolisci", 0, 18)
 	_btn_demolisci.pressed.connect(func(): demolisci.emit(_edificio))
+	_btn_migliora = _bottone("Migliora", 0, 18)
+	_btn_migliora.pressed.connect(func(): migliora.emit(_edificio))
 	_btn_ok = _bottone("Costruisci", 0, 18)
 	_btn_ok.pressed.connect(func(): conferma_piazzamento.emit())
 	_btn_annulla = _bottone("Annulla", 0, 18)
 	_btn_annulla.pressed.connect(func(): annulla_piazzamento.emit())
 	_btn_chiudi = _bottone("X", 18, 18)
 	_btn_chiudi.pressed.connect(func(): chiudi_pannello.emit())
-	for b in [_btn_meno, _btn_piu, _btn_demolisci, _btn_ok, _btn_annulla, _btn_chiudi]:
+	_btn_chiudi.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	sopra.add_child(_btn_chiudi)
+	for b in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ok, _btn_annulla]:
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		riga.add_child(b)
 
@@ -459,12 +474,14 @@ func _scegli_dal_menu(b: Button) -> void:
 
 
 func _aggiorna_pannello() -> void:
-	for x in [_btn_meno, _btn_piu, _btn_demolisci, _btn_ok, _btn_annulla, _btn_chiudi]:
+	for x in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ok, _btn_annulla, _btn_chiudi]:
 		x.visible = false
 	if _piazzamento != "":
 		var d: Dictionary = GameState.edifici[_piazzamento]
 		_titolo.text = "%s  ·  %s" % [d.nome, GameState.testo_costo(_piazzamento)]
 		_dettagli.text = GameState.testo_effetto(_piazzamento) if _piazzamento_valido else "Posizione non valida: tocca un'altra zona"
+		if _piazzamento_valido and _stima_piazzamento != "":
+			_dettagli.text = _stima_piazzamento
 		_btn_ok.visible = true
 		_btn_ok.disabled = not (_piazzamento_valido and GameState.puo_permettersi(_piazzamento))
 		_btn_annulla.visible = true
@@ -474,7 +491,7 @@ func _aggiorna_pannello() -> void:
 	if b.is_empty():
 		nascondi_pannello()
 		return
-	var d: Dictionary = GameState.edifici[b.tipo]
+	var d := GameState.def_di(b)
 	_pannello.visible = true
 	_btn_demolisci.visible = not d.get("fisso", false)
 	_btn_chiudi.visible = true
@@ -483,8 +500,14 @@ func _aggiorna_pannello() -> void:
 		_dettagli.text = GameState.testo_effetto(b.tipo)
 		return
 	var testo := GameState.testo_effetto(b.tipo)
-	if b.bonus < 1.0:
-		testo += "  (lontano: metà produzione)"
+	var stima := GameState.stima_produzione(b.tipo, b.cella, int(b.get("livello", 1)))
+	if stima != "":
+		testo = stima
+	var prossimo := GameState.prossimo_miglioramento(b)
+	if not prossimo.is_empty():
+		_btn_migliora.visible = true
+		_btn_migliora.text = "Migliora: %s (%s)" % [prossimo.nome, GameState._elenco(prossimo.costo)]
+		_btn_migliora.disabled = not GameState.puo_migliorare(b)
 	_titolo.text = d.nome
 	if int(d.lavoratori) > 0:
 		_titolo.text += "  ·  %d/%d lavoratori" % [b.lavoratori, d.lavoratori]

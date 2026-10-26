@@ -4,7 +4,9 @@ City builder medievale in 3D low-poly per mobile in orizzontale, fatto con **God
 Il design completo è nel documento "Borgo — Game Design Document".
 
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
-![L'accampamento attorno al falò](docs/falo.png)
+![L'accampamento attorno al falò, con abitanti e tende migliorate](docs/falo.png)
+![Dove mettere un campo: la terra fertile si colora](docs/zone.png)
+![Il bosco tagliato dal taglialegna e il fiume](docs/disboscamento.png)
 ![Il feudo con i modelli KayKit](docs/feudo.png)
 ![La mappa del regno](docs/regno.png)
 
@@ -46,19 +48,28 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   con la bandiera del suo colore.
 - **Consiglio**: i due consiglieri guardano il villaggio e suggeriscono cosa fare, ognuno sulla sua arte (cibo, legna,
   case, oro, felicità, costruire); non ripetono mai lo stesso consiglio. In futuro potranno diventare vassalli delle terre conquistate.
+- **Abitanti che camminano**: ognuno ha una casa e, se lavora, va e viene dal suo edificio; i disoccupati stanno attorno al falò.
+- **Zone del territorio**: ogni cella ha una fertilità (più alta vicino all'acqua, la terra fertile è un verde più scuro).
+  Taglialegna, cava, cacciatore e raccoglitore rendono di più con tanto bosco o tante rocce attorno; il pescatore rende di
+  più sul lago che sul fiume, ma d'inverno il lago gela e la pesca crolla; il campo rende in base alla fertilità.
+  Mentre scegli dove costruire, le celle che contano si colorano e il pannello mostra la resa stimata.
+- **Disboscamento**: il taglialegna abbatte il bosco attorno; un bosco grande rende tanto ma sparisce in 3 anni (restano i ceppi).
+- **Miglioramenti** a due livelli: tende (fino alla capanna), case, magazzini e tutti gli edifici della natura. Costano legna e
+  **pietra**, che ora serve anche per case, magazzini e quasi tutti gli edifici.
+- **Campi** disponibili da subito: il grano si raccoglie in autunno e sfama quando il cibo finisce (con mulino e forno vale il doppio).
 - **Mondo esteso**: il feudo (48×48 celle) sta al centro di un mondo di 112×112; oltre la linea gialla del confine
   ci sono le terre dei vicini, che si vedono ma dove non si costruisce.
 - **Mappa del regno**: 10 regioni stile carta antica, ognuna con nome, risorsa speciale e proprietario. Zoom animato per entrare nel feudo.
 - **Feudo in 3D** con modelli KayKit, telecamera isometrica con zoom e rotazione, stagioni visibili (erba, chiome, neve, luce).
 - **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
 
-**Da fare**: carte evento, banditi e difese, conquista delle regioni e vassalli, sentieri, abitanti che camminano, audio.
+**Da fare**: carte evento, banditi e difese, conquista delle regioni e vassalli, sentieri, ricrescita dei boschi, audio.
 
 ## Dove cambiare le cose
 
 | Cosa | File |
 | --- | --- |
-| Costi, produzione, taglie, forma degli edifici | `data/edifici.json` |
+| Costi, produzione, zone, miglioramenti degli edifici | `data/edifici.json` |
 | Ritmo, felicità, tasse, livelli | `data/bilanciamento.json` |
 | Nomi, risorse e signori delle regioni | `data/regioni.json` |
 | Casate, tratti, nome del regno caduto | `data/famiglie.json` |
@@ -66,7 +77,9 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 | Prologo davanti al falò | `scripts/ui/prologo.gd` |
 | Regole della partita | `scripts/game_state.gd` (autoload `GameState`) |
 | Terreno e regole di piazzamento | `scripts/feudo/terreno.gd` |
-| Disegno del terreno, alberi, colori delle stagioni | `scripts/feudo/vista_terreno.gd` |
+| Fiume, fertilità, rese delle zone, disboscamento | `scripts/feudo/terreno.gd` |
+| Disegno del terreno, alberi, ceppi, zone colorate | `scripts/feudo/vista_terreno.gd` |
+| Abitanti che camminano | `scripts/feudo/abitanti.gd` |
 | Modelli degli edifici | `scripts/feudo/edificio_3d.gd` |
 | Telecamera | `scripts/feudo/camera_iso.gd` |
 | Gesti e scena del feudo | `scripts/feudo/feudo.gd` |

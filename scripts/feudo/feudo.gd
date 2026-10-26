@@ -35,6 +35,9 @@ func _ready() -> void:
 	vista.costruisci(GameState.terreno)
 	for b in GameState.buildings:
 		_crea_edificio(b)
+	var abitanti := Abitanti3D.new()
+	abitanti.vista = vista
+	add_child(abitanti)
 	_anteprima = MeshInstance3D.new()
 	_anteprima.visible = false
 	add_child(_anteprima)
@@ -57,6 +60,7 @@ func _ready() -> void:
 	hud.annulla_piazzamento.connect(_termina_piazzamento)
 	hud.cambia_lavoratori.connect(_cambia_lavoratori)
 	hud.demolisci.connect(GameState.demolisci)
+	hud.migliora.connect(GameState.migliora)
 	hud.chiudi_pannello.connect(_seleziona.bind(-1))
 	hud.ruota.connect(camera.ruota)
 	hud.vai_al_regno.connect(_vai_al_regno)
@@ -67,6 +71,7 @@ func _ready() -> void:
 	GameState.season_changed.connect(_cambia_stagione)
 	GameState.changed.connect(_aggiorna_edifici)
 	GameState.game_ended.connect(_partita_finita)
+	GameState.terreno_cambiato.connect(vista.taglia)
 	GameState.changed.emit()  # l'HUD è pronto: rinfresca i numeri
 	if GameState.capo < 0:
 		_inizia_prologo()
@@ -167,13 +172,16 @@ func _sposta_anteprima(centro: Vector2i) -> void:
 	var dentro := GameState.terreno.dentro(_cella)
 	_anteprima.position = vista.centro_area(_cella if dentro else centro, taglia) + Vector3(0, 0.15, 0)
 	_anteprima.visible = true
-	hud.mostra_piazzamento(_tipo, valida)
+	# le celle che contano per la resa (bosco, rocce, acqua, fertilità) si colorano
+	vista.mostra_zona(_tipo, _cella if dentro else centro)
+	var stima := GameState.stima_produzione(_tipo, _cella) if dentro else ""
+	hud.mostra_piazzamento(_tipo, valida, stima)
 
 
 func _conferma_piazzamento() -> void:
 	if modo != Modo.PIAZZA or not GameState.terreno.posizione_valida(_tipo, _cella):
 		return
-	var b := GameState.piazza(_tipo, _cella, GameState.terreno.bonus(_tipo, _cella))
+	var b := GameState.piazza(_tipo, _cella, 1.0)
 	_termina_piazzamento()
 	if not b.is_empty():
 		_seleziona(b.id)
@@ -183,6 +191,7 @@ func _termina_piazzamento() -> void:
 	modo = Modo.NORMALE
 	_tipo = ""
 	_anteprima.visible = false
+	vista.nascondi_zona()
 	hud.nascondi_pannello()
 
 

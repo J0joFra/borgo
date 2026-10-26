@@ -9,6 +9,8 @@ const FONDO := -3.0
 
 const ERBA := [Color("6fae47"), Color("8db24a"), Color("b39a48"), Color("e6ecef")]
 const ACQUA := [Color("4a90c8"), Color("4a90c8"), Color("4a86b8"), Color("b8d8ea")]
+const FIUME := [Color("5aa6dc"), Color("5aa6dc"), Color("5a9cd0"), Color("7aaccc")]  # d'inverno non gela
+const RADURA := Color("8a7a4a")  # dove il bosco è stato tagliato
 const ROCCIA_SUOLO := [Color("9a978d"), Color("9a978d"), Color("968f80"), Color("dfe5e8")]
 const CHIOMA_TONDA := [Color("4a9a3e"), Color("5aa035"), Color("d0782c"), Color("8a7a68")]
 const CHIOMA_PINO := [Color("2f6b40"), Color("2f6b40"), Color("2f6b40"), Color("c4d6d0")]
@@ -32,6 +34,10 @@ var _tondi: MultiMeshInstance3D
 var _pini: MultiMeshInstance3D
 var _variazioni_tondi := PackedFloat32Array()
 var _variazioni_pini := PackedFloat32Array()
+var _tronchi: MultiMeshInstance3D
+var _alberi_cella: Dictionary = {}  # indice cella -> [[tipo 0 tondo / 1 pino, indice chioma, indice tronco], ...]
+var _tagliate: Dictionary = {}      # indice cella -> true, celle di bosco abbattute
+var _zona: MeshInstance3D           # celle colorate mentre si sceglie dove costruire
 
 
 func costruisci(t: TerrenoFeudo) -> void:
@@ -90,6 +96,8 @@ func _colore_cella(c: Vector2i, stagione: int) -> Color:
 	match terreno.tipo_a(c):
 		TerrenoFeudo.Tipo.ACQUA:
 			return ACQUA[stagione]
+		TerrenoFeudo.Tipo.FIUME:
+			return FIUME[stagione]
 		TerrenoFeudo.Tipo.ROCCIA:
 			base = ROCCIA_SUOLO[stagione]
 		TerrenoFeudo.Tipo.COLLINA:
@@ -102,6 +110,11 @@ func _colore_cella(c: Vector2i, stagione: int) -> Color:
 			base = ERBA[stagione].lightened(0.05)
 		_:
 			base = ERBA[stagione]
+	if _tagliate.has(c.y * TerrenoFeudo.LATO + c.x):
+		base = base.lerp(RADURA, 0.35 if stagione != GameState.INVERNO else 0.1)
+	elif stagione != GameState.INVERNO and terreno.tipo_a(c) in TerrenoFeudo.COSTRUIBILE:
+		# la terra fertile è un verde più scuro e ricco: si riconosce a occhio
+		base = base.darkened(0.16 * terreno.fertilita_a(c))
 	# Una leggera variazione per cella evita l'effetto scacchiera piatta.
 	var v := float(absi(hash(c)) % 100) / 100.0
 	return base.lightened(v * 0.05) if v > 0.5 else base.darkened(v * 0.05)
@@ -233,12 +246,16 @@ func _crea_alberi() -> void:
 	rng.seed = terreno.seme + 7
 	var tondi: Array[Transform3D] = []
 	var pini: Array[Transform3D] = []
+	for i in terreno.tagliati:
+		_tagliate[i] = true
 	for y in TerrenoFeudo.LATO:
 		for x in TerrenoFeudo.LATO:
 			var c := Vector2i(x, y)
+			var indice := y * TerrenoFeudo.LATO + x
 			var tipo := terreno.tipo_a(c)
 			var quanti := 0
-			if tipo == TerrenoFeudo.Tipo.BOSCO:
+			# le celle tagliate contano come bosco, così gli alberi restano gli stessi e diventano ceppi
+			if tipo == TerrenoFeudo.Tipo.BOSCO or _tagliate.has(indice):
 				quanti = 2 if rng.randf() < 0.45 else 1
 			elif tipo == TerrenoFeudo.Tipo.ERBA and rng.randf() < 0.012:
 				quanti = 1
@@ -246,10 +263,15 @@ func _crea_alberi() -> void:
 				var pos := Vector3((x + rng.randf_range(0.2, 0.8)) * CELLA, terreno.altezza(c), (y + rng.randf_range(0.2, 0.8)) * CELLA)
 				var s := rng.randf_range(0.8, 1.25)
 				var tr := LowPoly.t(pos, Vector3.ONE * s, rng.randf() * TAU)
-				if rng.randf() < 0.45:
+				var pino := rng.randf() < 0.45
+				var elenco: Array = _alberi_cella.get(indice, [])
+				if pino:
+					elenco.append([1, pini.size(), -1])
 					pini.append(tr)
 				else:
+					elenco.append([0, tondi.size(), -1])
 					tondi.append(tr)
+				_alberi_cella[indice] = elenco
 
 	var tronco := LowPoly.Costruttore.new().forma(LowPoly.cilindro(0.16, 0.12, 1.2, 5), LowPoly.t(Vector3(0, 0.6, 0)), TRONCO).mesh()
 	var chioma_tonda := LowPoly.Costruttore.new().forma(LowPoly.sfera(0.95, 1.7, 7, 4), LowPoly.t(Vector3(0, 1.8, 0)), Color.WHITE).mesh()
@@ -260,13 +282,81 @@ func _crea_alberi() -> void:
 	var tutti: Array[Transform3D] = []
 	tutti.append_array(tondi)
 	tutti.append_array(pini)
-	_multimesh(tronco, tutti, false)
+	for elenco in _alberi_cella.values():
+		for albero in elenco:
+			albero[2] = albero[1] if albero[0] == 0 else tondi.size() + albero[1]
+	_tronchi = _multimesh(tronco, tutti, false)
 	_tondi = _multimesh(chioma_tonda, tondi, true)
 	_pini = _multimesh(chioma_pino, pini, true)
 	for i in tondi.size():
 		_variazioni_tondi.append(rng.randf_range(-0.08, 0.08))
 	for i in pini.size():
 		_variazioni_pini.append(rng.randf_range(-0.08, 0.08))
+	for indice in _tagliate:
+		_a_ceppo(indice)
+
+
+## Il bosco di queste celle è stato tagliato: alberi a ceppi e suolo a radura.
+func taglia(celle: Array) -> void:
+	for c in celle:
+		var indice: int = c.y * TerrenoFeudo.LATO + c.x
+		_tagliate[indice] = true
+		_a_ceppo(indice)
+	_suoli_pronti.clear()
+	applica_stagione(GameState.stagione)
+
+
+func _a_ceppo(indice: int) -> void:
+	for albero in _alberi_cella.get(indice, []):
+		var chiome: MultiMesh = _tondi.multimesh if albero[0] == 0 else _pini.multimesh
+		var tr := chiome.get_instance_transform(albero[1])
+		chiome.set_instance_transform(albero[1], Transform3D(Basis.from_scale(Vector3.ONE * 0.001), tr.origin))
+		var tronco := _tronchi.multimesh.get_instance_transform(albero[2])
+		var basso := Transform3D(tronco.basis * Basis.from_scale(Vector3(1.3, 0.25, 1.3)), tronco.origin)
+		_tronchi.multimesh.set_instance_transform(albero[2], basso)
+
+
+# --- Zona dell'edificio da piazzare -------------------------------------------------
+
+## Colora le celle che contano per l'edificio: bosco, rocce, acqua o la fertilità della terra.
+func mostra_zona(tipo: String, cella: Vector2i) -> void:
+	var celle := terreno.celle_zona(tipo, cella)
+	if celle.is_empty():
+		nascondi_zona()
+		return
+	var fertilita: bool = GameState.edifici[tipo].zona.tipo == "fertilita"
+	var k := LowPoly.Costruttore.new()
+	for coppia in celle:
+		var c: Vector2i = coppia[0]
+		var valore: float = coppia[1]
+		var colore := Color(1.0, 0.92, 0.35, 0.45)
+		if fertilita:
+			colore = Color(0.85, 0.25, 0.15).lerp(Color(0.25, 0.85, 0.25), valore)
+			colore.a = 0.45
+		var h := terreno.altezza(c) + 0.06
+		var x0 := c.x * CELLA + 0.15
+		var z0 := c.y * CELLA + 0.15
+		var x1 := (c.x + 1) * CELLA - 0.15
+		var z1 := (c.y + 1) * CELLA - 0.15
+		k.quad(Vector3(x0, h, z0), Vector3(x1, h, z0), Vector3(x1, h, z1), Vector3(x0, h, z1), Vector3.UP, colore)
+	var mesh := k.mesh()
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.vertex_color_use_as_albedo = true
+	mat.vertex_color_is_srgb = true
+	mesh.surface_set_material(0, mat)
+	if _zona == null:
+		_zona = MeshInstance3D.new()
+		_zona.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_zona)
+	_zona.mesh = mesh
+	_zona.visible = true
+
+
+func nascondi_zona() -> void:
+	if _zona:
+		_zona.visible = false
 
 
 func _multimesh(mesh: Mesh, trasformazioni: Array[Transform3D], colori: bool) -> MultiMeshInstance3D:

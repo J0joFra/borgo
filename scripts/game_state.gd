@@ -11,6 +11,7 @@ signal message(testo: String)
 signal game_ended(vittoria: bool, motivo: String)
 signal capo_scelto(indice: int)
 signal consiglio(famiglia: int, testo: String)
+signal terreno_cambiato(celle: Array)  # celle di bosco abbattute
 
 const PRIMAVERA := 0
 const ESTATE := 1
@@ -20,9 +21,9 @@ const STAGIONI := ["Primavera", "Estate", "Autunno", "Inverno"]
 const CHIAVI_STAGIONI := ["primavera", "estate", "autunno", "inverno"]
 const RISORSE := ["legna", "pietra", "cibo", "ferro", "utensili", "oro", "grano", "farina"]
 ## Le risorse mostrate nella barra in alto (grano e farina restano nascosti).
-const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "ferro", "utensili", "oro"]
+const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "grano", "ferro", "utensili", "oro"]
 const SAVE_PATH := "user://save.json"
-const VERSIONE_SALVATAGGIO := 2
+const VERSIONE_SALVATAGGIO := 3
 
 var edifici: Dictionary = {}  # tipo -> definizione (data/edifici.json)
 var bil: Dictionary = {}      # data/bilanciamento.json
@@ -52,6 +53,7 @@ var famiglie: Array = []
 var capo: int = -1            # indice in famiglie della casata che guida; -1 = non ancora scelta
 var ultimi_consigli: Dictionary = {}  # famiglia -> ultimo consiglio mostrato
 var _tick_dall_ultimo_consiglio := 0
+var _tagli_da_applicare: Array = []  # tagli del bosco letti dal salvataggio, applicati da avvia()
 
 var _prossimo_id: int = 1
 var _accumulo: float = 0.0
@@ -78,6 +80,8 @@ func avvia() -> void:
 	if not caricata:
 		nuova_partita()
 	terreno = TerrenoFeudo.new(seme_mappa)
+	terreno.applica_tagli(_tagli_da_applicare)
+	_tagli_da_applicare = []
 	for b in buildings:
 		terreno.occupa(b)
 	if not caricata:
@@ -182,6 +186,7 @@ func nuova_partita(seme: int = -1) -> void:
 	capo = -1
 	ultimi_consigli = {}
 	_tick_dall_ultimo_consiglio = 0
+	_tagli_da_applicare = []
 	_scegli_famiglie()
 	buildings = []
 	finita = false
@@ -212,6 +217,76 @@ func _process(delta: float) -> void:
 
 
 # --- Edifici -----------------------------------------------------------------
+
+## La definizione di un edificio al suo livello: i miglioramenti sostituiscono i valori base
+## (alloggi, capacità, felicità, lavoratori...) e "produzione" moltiplica ciò che produce.
+func def_di(b: Dictionary) -> Dictionary:
+	var d: Dictionary = edifici[b.tipo]
+	var livello_b := int(b.get("livello", 1))
+	if livello_b <= 1:
+		return d
+	var unito := d.duplicate()
+	var miglioramenti: Array = d.get("miglioramenti", [])
+	for i in mini(livello_b - 1, miglioramenti.size()):
+		unito.merge(miglioramenti[i], true)
+	unito.nome = d.nome if livello_b - 2 >= miglioramenti.size() else miglioramenti[livello_b - 2].nome
+	return unito
+
+
+## Il prossimo miglioramento possibile, o {} se è già al massimo (o non ne ha).
+func prossimo_miglioramento(b: Dictionary) -> Dictionary:
+	var miglioramenti: Array = edifici[b.tipo].get("miglioramenti", [])
+	var i := int(b.get("livello", 1)) - 1
+	return miglioramenti[i] if i < miglioramenti.size() else {}
+
+
+func puo_migliorare(b: Dictionary) -> bool:
+	var m := prossimo_miglioramento(b)
+	if m.is_empty() or b.progresso < 1.0:
+		return false
+	for r in m.costo:
+		if risorse[r] < m.costo[r]:
+			return false
+	return true
+
+
+func migliora(id: int) -> void:
+	var b := trova(id)
+	if b.is_empty() or not puo_migliorare(b):
+		return
+	var m := prossimo_miglioramento(b)
+	for r in m.costo:
+		risorse[r] -= m.costo[r]
+	b.livello = int(b.get("livello", 1)) + 1
+	message.emit("%s migliorato: ora è %s" % [edifici[b.tipo].nome, m.nome])
+	changed.emit()
+
+
+## Resa della zona per un edificio piazzato (1.0 senza terreno, ad esempio nei test).
+func resa_di(b: Dictionary) -> float:
+	if terreno == null:
+		return 1.0
+	return terreno.resa(b.tipo, b.cella, stagione)
+
+
+## Quanto produrrebbe un edificio qui, a pieno regime, con la spiegazione della zona.
+## Es. "Resa: 36 legna a stagione · 24 celle di bosco".
+func stima_produzione(tipo: String, cella: Vector2i, livello_b := 1) -> String:
+	var d := def_di({"tipo": tipo, "livello": livello_b})
+	var produce: Dictionary = d.get("produce", {})
+	if produce.is_empty() or not d.has("zona") or terreno == null:
+		return ""
+	var info := terreno.info_zona(tipo, cella, stagione)
+	var stagioni: Dictionary = d.get("stagioni", {})
+	# un raccolto: produce solo in alcune stagioni (i valori del JSON sono decimali: 0.0, non 0)
+	var raccolto: bool = stagioni.values().any(func(v): return float(v) == 0.0) and float(stagioni.get("autunno", 1.0)) > 0.0
+	var parti: Array[String] = []
+	for r in produce:
+		var valore := float(produce[r]) * float(info.resa) * float(d.get("produzione", 1.0)) * bonus_guida(r)
+		parti.append("%d %s" % [roundi(valore), r])
+	var quando := "al raccolto d'autunno" if raccolto else "a stagione"
+	return "Resa: %s %s · %s" % [", ".join(parti), quando, info.testo]
+
 
 func sbloccato(tipo: String) -> bool:
 	return int(edifici[tipo].livello) <= livello
@@ -261,7 +336,7 @@ func aggiungi_lavoratore(id: int) -> void:
 	var b := trova(id)
 	if b.is_empty() or b.progresso < 1.0:
 		return
-	if b.lavoratori < int(edifici[b.tipo].lavoratori) and disoccupati() > 0:
+	if b.lavoratori < int(def_di(b).lavoratori) and disoccupati() > 0:
 		b.lavoratori += 1
 		changed.emit()
 
@@ -298,6 +373,10 @@ func _aggiungi(tipo: String, cella: Vector2i, bonus: float, progresso: float) ->
 func _completa(b: Dictionary) -> void:
 	var d: Dictionary = edifici[b.tipo]
 	b.lavoratori = mini(int(d.lavoratori), disoccupati())
+	if d.get("disbosca", false) and terreno:
+		# il bosco attorno quando inizia il lavoro: decide quanto se ne taglia a stagione
+		var taglia := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
+		b.bosco_iniziale = terreno.conta_attorno(b.cella, taglia, int(d.zona.raggio), TerrenoFeudo.Tipo.BOSCO)
 	building_finished.emit(b.id)
 	message.emit("%s completato" % d.nome)
 	changed.emit()
@@ -311,7 +390,7 @@ func capacita() -> float:
 	var totale := float(bil.capacita_base)
 	for b in buildings:
 		if b.progresso >= 1.0:
-			totale += float(edifici[b.tipo].get("capacita", 0))
+			totale += float(def_di(b).get("capacita", 0))
 	return totale
 
 
@@ -319,7 +398,7 @@ func alloggi() -> int:
 	var totale := 0
 	for b in buildings:
 		if b.progresso >= 1.0:
-			totale += int(edifici[b.tipo].get("alloggi", 0))
+			totale += int(def_di(b).get("alloggi", 0))
 	return totale
 
 
@@ -356,8 +435,8 @@ func fattori_felicita() -> Dictionary:
 		fattori["Pane"] = f.pane
 	var visti := {}
 	for b in buildings:
-		var d: Dictionary = edifici[b.tipo]
-		if d.has("felicita") and _attivo(b) and not visti.has(b.tipo):
+		var d := def_di(b)
+		if d.has("felicita") and _attivo(b) and not visti.has(b.tipo) and int(d.felicita) != 0:
 			visti[b.tipo] = true
 			fattori[d.nome] = d.felicita
 	fattori["Tasse " + tasse] = bil.tasse[tasse].felicita
@@ -375,7 +454,7 @@ func fattori_felicita() -> Dictionary:
 
 
 func _attivo(b: Dictionary) -> bool:
-	return b.progresso >= 1.0 and (int(edifici[b.tipo].lavoratori) == 0 or b.lavoratori > 0)
+	return b.progresso >= 1.0 and (int(def_di(b).lavoratori) == 0 or b.lavoratori > 0)
 
 
 ## Testo breve sull'effetto di un edificio, per menu e pannelli.
@@ -394,8 +473,10 @@ func testo_effetto(tipo: String) -> String:
 		parti.append("+%d capacità" % d.capacita)
 	if d.has("felicita"):
 		parti.append("%+d felicità" % d.felicita)
-	if d.has("vicino"):
-		parti.append("vicino a " + d.vicino)
+	if d.has("zona"):
+		var spiegazioni := {"bosco": "rende di più con tanto bosco attorno", "roccia": "rende di più tra le rocce",
+			"acqua": "rende di più vicino a lago o fiume", "fertilita": "rende di più su terra fertile"}
+		parti.append(spiegazioni.get(d.zona.tipo, ""))
 	if d.has("su"):
 		parti.append("solo su " + d.su)
 	if d.get("vittoria", false):
@@ -426,10 +507,11 @@ func _tick() -> void:
 	for b in buildings:
 		if b.progresso < 1.0:
 			continue
-		var d: Dictionary = edifici[b.tipo]
+		var d := def_di(b)
 		var max_l := int(d.lavoratori)
 		var molt := 1.0 if max_l == 0 else float(b.lavoratori) / max_l
 		molt *= float(b.bonus) * float(d.get("stagioni", {}).get(CHIAVI_STAGIONI[stagione], 1.0))
+		molt *= resa_di(b) * float(d.get("produzione", 1.0))
 		if molt <= 0.0:
 			continue
 		# Se manca un ingrediente, l'edificio lavora solo per la parte disponibile.
@@ -457,17 +539,24 @@ func _tick() -> void:
 		var legna_serve := 0.0
 		for b in buildings:
 			if b.progresso >= 1.0:
-				legna_serve += float(edifici[b.tipo].get("riscaldamento", 0)) / tps
+				legna_serve += float(def_di(b).get("riscaldamento", 0)) / tps
 		if risorse.legna < legna_serve:
 			_freddo = true
 		risorse.legna = maxf(0.0, risorse.legna - legna_serve)
 
 	# Cibo per gli abitanti.
+	# Si mangia prima il cibo; se non basta, il grano dei campi (non macinato, ma sfama).
 	var cibo_serve: float = abitanti * bil.cibo_per_abitante_tick
-	_fame = risorse.cibo < cibo_serve
+	var dal_cibo := minf(risorse.cibo, cibo_serve)
+	risorse.cibo -= dal_cibo
+	var manca := cibo_serve - dal_cibo
+	if manca > 0.0 and bil.get("mangiare_grano", false):
+		var dal_grano := minf(risorse.grano, manca)
+		risorse.grano -= dal_grano
+		manca -= dal_grano
+	_fame = manca > 0.0001
 	if _fame:
 		tick_fame += 1
-	risorse.cibo = maxf(0.0, risorse.cibo - cibo_serve)
 
 	var obiettivo := 0.0
 	for v in fattori_felicita().values():
@@ -501,7 +590,27 @@ func _aggiorna_consigli() -> void:
 			return
 
 
+## I taglialegna al lavoro abbattono una parte del bosco attorno: un bosco grande
+## rende tanto, ma in "stagioni_per_esaurire" stagioni (3 anni) sparisce.
+func _disbosca() -> void:
+	if terreno == null:
+		return
+	var tagliate: Array = []
+	for b in buildings:
+		var d := def_di(b)
+		if not d.get("disbosca", false) or b.progresso < 1.0 or b.lavoratori == 0:
+			continue
+		var iniziale := int(b.get("bosco_iniziale", 0))
+		var per_stagione := maxi(1, ceili(float(iniziale) / float(bil.disboscamento.stagioni_per_esaurire)))
+		var quota := float(b.lavoratori) / float(d.lavoratori)
+		var taglia := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
+		tagliate.append_array(terreno.taglia_bosco(b.cella, taglia, int(d.zona.raggio), maxi(1, roundi(per_stagione * quota))))
+	if not tagliate.is_empty():
+		terreno_cambiato.emit(tagliate)
+
+
 func _fine_stagione() -> void:
+	_disbosca()
 	var c: Dictionary = bil.crescita
 	if tick_fame >= int(bil.tick_per_stagione):
 		var morti := ceili(abitanti * c.quota_morti_fame)
@@ -607,10 +716,12 @@ func salva() -> void:
 		lista.append({
 			"id": b.id, "tipo": b.tipo, "cella": [b.cella.x, b.cella.y],
 			"lavoratori": b.lavoratori, "progresso": b.progresso, "bonus": b.bonus,
-			"famiglia": b.get("famiglia", -1),
+			"famiglia": b.get("famiglia", -1), "livello": b.get("livello", 1),
+			"bosco_iniziale": b.get("bosco_iniziale", 0),
 		})
 	var dati := {
-		"versione": VERSIONE_SALVATAGGIO, "famiglie": famiglie, "capo": capo, "risorse": risorse, "abitanti": abitanti, "felicita": felicita,
+		"versione": VERSIONE_SALVATAGGIO, "famiglie": famiglie, "capo": capo, "risorse": risorse,
+		"tagliati": Array(terreno.tagliati) if terreno else [], "abitanti": abitanti, "felicita": felicita,
 		"stagione": stagione, "anno": anno, "tick_in_stagione": tick_in_stagione,
 		"livello": livello, "tasse": tasse, "tasse_non_pagate": tasse_non_pagate,
 		"seme_mappa": seme_mappa, "prossimo_id": _prossimo_id, "buildings": lista,
@@ -632,6 +743,7 @@ func carica() -> bool:
 	for f in famiglie:
 		f.membri = int(f.membri)
 	capo = int(dati.capo)
+	_tagli_da_applicare = dati.get("tagliati", [])
 	for r in dati.risorse:
 		risorse[r] = float(dati.risorse[r])
 	abitanti = int(dati.abitanti)
@@ -652,6 +764,9 @@ func carica() -> bool:
 		}
 		if int(x.get("famiglia", -1)) >= 0:
 			b.famiglia = int(x.famiglia)
+		b.livello = int(x.get("livello", 1))
+		if int(x.get("bosco_iniziale", 0)) > 0:
+			b.bosco_iniziale = int(x.bosco_iniziale)
 		buildings.append(b)
 	return true
 

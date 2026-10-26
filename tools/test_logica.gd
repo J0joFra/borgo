@@ -214,6 +214,123 @@ func _ready() -> void:
 	_verifica(con_famiglia == 3, "le tende ricordano la loro famiglia")
 	GameState.cancella_salvataggio()
 
+	# Zone: il fiume esiste, la fertilità è tra 0 e 1 e più alta vicino all'acqua.
+	var tz := TerrenoFeudo.new(11)
+	var fiume := 0
+	var fert_acqua := 0.0
+	var n_acqua := 0
+	var fert_secco := 0.0
+	var n_secco := 0
+	for i in tz.celle.size():
+		if tz.celle[i] == TerrenoFeudo.Tipo.FIUME:
+			fiume += 1
+	for y in range(40, 72):
+		for x in range(40, 72):
+			var c := Vector2i(x, y)
+			if not tz.tipo_a(c) in TerrenoFeudo.COSTRUIBILE:
+				continue
+			var vicino_acqua := tz.conta_attorno(c, Vector2i.ONE, 2, TerrenoFeudo.Tipo.FIUME) + tz.conta_attorno(c, Vector2i.ONE, 2, TerrenoFeudo.Tipo.ACQUA) > 0
+			if vicino_acqua:
+				fert_acqua += tz.fertilita_a(c)
+				n_acqua += 1
+			else:
+				fert_secco += tz.fertilita_a(c)
+				n_secco += 1
+	_verifica(fiume >= TerrenoFeudo.LATO, "c'è un fiume che attraversa il mondo (%d celle)" % fiume)
+	_verifica(n_acqua > 0 and fert_acqua / n_acqua > fert_secco / maxf(1, n_secco), "vicino all'acqua la terra è più fertile")
+
+	# Resa a zone.
+	GameState.nuova_partita(11)
+	GameState.terreno = tz
+	var cb := TerrenoFeudo.centro_feudo()
+	var r_bosco := tz.info_zona("taglialegna", cb, GameState.PRIMAVERA)
+	_verifica(r_bosco.resa >= 0.0 and r_bosco.resa <= 2.0, "resa del taglialegna tra 0 e 2 (%.2f)" % r_bosco.resa)
+	var bosco_vicino := Vector2i(-1, -1)
+	var max_bosco := -1
+	for y in range(36, 76, 2):
+		for x in range(36, 76, 2):
+			var n := tz.conta_attorno(Vector2i(x, y), Vector2i(2, 2), 5, TerrenoFeudo.Tipo.BOSCO)
+			if n > max_bosco and tz.posizione_valida("taglialegna", Vector2i(x, y)):
+				max_bosco = n
+				bosco_vicino = Vector2i(x, y)
+	_verifica(tz.resa("taglialegna", bosco_vicino, 0) > tz.resa("taglialegna", cb, 0) or max_bosco == 0, "più bosco attorno, più legna")
+	var lago := Vector2i(-1, -1)
+	for i in tz.celle.size():
+		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		if tz.celle[i] == TerrenoFeudo.Tipo.ACQUA and tz.nel_feudo(c):
+			lago = c
+			break
+	var posto_pesca := tz.trova_posto("pescatore", lago)
+	var estate := tz.resa("pescatore", posto_pesca, GameState.ESTATE)
+	var inverno := tz.resa("pescatore", posto_pesca, GameState.INVERNO)
+	_verifica(estate > 0.0 and inverno < estate, "pesca: d'inverno il lago ghiacciato rende meno (%.2f -> %.2f)" % [estate, inverno])
+	_verifica(GameState.stima_produzione("taglialegna", bosco_vicino).begins_with("Resa:"), "la stima della resa si legge")
+	_verifica("al raccolto" in GameState.stima_produzione("campo", tz.trova_posto("campo", cb)), "il campo rende al raccolto, non a ogni stagione")
+
+	# Disboscamento: in 3 anni (12 stagioni) il bosco attorno sparisce.
+	var tl3 := GameState.aggiungi_gratis("taglialegna", bosco_vicino, 1.0)
+	tl3.lavoratori = 2
+	tl3.bosco_iniziale = max_bosco
+	var tagliate_tot := [0]
+	GameState.terreno_cambiato.connect(func(c): tagliate_tot[0] += c.size())
+	for stagioni in 12:
+		GameState._disbosca()
+	var resta := tz.conta_attorno(bosco_vicino, Vector2i(2, 2), 5, TerrenoFeudo.Tipo.BOSCO)
+	_verifica(resta == 0 and tagliate_tot[0] == max_bosco, "dopo 12 stagioni il bosco è finito (%d -> %d)" % [max_bosco, resta])
+	_verifica(tz.tagliati.size() == max_bosco, "i tagli sono ricordati per il salvataggio")
+	GameState.terreno = null
+
+	# Miglioramenti: tenda -> tenda rinforzata -> capanna.
+	GameState.nuova_partita(42)
+	var tenda := GameState.aggiungi_gratis("tenda", Vector2i(0, 0), 1.0)
+	var alloggi_prima := GameState.alloggi()
+	GameState.risorse.legna = 100.0
+	GameState.risorse.pietra = 100.0
+	GameState.migliora(tenda.id)
+	_verifica(int(tenda.livello) == 2 and GameState.alloggi() == alloggi_prima + 1, "tenda rinforzata: un posto in più")
+	GameState.migliora(tenda.id)
+	_verifica(GameState.def_di(tenda).nome == "Capanna" and GameState.alloggi() == alloggi_prima + 2, "terzo livello: capanna")
+	_verifica(GameState.prossimo_miglioramento(tenda).is_empty() and not GameState.puo_migliorare(tenda), "oltre la capanna non si va")
+	_verifica(int(GameState.risorse.legna) == 90 and int(GameState.risorse.pietra) == 92, "i miglioramenti costano legna e pietra")
+	var mag := GameState.aggiungi_gratis("magazzino", Vector2i(4, 0), 1.0)
+	var cap := GameState.capacita()
+	GameState.migliora(mag.id)
+	_verifica(GameState.capacita() == cap + 100, "magazzino ampliato: più capacità")
+	var rc := GameState.aggiungi_gratis("raccoglitore", Vector2i(8, 0), 1.0)
+	rc.lavoratori = 2
+	GameState.migliora(rc.id)
+	GameState.abitanti = 0
+	GameState.risorse.cibo = 0.0
+	for i in 60:
+		GameState._tick()
+	_verifica(absf(GameState.risorse.cibo - 56.0) < 0.2, "raccoglitore migliorato: 40 -> 56 cibo (%.1f)" % GameState.risorse.cibo)
+
+	# Pietra nei costi: la casa la chiede.
+	_verifica(GameState.edifici.casa.costo.has("pietra"), "le case costano anche pietra")
+
+	# Il grano sfama quando il cibo finisce.
+	GameState.nuova_partita(42)
+	GameState.abitanti = 10
+	GameState.risorse.cibo = 0.0
+	GameState.risorse.grano = 50.0
+	GameState._tick()
+	_verifica(GameState.tick_fame == 0 and absf(GameState.risorse.grano - 49.0) < 0.01, "senza cibo si mangia il grano")
+
+	# Salvataggio: livelli e tagli del bosco.
+	GameState.ricomincia()
+	GameState.avvia()
+	var t_tenda: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "tenda")[0]
+	t_tenda.livello = 3
+	GameState.terreno.taglia_bosco(TerrenoFeudo.centro_feudo(), Vector2i.ONE, 15, 5)
+	var tagli := GameState.terreno.tagliati.size()
+	GameState.salva()
+	GameState.in_corso = false
+	GameState.avvia()
+	var ricaricata: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "tenda")[0]
+	_verifica(int(ricaricata.livello) == 3, "il livello degli edifici si salva")
+	_verifica(GameState.terreno.tagliati.size() == tagli and tagli == 5, "i tagli del bosco si salvano")
+	GameState.cancella_salvataggio()
+
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])
 	get_tree().quit(1 if _errori > 0 else 0)
 

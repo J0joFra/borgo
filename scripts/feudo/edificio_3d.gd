@@ -25,6 +25,8 @@ var _fase := -1  # fase del cantiere mostrata (con i modelli veri)
 var _fiamme: MeshInstance3D
 var _luce: OmniLight3D
 var _bandiera: Node3D
+var _oggetti: Array[Node3D] = []  # casse, barili, cataste: crescono con i miglioramenti
+var _livello_mostrato := 1
 var _pale: MeshInstance3D
 var _barra: MeshInstance3D
 var _avviso: MeshInstance3D
@@ -58,7 +60,13 @@ func _process(delta: float) -> void:
 	var completo: bool = b.progresso >= 1.0
 	var fase := _fase_cantiere()
 	var campo_da_ridisegnare := _stagione != GameState.stagione and _ha_forma("campo") and not _modello
-	if completo != _completo or campo_da_ridisegnare or (not completo and fase != _fase):
+	var migliorato := int(b.get("livello", 1)) != _livello_mostrato
+	if migliorato and completo and _completo:
+		_costruisci()
+		var corpo: Node3D = _modello if _modello else _corpo
+		corpo.scale = Vector3.ONE * 0.85
+		create_tween().tween_property(corpo, "scale", Vector3.ONE, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	elif completo != _completo or campo_da_ridisegnare or (not completo and fase != _fase):
 		var appena_finito := completo and not _completo
 		_costruisci()
 		if appena_finito:
@@ -104,7 +112,11 @@ func _costruisci() -> void:
 	_completo = b.progresso >= 1.0
 	_stagione = GameState.stagione
 	_fase = _fase_cantiere()
+	_livello_mostrato = int(b.get("livello", 1))
 	_parti_che_girano.clear()
+	for o in _oggetti:
+		o.queue_free()
+	_oggetti.clear()
 	if _pale:
 		_pale.queue_free()
 		_pale = null
@@ -141,7 +153,13 @@ func _costruisci() -> void:
 			"falo":
 				pass  # già disegnato da _falo()
 			"tenda":
-				_tenda(k, tetto)
+				match int(b.get("livello", 1)):
+					1:
+						_tenda(k, tetto, false)
+					2:
+						_tenda(k, tetto, true)
+					_:
+						_capanna(k)
 			"campo":
 				_campo(k)
 			"chiesa":
@@ -157,8 +175,34 @@ func _costruisci() -> void:
 					_mucchio(k, d.produce.keys()[0])
 				if d.get("forma", "") == "mulino":
 					_crea_pale()
+	if _completo and not _ha_forma("tenda"):
+		_oggetti_del_livello()
 	_corpo.mesh = k.mesh()
 	aggiorna()
+
+
+## Più è migliorato, più roba c'è attorno: casse e barili al livello 2, sacchi e cataste al 3.
+func _oggetti_del_livello() -> void:
+	var livello_b := int(b.get("livello", 1))
+	if livello_b < 2:
+		return
+	var produce: Dictionary = GameState.edifici[b.tipo].get("produce", {})
+	var catasta := "resource_stone" if produce.has("pietra") else "resource_lumber"
+	var posti := [
+		[["crate_a_big"], Vector3(-1, 0, 1)], [["barrel"], Vector3(1, 0, 1)],
+	]
+	if livello_b >= 3:
+		posti.append([[catasta], Vector3(-1, 0, -1)])
+		posti.append([["sack"], Vector3(1, 0, -1)])
+	for posto in posti:
+		var o := CatalogoModelli.istanzia_parole(posto[0], 1.0, 1.0)
+		if o == null:
+			continue
+		var angolo: Vector3 = posto[1]
+		o.position = Vector3(angolo.x * (_larghezza / 2.0 - 0.35), 0, angolo.z * (_profondita / 2.0 - 0.35))
+		o.rotation.y = randf() * TAU
+		add_child(o)
+		_oggetti.append(o)
 
 
 ## Pietre in cerchio, ciocchi incrociati, fiamme che brillano da sole e una luce calda.
@@ -192,10 +236,10 @@ func _falo(k: LowPoly.Costruttore) -> void:
 
 
 ## Tenda da campo: telo a capanna, entrata scura davanti, pali e picchetti.
-func _tenda(k: LowPoly.Costruttore, telo: Color) -> void:
-	var largo := _larghezza - 1.4
-	var lungo := _profondita - 1.0
-	var alto := 1.7
+func _tenda(k: LowPoly.Costruttore, telo: Color, rinforzata: bool) -> void:
+	var largo := _larghezza - (1.0 if rinforzata else 1.4)
+	var lungo := _profondita - (0.7 if rinforzata else 1.0)
+	var alto := 1.95 if rinforzata else 1.7
 	k.forma(LowPoly.cubo(Vector3(largo + 0.4, 0.05, lungo + 0.3)), LowPoly.t(Vector3(0, 0.025, 0)), Color("8a7a5a"))
 	k.forma(LowPoly.tetto(Vector3(largo, alto, lungo)), LowPoly.t(Vector3(0, alto / 2.0 + 0.05, 0)), telo)
 	k.forma(LowPoly.tetto(Vector3(largo * 0.45, alto * 0.62, 0.06)), LowPoly.t(Vector3(0, alto * 0.31 + 0.05, lungo / 2.0 + 0.01)), Color("3a2a1e"))
@@ -204,6 +248,16 @@ func _tenda(k: LowPoly.Costruttore, telo: Color) -> void:
 	for sx in [-1, 1]:
 		for sz in [-1, 1]:
 			k.forma(LowPoly.cubo(Vector3(0.06, 0.25, 0.06)), LowPoly.t(Vector3(sx * (largo / 2.0 + 0.15), 0.12, sz * lungo * 0.35)), LEGNO_SCURO)
+	if rinforzata:
+		# toppe sul telo e una piccola legnaia sul fianco
+		k.forma(LowPoly.cubo(Vector3(0.5, 0.4, 0.04)), LowPoly.t(Vector3(-largo * 0.22, alto * 0.45, lungo * 0.2), Vector3.ONE, 0.0), telo.darkened(0.25))
+		for i in 3:
+			k.forma(LowPoly.cilindro(0.09, 0.09, 0.9, 5), Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(largo / 2.0 + 0.3, 0.1 + i * 0.17, -lungo * 0.2 + (i % 2) * 0.1)), LEGNO)
+
+
+## Al terzo livello la tenda diventa una capanna di legno con il tetto di paglia.
+func _capanna(k: LowPoly.Costruttore) -> void:
+	_casa(k, Color("b8a058"), 0.8)
 
 
 func _su_capo_scelto(_indice: int) -> void:

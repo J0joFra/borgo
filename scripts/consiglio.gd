@@ -45,11 +45,18 @@ static func attivi() -> Array:
 
 	# Legna e inverno
 	if not _esiste(["taglialegna"]):
-		lista.append(_c("legna", 95, "Senza un taglialegna non costruiremo nulla. Mettilo vicino al bosco: lontano rende la metà."))
+		lista.append(_c("legna", 95, "Senza un taglialegna non costruiremo nulla. Mettilo dove il bosco è più fitto: più alberi, più legna."))
+	for b in gs.buildings:
+		if b.tipo == "taglialegna" and b.progresso >= 1.0 and gs.terreno:
+			var d: Dictionary = gs.edifici[b.tipo]
+			var resta := gs.terreno.conta_attorno(b.cella, Vector2i(int(d.taglia[0]), int(d.taglia[1])), int(d.zona.raggio), TerrenoFeudo.Tipo.BOSCO)
+			if resta < 6:
+				lista.append(_c("legna", 88, "Il bosco attorno al taglialegna è quasi finito (%d celle). Costruiscine uno nuovo vicino a un altro bosco." % resta))
+				break
 	var serve_inverno := 0
 	for b in gs.buildings:
 		if b.progresso >= 1.0:
-			serve_inverno += int(gs.edifici[b.tipo].get("riscaldamento", 0))
+			serve_inverno += int(gs.def_di(b).get("riscaldamento", 0))
 	if gs.stagione in [gs.ESTATE, gs.AUTUNNO] and gs.risorse.legna < serve_inverno:
 		lista.append(_c("legna", 80, "L'inverno chiederà %d legna per scaldarci; ne abbiamo %d." % [serve_inverno, int(gs.risorse.legna)]))
 
@@ -65,7 +72,7 @@ static func attivi() -> Array:
 	var posti_liberi := 0
 	for b in gs.buildings:
 		if b.progresso >= 1.0:
-			posti_liberi += int(gs.edifici[b.tipo].lavoratori) - int(b.lavoratori)
+			posti_liberi += int(gs.def_di(b).lavoratori) - int(b.lavoratori)
 	if gs.disoccupati() > 0 and posti_liberi > 0:
 		lista.append(_c("lavoro", 70, "%d persone sono senza lavoro e ci sono posti liberi: tocca un edificio e premi +." % gs.disoccupati()))
 	elif gs.disoccupati() > 2:
@@ -76,13 +83,19 @@ static func attivi() -> Array:
 	if gs.stagione in [gs.ESTATE, gs.AUTUNNO] and gs.risorse.oro + incasso < gs.tassa_del_re():
 		lista.append(_c("oro", 75, "In autunno il re vorrà %d oro e ne avremo circa %d. Un mercato o tasse più alte ci servirebbero." % [gs.tassa_del_re(), int(gs.risorse.oro) + incasso]))
 
+	# Campi: cibo per l'inverno
+	if not _esiste(["campo"]) and gs.stagione == gs.PRIMAVERA:
+		lista.append(_c("cibo", 55, "Seminiamo un campo dove la terra è scura e fertile, vicino all'acqua: in autunno darà grano per l'inverno."))
+	if gs.stagione == gs.AUTUNNO and _esiste(["pescatore"]):
+		lista.append(_c("cibo", 58, "D'inverno il lago gela e i pescatori prenderanno poco: il fiume invece scorre sempre."))
+
 	# Felicità
 	if gs.felicita < 40.0:
 		lista.append(_c("felicita", 65, "Il popolo mormora (felicità %d). Cibo vario, case vere o tasse più basse lo calmerebbero." % int(gs.felicita)))
 
 	# Costruire e crescere
 	if not _esiste(["cava"]) and gs.risorse.pietra < 20.0:
-		lista.append(_c("costruire", 45, "La pietra scarseggia: una cava vicino alle rocce ci servirà presto."))
+		lista.append(_c("costruire", 45, "La pietra scarseggia e le case la chiedono: una cava in mezzo alle rocce ci servirà presto."))
 	if gs.livello + 1 < gs.bil.livelli.size():
 		var manca := gs.requisiti_mancanti(gs.livello + 1)
 		if not manca.is_empty():
