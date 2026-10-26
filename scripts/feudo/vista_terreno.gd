@@ -1,7 +1,8 @@
 class_name VistaTerreno
 extends Node3D
-## Disegna il feudo come un diorama: suolo a celle con i bordi a "fetta di terra",
-## alberi (MultiMesh, uno per tipo) e rocce. I colori cambiano con le stagioni.
+## Disegna il mondo come un diorama: suolo a celle con i bordi a "fetta di terra",
+## alberi (MultiMesh, uno per tipo), rocce e la linea che segna il confine del feudo.
+## I colori cambiano con le stagioni.
 
 const CELLA := 2.0
 const FONDO := -3.0
@@ -15,10 +16,18 @@ const TERRA := Color("8a6a45")
 const TERRA_SCURA := Color("6b4f33")
 const SENTIERO := Color("c2a273")
 const TRONCO := Color("6b4a2e")
+const CONFINE := Color("f2c94c")  # linea del confine del feudo
+const LARGHEZZA_CONFINE := 0.35
+const PARTE_SOPRA := 0
+const PARTE_GRADINO := 1
+const PARTE_FASCIA := 2
 const ROCCIA := Color("8d8d88")
 
 var terreno: TerrenoFeudo
 var _suolo: MeshInstance3D
+var _suoli_pronti: Dictionary = {}  # stagione -> mesh, costruita una volta sola
+var _geometria: LowPoly.Costruttore  # vertici del suolo, uguali in ogni stagione
+var _chiavi := PackedInt32Array()     # per vertice: cella * 4 + parte, oppure -1 (colore fisso)
 var _tondi: MultiMeshInstance3D
 var _pini: MultiMeshInstance3D
 var _variazioni_tondi := PackedFloat32Array()
@@ -31,11 +40,14 @@ func costruisci(t: TerrenoFeudo) -> void:
 	add_child(_suolo)
 	_crea_alberi()
 	_crea_rocce()
+	_crea_confine()
 	applica_stagione(GameState.stagione)
 
 
 func applica_stagione(stagione: int) -> void:
-	_suolo.mesh = _mesh_suolo(stagione)
+	if not _suoli_pronti.has(stagione):
+		_suoli_pronti[stagione] = _mesh_suolo(stagione)
+	_suolo.mesh = _suoli_pronti[stagione]
 	for i in _tondi.multimesh.instance_count:
 		_tondi.multimesh.set_instance_color(i, CHIOMA_TONDA[stagione].lightened(_variazioni_tondi[i]))
 	for i in _pini.multimesh.instance_count:
@@ -95,19 +107,55 @@ func _colore_cella(c: Vector2i, stagione: int) -> Color:
 	return base.lightened(v * 0.05) if v > 0.5 else base.darkened(v * 0.05)
 
 
+## Colori del suolo per una stagione: la geometria è sempre la stessa (costruita una volta),
+## cambiano solo i colori dei vertici che dipendono dalla cella.
 func _mesh_suolo(stagione: int) -> ArrayMesh:
+	if _geometria == null:
+		_costruisci_geometria()
+	var celle := TerrenoFeudo.LATO * TerrenoFeudo.LATO
+	var sopra := PackedColorArray()
+	sopra.resize(celle)
+	for y in TerrenoFeudo.LATO:
+		for x in TerrenoFeudo.LATO:
+			sopra[y * TerrenoFeudo.LATO + x] = _colore_cella(Vector2i(x, y), stagione)
+	var gradino := PackedColorArray()
+	var fascia := PackedColorArray()
+	gradino.resize(celle)
+	fascia.resize(celle)
+	for i in celle:
+		gradino[i] = sopra[i].darkened(0.25)
+		fascia[i] = sopra[i].darkened(0.1)
+	var colori := _geometria.colori.duplicate()
+	for i in colori.size():
+		var chiave := _chiavi[i]
+		if chiave < 0:
+			continue
+		var cella := chiave >> 2
+		match chiave & 3:
+			PARTE_SOPRA:
+				colori[i] = sopra[cella]
+			PARTE_GRADINO:
+				colori[i] = gradino[cella]
+			_:
+				colori[i] = fascia[cella]
+	return _geometria.mesh(colori)
+
+
+func _costruisci_geometria() -> void:
 	var k := LowPoly.Costruttore.new()
+	_geometria = k
 	var lati := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 	for y in TerrenoFeudo.LATO:
 		for x in TerrenoFeudo.LATO:
 			var c := Vector2i(x, y)
+			var indice := y * TerrenoFeudo.LATO + x
 			var h := terreno.altezza(c)
 			var x0 := x * CELLA
 			var z0 := y * CELLA
 			var x1 := x0 + CELLA
 			var z1 := z0 + CELLA
-			var colore := _colore_cella(c, stagione)
-			k.quad(Vector3(x0, h, z0), Vector3(x1, h, z0), Vector3(x1, h, z1), Vector3(x0, h, z1), Vector3.UP, colore)
+			k.quad(Vector3(x0, h, z0), Vector3(x1, h, z0), Vector3(x1, h, z1), Vector3(x0, h, z1), Vector3.UP, Color.WHITE)
+			_segna(indice * 4 + PARTE_SOPRA)
 			for dir in lati:
 				var vicino: Vector2i = c + dir
 				var bordo := not terreno.dentro(vicino)
@@ -130,12 +178,48 @@ func _mesh_suolo(stagione: int) -> ArrayMesh:
 				if bordo:
 					# fetta di terra: una fascia d'erba, poi terra fino al fondo
 					var fascia := h - 0.3
-					_parete(k, a, b, h, fascia, n, colore.darkened(0.1))
+					_parete(k, a, b, h, fascia, n, Color.WHITE)
+					_segna(indice * 4 + PARTE_FASCIA)
 					_parete(k, a, b, fascia, -1.2, n, TERRA)
+					_segna(-1)
 					_parete(k, a, b, -1.2, FONDO, n, TERRA_SCURA)
+					_segna(-1)
 				else:
-					_parete(k, a, b, h, h_vicino, n, colore.darkened(0.25))
-	return k.mesh()
+					_parete(k, a, b, h, h_vicino, n, Color.WHITE)
+					_segna(indice * 4 + PARTE_GRADINO)
+
+
+## Ricorda a quale cella e parte appartengono i 6 vertici dell'ultimo quadrato aggiunto.
+func _segna(chiave: int) -> void:
+	for i in 6:
+		_chiavi.append(chiave)
+
+
+## Una striscia colorata appena sopra il terreno, lungo i quattro lati del feudo.
+func _crea_confine() -> void:
+	var k := LowPoly.Costruttore.new()
+	var f := TerrenoFeudo.FEUDO
+	var m := LARGHEZZA_CONFINE / 2.0
+	for x in range(f.position.x, f.end.x):
+		_tratto_confine(k, Vector2i(x, f.position.y), Vector2(x * CELLA, f.position.y * CELLA), Vector2((x + 1) * CELLA, f.position.y * CELLA), m)
+		_tratto_confine(k, Vector2i(x, f.end.y - 1), Vector2(x * CELLA, f.end.y * CELLA), Vector2((x + 1) * CELLA, f.end.y * CELLA), m)
+	for y in range(f.position.y, f.end.y):
+		_tratto_confine(k, Vector2i(f.position.x, y), Vector2(f.position.x * CELLA, y * CELLA), Vector2(f.position.x * CELLA, (y + 1) * CELLA), m)
+		_tratto_confine(k, Vector2i(f.end.x - 1, y), Vector2(f.end.x * CELLA, y * CELLA), Vector2(f.end.x * CELLA, (y + 1) * CELLA), m)
+	var nodo := MeshInstance3D.new()
+	nodo.mesh = k.mesh()
+	nodo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(nodo)
+
+
+func _tratto_confine(k: LowPoly.Costruttore, cella: Vector2i, a: Vector2, b: Vector2, m: float) -> void:
+	var h := terreno.altezza(cella) + 0.04
+	var lato := Vector2(m, 0) if is_equal_approx(a.x, b.x) else Vector2(0, m)
+	var p0 := a - lato
+	var p1 := b - lato
+	var p2 := b + lato
+	var p3 := a + lato
+	k.quad(Vector3(p0.x, h, p0.y), Vector3(p1.x, h, p1.y), Vector3(p2.x, h, p2.y), Vector3(p3.x, h, p3.y), Vector3.UP, CONFINE)
 
 
 func _parete(k: LowPoly.Costruttore, a: Vector3, b: Vector3, sopra: float, sotto: float, n: Vector3, colore: Color) -> void:
@@ -203,7 +287,7 @@ func _crea_rocce() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = terreno.seme + 11
 	var k := LowPoly.Costruttore.new()
-	var masso := LowPoly.sfera(0.8, 1.1, 6, 3)
+	var masso := LowPoly.sfera(0.8, 1.1, 6, 3)  # la stessa forma per tutti: letta una volta sola
 	for y in TerrenoFeudo.LATO:
 		for x in TerrenoFeudo.LATO:
 			var c := Vector2i(x, y)

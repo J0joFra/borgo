@@ -8,7 +8,7 @@ signal oltre_zoom_minimo
 const LIVELLI_ZOOM := [56.0, 36.0, 22.0]  # ampiezza verticale inquadrata, in metri
 const INCLINAZIONE := -35.0
 
-var limite := 96.0  # lato del feudo in metri
+var limiti := Rect2(0, 0, 96, 96)  # dove può stare il centro della visuale, in metri (x, z)
 var camera: Camera3D
 var _braccio: Node3D
 var _zoom := 1
@@ -63,5 +63,5 @@ func raggio(punto: Vector2) -> Array[Vector3]:
 
 
 func _limita() -> void:
-	position.x = clampf(position.x, 0.0, limite)
-	position.z = clampf(position.z, 0.0, limite)
+	position.x = clampf(position.x, limiti.position.x, limiti.end.x)
+	position.z = clampf(position.z, limiti.position.y, limiti.end.y)

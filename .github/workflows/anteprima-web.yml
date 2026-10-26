@@ -51,7 +51,7 @@ jobs:
 
       - name: Test della logica
         run: |
-          ~/godot/godot --headless --path . res://tools/test_logica.tscn | tee test.log
+          timeout 300 ~/godot/godot --headless --path . res://tools/test_logica.tscn | tee test.log
           grep -q "TEST: OK" test.log
 
       - name: Esporta per il web

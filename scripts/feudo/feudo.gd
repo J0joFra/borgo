@@ -40,9 +40,14 @@ func _ready() -> void:
 	add_child(_anteprima)
 
 	camera = CameraIso.new()
-	camera.limite = vista.dimensione()
+	# la visuale resta sopra il feudo, con un margine per vedere un po' oltre il confine
+	var f := TerrenoFeudo.FEUDO
+	var margine := 8.0
+	camera.limiti = Rect2(Vector2(f.position) * VistaTerreno.CELLA - Vector2.ONE * margine,
+		Vector2(f.size) * VistaTerreno.CELLA + Vector2.ONE * margine * 2.0)
 	add_child(camera)
-	camera.position = Vector3(vista.dimensione() / 2.0, 0, vista.dimensione() / 2.0)
+	var centro := Vector2(TerrenoFeudo.centro_feudo()) * VistaTerreno.CELLA
+	camera.position = Vector3(centro.x, 0, centro.y)
 	camera.oltre_zoom_minimo.connect(_vai_al_regno)
 
 	hud = Hud.new()
@@ -63,6 +68,25 @@ func _ready() -> void:
 	GameState.changed.connect(_aggiorna_edifici)
 	GameState.game_ended.connect(_partita_finita)
 	GameState.changed.emit()  # l'HUD è pronto: rinfresca i numeri
+	if GameState.capo < 0:
+		_inizia_prologo()
+
+
+## Partita nuova: tempo fermo, visuale vicina al falò e scelta della casata che guida.
+func _inizia_prologo() -> void:
+	GameState.velocita = 0
+	for b in GameState.buildings:
+		if GameState.edifici[b.tipo].get("forma", "") == "falo":
+			var p := vista.centro_area(b.cella, _taglia(b.tipo))
+			camera.position = Vector3(p.x, 0, p.z)
+	camera.cambia_zoom(1)
+	hud.visible = false  # il prologo occupa tutto lo schermo
+	var prologo := Prologo.new()
+	add_child(prologo)
+	prologo.finito.connect(func():
+		hud.visible = true
+		GameState.velocita = 1
+		GameState.changed.emit())
 
 
 func _crea_ambiente() -> void:

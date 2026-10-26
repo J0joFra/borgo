@@ -3,7 +3,9 @@
 City builder medievale in 3D low-poly per mobile in orizzontale, fatto con **Godot 4.4**.
 Il design completo è nel documento "Borgo — Game Design Document".
 
-![Il feudo](docs/feudo.png)
+![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
+![L'accampamento attorno al falò](docs/falo.png)
+![Il feudo con i modelli KayKit](docs/feudo.png)
 ![La mappa del regno](docs/regno.png)
 
 ## Provare il gioco
@@ -24,7 +26,10 @@ altrimenti rendi pubblico il repository.)
   Torna su Godot: si accorge da solo dei file cambiati e li reimporta (se una scena era aperta, chiudila e riaprila).
 - Per mandare su GitHub le tue modifiche: in GitHub Desktop scrivi un messaggio, **Commit to main**, poi **Push origin**.
 
-Il gioco parte dalla **mappa del regno**: tocca la tua regione (bordata di rosso) per entrare nel **feudo**.
+Una partita nuova comincia con il **prologo**: il Regno di Valmora è caduto e, attorno a un falò, restano tre famiglie.
+Scegli quale casata guiderà i sopravvissuti; le altre due diventano il tuo **consiglio** e ti danno suggerimenti
+(pulsante "Consiglio" e avvisi in alto). Dalle partite successive il gioco parte dalla **mappa del regno**:
+tocca la tua regione (bordata di rosso) per entrare nel **feudo**.
 Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zoom minimo.
 
 | | Telefono | Computer |
@@ -36,13 +41,18 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 
 ## Cosa c'è già
 
-- **Mappa del regno**: 10 regioni stile carta antica (celle di Voronoi), ognuna con nome, risorsa speciale e proprietario. Zoom animato per entrare nel feudo.
-- **Feudo in 3D**: diorama 48×48 celle con bordi a "fetta di terra", boschi, laghi, colline e rocce generati a caso. Telecamera isometrica ortografica con 3 livelli di zoom e rotazione.
-- **Stagioni visibili**: erba e chiome cambiano colore, d'inverno nevica, la luce cambia tono.
-- **Edifici low-poly provvisori** fatti con forme semplici: case con tetto, mulino con le pale che girano, chiesa con campanile, maniero con torri, mercato con bancarelle, campi che cambiano con le stagioni, cantieri con barra di avanzamento.
-- **Economia** (invariata dal prototipo 2D): tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
+- **Prologo**: tre casate pescate a caso fra sei (data/famiglie.json), ognuna con capofamiglia, storia, motto e un tratto
+  che vale se guida (es. Boscaioli +20% legna, Costruttori cantieri più veloci). Si parte con un falò e una tenda per famiglia,
+  con la bandiera del suo colore.
+- **Consiglio**: i due consiglieri guardano il villaggio e suggeriscono cosa fare, ognuno sulla sua arte (cibo, legna,
+  case, oro, felicità, costruire); non ripetono mai lo stesso consiglio. In futuro potranno diventare vassalli delle terre conquistate.
+- **Mondo esteso**: il feudo (48×48 celle) sta al centro di un mondo di 112×112; oltre la linea gialla del confine
+  ci sono le terre dei vicini, che si vedono ma dove non si costruisce.
+- **Mappa del regno**: 10 regioni stile carta antica, ognuna con nome, risorsa speciale e proprietario. Zoom animato per entrare nel feudo.
+- **Feudo in 3D** con modelli KayKit, telecamera isometrica con zoom e rotazione, stagioni visibili (erba, chiome, neve, luce).
+- **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
 
-**Da fare**: carte evento, banditi e difese, espansione nel regno, sentieri, abitanti che camminano, audio, modelli veri.
+**Da fare**: carte evento, banditi e difese, conquista delle regioni e vassalli, sentieri, abitanti che camminano, audio.
 
 ## Dove cambiare le cose
 
@@ -51,6 +61,9 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 | Costi, produzione, taglie, forma degli edifici | `data/edifici.json` |
 | Ritmo, felicità, tasse, livelli | `data/bilanciamento.json` |
 | Nomi, risorse e signori delle regioni | `data/regioni.json` |
+| Casate, tratti, nome del regno caduto | `data/famiglie.json` |
+| Consigli dei consiglieri | `scripts/consiglio.gd` |
+| Prologo davanti al falò | `scripts/ui/prologo.gd` |
 | Regole della partita | `scripts/game_state.gd` (autoload `GameState`) |
 | Terreno e regole di piazzamento | `scripts/feudo/terreno.gd` |
 | Disegno del terreno, alberi, colori delle stagioni | `scripts/feudo/vista_terreno.gd` |

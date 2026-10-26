@@ -1,11 +1,13 @@
 class_name TerrenoFeudo
 extends RefCounted
-## Logica del terreno del feudo: tipo e altezza di ogni cella, celle occupate,
-## regole di piazzamento. Nessuna grafica: la disegna VistaTerreno.
+## Logica del terreno: tipo e altezza di ogni cella, celle occupate, regole di piazzamento.
+## Il mondo è più grande del feudo: attorno ci sono le terre dei vicini, che si vedono
+## ma dove non si costruisce. Nessuna grafica: la disegna VistaTerreno.
 
 enum Tipo { ERBA, ERBA_FIORI, BOSCO, ACQUA, ROCCIA, COLLINA, SENTIERO }
 
-const LATO := 48
+const LATO := 112  # lato del mondo, in celle
+const FEUDO := Rect2i(32, 32, 48, 48)  # le celle del giocatore, al centro del mondo
 const PER_NOME := {
 	"bosco": Tipo.BOSCO, "acqua": Tipo.ACQUA,
 	"roccia": Tipo.ROCCIA, "collina": Tipo.COLLINA,
@@ -50,8 +52,8 @@ func _genera() -> void:
 				t = Tipo.ERBA_FIORI
 			celle[y * LATO + x] = t
 
-	# Garantisce bosco, lago e roccia a pochi passi dal centro, in direzioni casuali.
-	var centro := Vector2(LATO / 2.0, LATO / 2.0)
+	# Garantisce bosco, lago e roccia a pochi passi dal centro del feudo, in direzioni casuali.
+	var centro := Vector2(FEUDO.get_center())
 	var angolo := rng.randf() * TAU
 	_macchia(centro + Vector2.from_angle(angolo) * 10.0, 5.0, Tipo.BOSCO)
 	_macchia(centro + Vector2.from_angle(angolo + 2.1) * 10.0, 3.5, Tipo.ACQUA)
@@ -72,6 +74,14 @@ func _macchia(centro: Vector2, raggio: float, t: int) -> void:
 
 func dentro(c: Vector2i) -> bool:
 	return c.x >= 0 and c.y >= 0 and c.x < LATO and c.y < LATO
+
+
+func nel_feudo(c: Vector2i) -> bool:
+	return FEUDO.has_point(c)
+
+
+static func centro_feudo() -> Vector2i:
+	return FEUDO.get_center()
 
 
 func tipo_a(c: Vector2i) -> int:
@@ -111,7 +121,7 @@ func posizione_valida(tipo: String, cella: Vector2i) -> bool:
 		for x in int(d.taglia[0]):
 			var c := cella + Vector2i(x, y)
 			var t := tipo_a(c)
-			if t < 0 or _occupato.has(c) or altezza(c) != quota:
+			if not nel_feudo(c) or _occupato.has(c) or altezza(c) != quota:
 				return false
 			if richiesto >= 0 and t != richiesto:
 				return false

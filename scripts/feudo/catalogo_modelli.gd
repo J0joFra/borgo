@@ -25,6 +25,11 @@ static func istanzia(tipo: String, larghezza: float, profondita: float) -> Node3
 	return _istanzia_file(percorso(tipo), larghezza, profondita)
 
 
+## Il primo modello che corrisponde a una delle parole, adattato all'area, o null.
+static func istanzia_parole(parole: Array, larghezza: float, profondita: float) -> Node3D:
+	return _istanzia_file(_percorso_per(parole), larghezza, profondita)
+
+
 ## Il modello del cantiere per l'avanzamento dato (0..1), o null.
 static func istanzia_cantiere(progresso: float, larghezza: float, profondita: float) -> Node3D:
 	_prepara()

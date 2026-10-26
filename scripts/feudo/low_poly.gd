@@ -54,22 +54,27 @@ static func sfera(raggio: float, altezza: float, lati := 7, anelli := 4) -> Sphe
 
 
 ## Raccoglie più forme in un'unica mesh a facce piatte.
+## Scrive direttamente in array nativi (molto più veloce di SurfaceTool vertice per vertice)
+## e ricorda sulla forma stessa i suoi dati, così una forma riusata (es. un masso) si legge una volta.
 class Costruttore:
-	var st := SurfaceTool.new()
-	var vuoto := true
 
-	func _init() -> void:
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var vertici := PackedVector3Array()
+	var normali := PackedVector3Array()
+	var colori := PackedColorArray()
 
 	func forma(mesh: PrimitiveMesh, tr: Transform3D, colore: Color) -> Costruttore:
-		var arr := mesh.get_mesh_arrays()
-		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-		var nn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
-		var idx := PackedInt32Array()
-		if arr[Mesh.ARRAY_INDEX] is PackedInt32Array:
-			idx = arr[Mesh.ARRAY_INDEX]
-		if idx.is_empty():
-			idx = PackedInt32Array(range(v.size()))
+		if not mesh.has_meta("_dati"):
+			var arr := mesh.get_mesh_arrays()
+			var idx := PackedInt32Array()
+			if arr[Mesh.ARRAY_INDEX] is PackedInt32Array:
+				idx = arr[Mesh.ARRAY_INDEX]
+			if idx.is_empty():
+				idx = PackedInt32Array(range((arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()))
+			mesh.set_meta("_dati", [arr[Mesh.ARRAY_VERTEX], arr[Mesh.ARRAY_NORMAL], idx])
+		var dati: Array = mesh.get_meta("_dati")
+		var v: PackedVector3Array = dati[0]
+		var nn: PackedVector3Array = dati[1]
+		var idx: PackedInt32Array = dati[2]
 		for i in range(0, idx.size() - 2, 3):
 			var a := tr * v[idx[i]]
 			var b := tr * v[idx[i + 1]]
@@ -90,15 +95,27 @@ class Costruttore:
 		return self
 
 	func _triangolo(a: Vector3, b: Vector3, c: Vector3, n: Vector3, colore: Color) -> void:
-		for p in [a, b, c]:
-			st.set_normal(n)
-			st.set_color(colore)
-			st.add_vertex(p)
-		vuoto = false
+		vertici.append(a)
+		vertici.append(b)
+		vertici.append(c)
+		normali.append(n)
+		normali.append(n)
+		normali.append(n)
+		colori.append(colore)
+		colori.append(colore)
+		colori.append(colore)
 
-	func mesh() -> ArrayMesh:
-		if vuoto:
-			return ArrayMesh.new()
-		var m := st.commit()
+	## La mesh con i colori raccolti, oppure con altri colori per gli stessi vertici
+	## (serve a cambiare stagione senza ricostruire la geometria).
+	func mesh(altri_colori := PackedColorArray()) -> ArrayMesh:
+		var m := ArrayMesh.new()
+		if vertici.is_empty():
+			return m
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = vertici
+		arr[Mesh.ARRAY_NORMAL] = normali
+		arr[Mesh.ARRAY_COLOR] = altri_colori if not altri_colori.is_empty() else colori
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 		m.surface_set_material(0, LowPoly.materiale())
 		return m

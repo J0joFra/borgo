@@ -42,6 +42,8 @@ var _btn_annulla: Button
 var _btn_chiudi: Button
 var _info: PanelContainer
 var _info_testo: Label
+var _consiglio: PanelContainer
+var _consiglio_testo: Label
 var _tasse: Array[Button] = []
 var _avviso: Label
 var _tempo_avviso := 0.0
@@ -58,18 +60,20 @@ func _ready() -> void:
 	_radice = Control.new()
 	_radice.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_radice.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_radice.theme = _crea_tema()
+	_radice.theme = crea_tema()
 	add_child(_radice)
 	_crea_barra()
 	_crea_lati()
 	_crea_menu()
 	_crea_pannello()
 	_crea_info()
+	_crea_consiglio()
 	_crea_avviso()
 	_crea_fine()
 	GameState.changed.connect(_aggiorna)
 	GameState.season_changed.connect(func(_s, _a): _aggiorna())
 	GameState.message.connect(mostra_avviso)
+	GameState.consiglio.connect(_nuovo_consiglio)
 	GameState.game_ended.connect(_mostra_fine)
 	_aggiorna()
 
@@ -106,15 +110,16 @@ func nascondi_pannello() -> void:
 	_pannello.visible = false
 
 
-func mostra_avviso(testo: String) -> void:
+func mostra_avviso(testo: String, durata := 3.5) -> void:
 	_avviso.text = testo
-	_tempo_avviso = 3.5
+	_tempo_avviso = durata
 	_avviso.modulate.a = 1.0
 
 
 # --- Costruzione dell'interfaccia --------------------------------------------
 
-func _crea_tema() -> Theme:
+## Il tema in legno e pergamena di tutta l'interfaccia (usato anche dal prologo).
+static func crea_tema() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 8
 	t.set_stylebox("panel", "PanelContainer", _riquadro(Color("3b2a1e"), Color("6b4a2e")))
@@ -133,7 +138,7 @@ func _crea_tema() -> Theme:
 	return t
 
 
-func _riquadro(sfondo: Color, bordo: Color) -> StyleBoxFlat:
+static func _riquadro(sfondo: Color, bordo: Color) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = sfondo
 	s.border_color = bordo
@@ -203,8 +208,11 @@ func _crea_lati() -> void:
 	regno.pressed.connect(func(): vai_al_regno.emit())
 	destra.add_child(regno)
 	var info := _bottone("Info", 46, 30)
-	info.pressed.connect(func(): _info.visible = not _info.visible; _aggiorna())
+	info.pressed.connect(func(): _info.visible = not _info.visible; _consiglio.visible = false; _aggiorna())
 	destra.add_child(info)
+	var consiglio := _bottone("Consiglio", 46, 30)
+	consiglio.pressed.connect(func(): _consiglio.visible = not _consiglio.visible; _info.visible = false; _aggiorna())
+	destra.add_child(consiglio)
 	var giro := HBoxContainer.new()
 	giro.add_theme_constant_override("separation", 2)
 	destra.add_child(giro)
@@ -295,11 +303,54 @@ func _crea_info() -> void:
 	col.add_child(chiudi)
 
 
+func _crea_consiglio() -> void:
+	_consiglio = PanelContainer.new()
+	_consiglio.set_anchors_preset(Control.PRESET_CENTER)
+	_consiglio.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_consiglio.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_consiglio.visible = false
+	_radice.add_child(_consiglio)
+	var col := VBoxContainer.new()
+	_consiglio.add_child(col)
+	_consiglio_testo = Label.new()
+	_consiglio_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_consiglio_testo.custom_minimum_size.x = 320
+	col.add_child(_consiglio_testo)
+	var chiudi := _bottone("Chiudi")
+	chiudi.pressed.connect(func(): _consiglio.visible = false)
+	col.add_child(chiudi)
+
+
+func _aggiorna_consiglio() -> void:
+	if GameState.capo < 0:
+		_consiglio_testo.text = "Il consiglio si riunirà quando avrai scelto chi guida."
+		return
+	var guida: Dictionary = GameState.famiglie[GameState.capo]
+	var righe: Array[String] = []
+	righe.append("Guida: %s, casata %s (%s: %s)" % [guida.capo, guida.casata,
+		GameState.tratto(GameState.capo).get("nome", ""), GameState.tratto(GameState.capo).get("descrizione", "")])
+	for i in GameState.consiglieri():
+		var f: Dictionary = GameState.famiglie[i]
+		righe.append("")
+		righe.append("%s, casata %s (%s)" % [f.capo, f.casata, GameState.tratto(i).get("nome", "").to_lower()])
+		righe.append("   " + Consiglio.per(i))
+	righe.append("")
+	righe.append("Quando conquisterai nuove terre potrai nominare i consiglieri tuoi vassalli.")
+	_consiglio_testo.text = "\n".join(righe)
+
+
+func _nuovo_consiglio(famiglia: int, testo: String) -> void:
+	mostra_avviso("%s: %s" % [GameState.famiglie[famiglia].capo, testo], 7.0)
+
+
 func _crea_avviso() -> void:
 	_avviso = Label.new()
 	_avviso.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_avviso.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_avviso.offset_top = 22
+	_avviso.offset_left = -170
+	_avviso.offset_right = 170
+	_avviso.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_avviso.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_avviso.add_theme_color_override("font_outline_color", Color.BLACK)
 	_avviso.add_theme_constant_override("outline_size", 3)
@@ -352,6 +403,8 @@ func _aggiorna() -> void:
 		_riempi_menu()
 	if _info.visible:
 		_aggiorna_info()
+	if _consiglio.visible:
+		_aggiorna_consiglio()
 
 
 func _imposta_velocita(v: int) -> void:
@@ -423,7 +476,7 @@ func _aggiorna_pannello() -> void:
 		return
 	var d: Dictionary = GameState.edifici[b.tipo]
 	_pannello.visible = true
-	_btn_demolisci.visible = true
+	_btn_demolisci.visible = not d.get("fisso", false)
 	_btn_chiudi.visible = true
 	if b.progresso < 1.0:
 		_titolo.text = "%s  ·  in costruzione %d%%" % [d.nome, int(b.progresso * 100)]
@@ -466,6 +519,7 @@ func _mostra_fine(vittoria: bool, motivo: String) -> void:
 	nascondi_pannello()
 	_chiudi_menu()
 	_info.visible = false
+	_consiglio.visible = false
 	_fine_titolo.text = "Vittoria!" if vittoria else "Partita persa"
 	_fine_testo.text = motivo
 	_fine.visible = true

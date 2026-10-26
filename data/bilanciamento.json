@@ -1,13 +1,13 @@
 {
 	"tick_secondi": 2.0,
 	"tick_per_stagione": 60,
-	"abitanti_iniziali": 10,
-	"case_iniziali": 3,
+	"partenza": {"falo": "falo", "tenda": "tenda", "distanza_tende": 4},
 	"risorse_iniziali": {"legna": 30, "pietra": 10, "cibo": 40, "oro": 20},
 	"capacita_base": 100,
 	"cibo_per_abitante_tick": 0.1,
 	"felicita_base": 50,
 	"felicita": {
+		"senza_casa": -10,
 		"cibo_vario": 10,
 		"pane": 10,
 		"fame": -20,

@@ -9,6 +9,8 @@ signal building_removed(id: int)
 signal building_finished(id: int)
 signal message(testo: String)
 signal game_ended(vittoria: bool, motivo: String)
+signal capo_scelto(indice: int)
+signal consiglio(famiglia: int, testo: String)
 
 const PRIMAVERA := 0
 const ESTATE := 1
@@ -20,9 +22,11 @@ const RISORSE := ["legna", "pietra", "cibo", "ferro", "utensili", "oro", "grano"
 ## Le risorse mostrate nella barra in alto (grano e farina restano nascosti).
 const RISORSE_VISIBILI := ["legna", "pietra", "cibo", "ferro", "utensili", "oro"]
 const SAVE_PATH := "user://save.json"
+const VERSIONE_SALVATAGGIO := 2
 
 var edifici: Dictionary = {}  # tipo -> definizione (data/edifici.json)
 var bil: Dictionary = {}      # data/bilanciamento.json
+var dati_famiglie: Dictionary = {}  # data/famiglie.json
 
 var risorse: Dictionary = {}
 var ultimo_delta: Dictionary = {}  # variazione di ogni risorsa nell'ultimo tick
@@ -42,6 +46,12 @@ var finita: bool = false
 var terreno: TerrenoFeudo     # celle del feudo; creato da avvia()
 var in_corso: bool = false    # c'è una partita caricata o iniziata
 var nel_feudo: bool = false   # il tempo scorre solo dentro il feudo
+## Le tre famiglie sopravvissute: {casata, capo, membri, tratto, motto, storia, colore}.
+## Una guida i sopravvissuti, le altre due sono i consiglieri (in futuro: vassalli).
+var famiglie: Array = []
+var capo: int = -1            # indice in famiglie della casata che guida; -1 = non ancora scelta
+var ultimi_consigli: Dictionary = {}  # famiglia -> ultimo consiglio mostrato
+var _tick_dall_ultimo_consiglio := 0
 
 var _prossimo_id: int = 1
 var _accumulo: float = 0.0
@@ -54,11 +64,12 @@ var _pane: bool = false
 func _ready() -> void:
 	edifici = (load("res://data/edifici.json") as JSON).data
 	bil = (load("res://data/bilanciamento.json") as JSON).data
+	dati_famiglie = (load("res://data/famiglie.json") as JSON).data
 
 
 # --- Partita -----------------------------------------------------------------
 
-## Carica il salvataggio oppure inizia una partita nuova con le case di partenza.
+## Carica il salvataggio oppure inizia una partita nuova: un falò e una tenda per famiglia.
 ## Chiamata sia dalla mappa del regno sia dal feudo: la prima volta fa il lavoro, poi niente.
 func avvia() -> void:
 	if in_corso:
@@ -70,13 +81,80 @@ func avvia() -> void:
 	for b in buildings:
 		terreno.occupa(b)
 	if not caricata:
-		var centro := Vector2i(TerrenoFeudo.LATO / 2, TerrenoFeudo.LATO / 2)
-		for i in int(bil.case_iniziali):
-			var c := terreno.trova_posto("casa", centro + Vector2i(i * 3 - 3, 0))
-			if c.x >= 0:
-				aggiungi_gratis("casa", c, 1.0)
+		_prepara_accampamento()
 		salva()
 	in_corso = true
+
+
+## Il falò al centro del feudo e, attorno, una tenda per ogni famiglia.
+func _prepara_accampamento() -> void:
+	var p: Dictionary = bil.partenza
+	var centro := TerrenoFeudo.centro_feudo()
+	var falo := terreno.trova_posto(p.falo, centro - Vector2i.ONE)
+	if falo.x < 0:
+		return
+	aggiungi_gratis(p.falo, falo, 1.0)
+	var d := int(p.distanza_tende)
+	var direzioni := [Vector2i(-d, -1), Vector2i(d, -1), Vector2i(0, d)]
+	for i in famiglie.size():
+		var c := terreno.trova_posto(p.tenda, falo + direzioni[i % direzioni.size()])
+		if c.x >= 0:
+			var tenda := aggiungi_gratis(p.tenda, c, 1.0)
+			tenda.famiglia = i
+
+
+## Pesca le famiglie della partita dal seme, così ogni partita ha casate diverse.
+func _scegli_famiglie() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seme_mappa + 3
+	var pool: Array = dati_famiglie.casate.duplicate(true)
+	for i in range(pool.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = pool[i]
+		pool[i] = pool[j]
+		pool[j] = tmp
+	famiglie = pool.slice(0, int(dati_famiglie.numero))
+	for f in famiglie:
+		f.colore = ""
+	abitanti = 0
+	for f in famiglie:
+		abitanti += int(f.membri)
+
+
+## La casata scelta davanti al falò guida i sopravvissuti; le altre diventano consiglieri.
+## La guida porta il rosso della fazione, i consiglieri gli altri colori.
+func scegli_capo(indice: int) -> void:
+	capo = indice
+	var colori: Array = dati_famiglie.colori
+	var prossimo := 1
+	for i in famiglie.size():
+		if i == indice:
+			famiglie[i].colore = colori[0]
+		else:
+			famiglie[i].colore = colori[prossimo % colori.size()]
+			prossimo += 1
+	capo_scelto.emit(indice)
+	changed.emit()
+	salva()
+
+
+func consiglieri() -> Array[int]:
+	var lista: Array[int] = []
+	for i in famiglie.size():
+		if i != capo:
+			lista.append(i)
+	return lista
+
+
+func tratto(famiglia: int) -> Dictionary:
+	if famiglia < 0 or famiglia >= famiglie.size():
+		return {}
+	return dati_famiglie.tratti.get(famiglie[famiglia].tratto, {})
+
+
+## Moltiplicatore del tratto della guida per una risorsa prodotta.
+func bonus_guida(risorsa: String) -> float:
+	return float(tratto(capo).get("produzione", {}).get(risorsa, 1.0))
 
 
 func ricomincia() -> void:
@@ -91,7 +169,6 @@ func nuova_partita(seme: int = -1) -> void:
 	for r in RISORSE:
 		risorse[r] = float(bil.risorse_iniziali.get(r, 0))
 	ultimo_delta = {}
-	abitanti = int(bil.abitanti_iniziali)
 	felicita = float(bil.felicita_base)
 	stagione = PRIMAVERA
 	anno = 1
@@ -102,6 +179,10 @@ func nuova_partita(seme: int = -1) -> void:
 	tick_fame = 0
 	velocita = 1
 	seme_mappa = seme if seme >= 0 else randi() % 1000000
+	capo = -1
+	ultimi_consigli = {}
+	_tick_dall_ultimo_consiglio = 0
+	_scegli_famiglie()
 	buildings = []
 	finita = false
 	terreno = null
@@ -157,7 +238,7 @@ func piazza(tipo: String, cella: Vector2i, bonus: float) -> Dictionary:
 
 func demolisci(id: int) -> void:
 	var b := trova(id)
-	if b.is_empty():
+	if b.is_empty() or edifici[b.tipo].get("fisso", false):
 		return
 	var costo: Dictionary = edifici[b.tipo].get("costo", {})
 	for r in costo:
@@ -198,7 +279,7 @@ func tempo_costruzione(tipo: String) -> float:
 	var secondi := clampf(c.secondi_per_4_tile * taglia[0] * taglia[1] / 4.0, c.minimo, c.massimo)
 	if stagione == INVERNO:
 		secondi *= c.molt_inverno
-	return secondi
+	return secondi * float(tratto(capo).get("costruzione", 1.0))
 
 
 func _aggiungi(tipo: String, cella: Vector2i, bonus: float, progresso: float) -> Dictionary:
@@ -280,6 +361,10 @@ func fattori_felicita() -> Dictionary:
 			visti[b.tipo] = true
 			fattori[d.nome] = d.felicita
 	fattori["Tasse " + tasse] = bil.tasse[tasse].felicita
+	if tratto(capo).has("felicita"):
+		fattori["Guida " + tratto(capo).nome.to_lower()] = tratto(capo).felicita
+	if abitanti > alloggi():
+		fattori["Senza casa"] = f.senza_casa
 	if _fame:
 		fattori["Fame"] = f.fame
 	if _freddo:
@@ -308,7 +393,7 @@ func testo_effetto(tipo: String) -> String:
 	if d.has("capacita"):
 		parti.append("+%d capacità" % d.capacita)
 	if d.has("felicita"):
-		parti.append("+%d felicità" % d.felicita)
+		parti.append("%+d felicità" % d.felicita)
 	if d.has("vicino"):
 		parti.append("vicino a " + d.vicino)
 	if d.has("su"):
@@ -359,7 +444,7 @@ func _tick() -> void:
 			risorse[r] = maxf(0.0, risorse[r] - consuma[r] / tps * molt)
 		var produce: Dictionary = d.get("produce", {})
 		for r in produce:
-			risorse[r] = minf(cap, risorse[r] + produce[r] / tps * molt)
+			risorse[r] = minf(cap, risorse[r] + produce[r] / tps * molt * bonus_guida(r))
 		if produce.has("cibo"):
 			tipi_cibo[b.tipo] = true
 		if d.get("pane", false):
@@ -396,7 +481,24 @@ func _tick() -> void:
 	tick_in_stagione += 1
 	if tick_in_stagione >= tps:
 		_fine_stagione()
+	_tick_dall_ultimo_consiglio += 1
+	if _tick_dall_ultimo_consiglio >= 15:
+		_tick_dall_ultimo_consiglio = 0
+		_aggiorna_consigli()
 	changed.emit()
+
+
+## Ogni tanto i consiglieri guardano il villaggio; se uno ha un consiglio nuovo, lo dice.
+## Ne parla uno solo per volta, per non riempire lo schermo.
+func _aggiorna_consigli() -> void:
+	if capo < 0:
+		return
+	for i in consiglieri():
+		var testo := Consiglio.per(i)
+		if testo != "" and testo != ultimi_consigli.get(i, ""):
+			ultimi_consigli[i] = testo
+			consiglio.emit(i, testo)
+			return
 
 
 func _fine_stagione() -> void:
@@ -430,7 +532,7 @@ func _fine_stagione() -> void:
 
 
 func _riscuoti_tasse() -> void:
-	var incasso := abitanti * int(bil.tasse[tasse].oro)
+	var incasso := int(abitanti * int(bil.tasse[tasse].oro) * float(tratto(capo).get("tasse", 1.0)))
 	risorse.oro = minf(capacita(), risorse.oro + incasso)
 	var dovuto := tassa_del_re()
 	if risorse.oro >= dovuto:
@@ -505,9 +607,10 @@ func salva() -> void:
 		lista.append({
 			"id": b.id, "tipo": b.tipo, "cella": [b.cella.x, b.cella.y],
 			"lavoratori": b.lavoratori, "progresso": b.progresso, "bonus": b.bonus,
+			"famiglia": b.get("famiglia", -1),
 		})
 	var dati := {
-		"versione": 1, "risorse": risorse, "abitanti": abitanti, "felicita": felicita,
+		"versione": VERSIONE_SALVATAGGIO, "famiglie": famiglie, "capo": capo, "risorse": risorse, "abitanti": abitanti, "felicita": felicita,
 		"stagione": stagione, "anno": anno, "tick_in_stagione": tick_in_stagione,
 		"livello": livello, "tasse": tasse, "tasse_non_pagate": tasse_non_pagate,
 		"seme_mappa": seme_mappa, "prossimo_id": _prossimo_id, "buildings": lista,
@@ -521,9 +624,14 @@ func carica() -> bool:
 	if not FileAccess.file_exists(SAVE_PATH):
 		return false
 	var dati = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
-	if not dati is Dictionary or int(dati.get("versione", 0)) != 1:
+	# i salvataggi delle versioni precedenti (mappa più piccola, niente famiglie) non si caricano
+	if not dati is Dictionary or int(dati.get("versione", 0)) != VERSIONE_SALVATAGGIO:
 		return false
 	nuova_partita(int(dati.seme_mappa))
+	famiglie = dati.famiglie
+	for f in famiglie:
+		f.membri = int(f.membri)
+	capo = int(dati.capo)
 	for r in dati.risorse:
 		risorse[r] = float(dati.risorse[r])
 	abitanti = int(dati.abitanti)
@@ -538,10 +646,13 @@ func carica() -> bool:
 	for x in dati.buildings:
 		if not edifici.has(x.tipo):
 			continue
-		buildings.append({
+		var b := {
 			"id": int(x.id), "tipo": x.tipo, "cella": Vector2i(int(x.cella[0]), int(x.cella[1])),
 			"lavoratori": int(x.lavoratori), "progresso": float(x.progresso), "bonus": float(x.bonus),
-		})
+		}
+		if int(x.get("famiglia", -1)) >= 0:
+			b.famiglia = int(x.famiglia)
+		buildings.append(b)
 	return true
 
 

@@ -8,6 +8,7 @@ var _errori := 0
 func _ready() -> void:
 	GameState.cancella_salvataggio()
 	GameState.nuova_partita(42)
+	GameState.abitanti = 10
 	for i in 3:
 		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
 	_verifica(GameState.alloggi() == 12, "3 case = 12 alloggi")
@@ -21,6 +22,7 @@ func _ready() -> void:
 
 	# Fame per una stagione intera: muore il 20%.
 	GameState.nuova_partita(42)
+	GameState.abitanti = 10
 	for i in 3:
 		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
 	GameState.risorse.cibo = 0.0
@@ -31,6 +33,7 @@ func _ready() -> void:
 
 	# Produzione: raccoglitore con 2 lavoratori = 40 cibo a stagione.
 	GameState.nuova_partita(42)
+	GameState.abitanti = 10
 	var r := GameState.aggiungi_gratis("raccoglitore", Vector2i(0, 0), 1.0)
 	r.lavoratori = 2
 	GameState.abitanti = 0
@@ -41,6 +44,7 @@ func _ready() -> void:
 
 	# Catena grano -> farina -> pane con ingredienti limitati.
 	GameState.nuova_partita(42)
+	GameState.abitanti = 10
 	var m := GameState.aggiungi_gratis("mulino", Vector2i(0, 0), 1.0)
 	m.lavoratori = 1
 	GameState.abitanti = 0
@@ -52,6 +56,7 @@ func _ready() -> void:
 
 	# Inverno: le case bruciano legna; senza legna c'è freddo.
 	GameState.nuova_partita(42)
+	GameState.abitanti = 10
 	for i in 3:
 		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
 	GameState.stagione = GameState.INVERNO
@@ -64,6 +69,7 @@ func _ready() -> void:
 
 	# Tasse in autunno: 10 abitanti x 1 oro, re chiede 15.
 	GameState.nuova_partita(42)
+	GameState.abitanti = 10
 	for i in 3:
 		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
 	GameState.stagione = GameState.AUTUNNO
@@ -92,6 +98,7 @@ func _ready() -> void:
 
 	# Livello Borgo.
 	GameState.nuova_partita(42)
+	GameState.abitanti = 10
 	GameState.abitanti = 25
 	GameState.felicita = 55.0
 	GameState.aggiungi_gratis("magazzino", Vector2i(0, 0), 1.0)
@@ -100,6 +107,7 @@ func _ready() -> void:
 
 	# Salvataggio e caricamento.
 	GameState.nuova_partita(7)
+	GameState.abitanti = 10
 	GameState.aggiungi_gratis("casa", Vector2i(5, 6), 1.0)
 	var t := GameState.piazza("taglialegna", Vector2i(10, 10), 0.5)
 	t.progresso = 0.4
@@ -114,9 +122,10 @@ func _ready() -> void:
 
 	# Terreno del feudo: piazzamento e sovrapposizioni.
 	GameState.nuova_partita(42)
+	GameState.abitanti = 10
 	var terreno := TerrenoFeudo.new(42)
 	GameState.terreno = terreno
-	var centro := Vector2i(TerrenoFeudo.LATO / 2, TerrenoFeudo.LATO / 2)
+	var centro := TerrenoFeudo.centro_feudo()
 	_verifica(terreno.posizione_valida("casa", centro), "il centro della mappa è libero")
 	var casa := GameState.aggiungi_gratis("casa", centro, 1.0)
 	_verifica(not terreno.posizione_valida("casa", centro + Vector2i(1, 1)), "niente edifici sovrapposti")
@@ -125,8 +134,9 @@ func _ready() -> void:
 	_verifica(terreno.posizione_valida("casa", centro), "demolendo la cella torna libera")
 	var collina := Vector2i(-1, -1)
 	for i in terreno.celle.size():
-		if terreno.celle[i] == TerrenoFeudo.Tipo.COLLINA:
-			collina = Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		if terreno.celle[i] == TerrenoFeudo.Tipo.COLLINA and terreno.nel_feudo(c):
+			collina = c
 			break
 	_verifica(collina.x >= 0, "la mappa ha almeno una collina")
 	_verifica(not terreno.posizione_valida("miniera", centro), "la miniera non va sull'erba")
@@ -135,6 +145,74 @@ func _ready() -> void:
 	var posto := terreno.trova_posto("taglialegna", centro)
 	_verifica(posto.x >= 0, "trova_posto trova un posto per il taglialegna")
 	GameState.terreno = null
+
+	# Famiglie: tre casate, la popolazione è la somma dei loro membri.
+	GameState.nuova_partita(5)
+	_verifica(GameState.famiglie.size() == 3, "tre famiglie")
+	var somma := 0
+	for f in GameState.famiglie:
+		somma += int(f.membri)
+	_verifica(GameState.abitanti == somma, "abitanti = membri delle famiglie (%d)" % somma)
+	_verifica(GameState.capo == -1, "all'inizio nessuno guida")
+	var prime := GameState.famiglie.map(func(f): return f.casata)
+	GameState.nuova_partita(5)
+	_verifica(prime == GameState.famiglie.map(func(f): return f.casata), "stesso seme, stesse casate")
+
+	# Scelta della guida: colori, consiglieri, tratto.
+	GameState.nuova_partita(5)
+	GameState.famiglie[1].tratto = "boscaioli"
+	GameState.scegli_capo(1)
+	_verifica(GameState.famiglie[1].colore == "red", "la guida porta il rosso")
+	_verifica(str(GameState.consiglieri()) == "[0, 2]", "gli altri due sono consiglieri")
+	_verifica(is_equal_approx(GameState.bonus_guida("legna"), 1.2) and is_equal_approx(GameState.bonus_guida("cibo"), 1.0), "il tratto della guida vale per la sua risorsa")
+	var tl := GameState.aggiungi_gratis("taglialegna", Vector2i(0, 0), 1.0)
+	tl.lavoratori = 2
+	GameState.abitanti = 2
+	GameState.risorse.cibo = 1000.0
+	GameState.risorse.legna = 0.0
+	for i in 60:
+		GameState._tick()
+	_verifica(absf(GameState.risorse.legna - 36.0) < 0.1, "boscaioli: 30 legna diventano 36 (%.1f)" % GameState.risorse.legna)
+
+	# Consiglieri: consigli diversi tra loro, e mai per la guida.
+	GameState.nuova_partita(5)
+	GameState.scegli_capo(0)
+	var c1 := Consiglio.per(1)
+	var c2 := Consiglio.per(2)
+	_verifica(c1 != "" and c2 != "" and c1 != c2, "i due consiglieri dicono cose diverse")
+	_verifica(Consiglio.per(0) == "", "la guida non si consiglia da sola")
+	_verifica("raccoglitore" in Consiglio.attivi()[0].testo, "senza cibo il primo consiglio è un raccoglitore")
+
+	# Accampamento iniziale e confine del feudo.
+	GameState.ricomincia()
+	GameState.avvia()
+	var falo := 0
+	var tende := 0
+	for b in GameState.buildings:
+		if b.tipo == "falo":
+			falo += 1
+		if b.tipo == "tenda" and b.has("famiglia"):
+			tende += 1
+	_verifica(falo == 1 and tende == 3, "si parte con un falò e una tenda per famiglia")
+	_verifica(GameState.alloggi() >= GameState.abitanti, "le tende bastano per tutti")
+	var id_falo: int = GameState.buildings[0].id
+	GameState.demolisci(id_falo)
+	_verifica(not GameState.trova(id_falo).is_empty(), "il falò non si demolisce")
+	var t2 := GameState.terreno
+	var fuori := TerrenoFeudo.FEUDO.position - Vector2i(3, 3)
+	_verifica(not t2.posizione_valida("tenda", fuori), "fuori dal feudo non si costruisce")
+	_verifica(t2.dentro(fuori), "ma il mondo continua oltre il confine")
+
+	# Salvataggio con famiglie e guida.
+	GameState.scegli_capo(2)
+	GameState.salva()
+	var casate := GameState.famiglie.map(func(f): return f.casata)
+	GameState.nuova_partita(1)
+	_verifica(GameState.carica(), "carica() con le famiglie")
+	_verifica(GameState.capo == 2 and GameState.famiglie.map(func(f): return f.casata) == casate, "guida e casate ricaricate")
+	var con_famiglia := GameState.buildings.filter(func(b): return b.has("famiglia")).size()
+	_verifica(con_famiglia == 3, "le tende ricordano la loro famiglia")
+	GameState.cancella_salvataggio()
 
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])
 	get_tree().quit(1 if _errori > 0 else 0)

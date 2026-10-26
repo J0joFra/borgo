@@ -1,4 +1,14 @@
 {
+	"falo": {
+		"nome": "Falò", "categoria": "speciale", "livello": 0, "taglia": [2, 2],
+		"costo": {}, "lavoratori": 0, "felicita": 5, "fisso": true,
+		"forma": "falo", "colore": "e0782c"
+	},
+	"tenda": {
+		"nome": "Tenda", "categoria": "case", "livello": 0, "taglia": [2, 2],
+		"costo": {"legna": 4}, "lavoratori": 0,
+		"alloggi": 4, "riscaldamento": 5, "felicita": -5, "forma": "tenda", "colore": "c8b48a"
+	},
 	"casa": {
 		"nome": "Casa", "categoria": "case", "livello": 0, "taglia": [2, 2],
 		"costo": {"legna": 10}, "lavoratori": 0,

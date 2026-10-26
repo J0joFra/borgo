@@ -1,0 +1,45 @@
+{
+	"regno_caduto": "Valmora",
+	"numero": 3,
+	"colori": ["red", "blue", "yellow", "green"],
+	"casate": [
+		{
+			"casata": "Ferrante", "capo": "Aldo Ferrante", "membri": 4, "tratto": "boscaioli",
+			"motto": "Il bosco ci ha nascosti, il bosco ci sfamerà.",
+			"storia": "Taglialegna di confine, conoscono ogni sentiero della foresta."
+		},
+		{
+			"casata": "Marzocchi", "capo": "Ilda Marzocchi", "membri": 3, "tratto": "contadini",
+			"motto": "Un seme oggi, un raccolto domani.",
+			"storia": "Hanno salvato dalle fiamme un sacco di sementi e due capre."
+		},
+		{
+			"casata": "Della Rocca", "capo": "Bruno Della Rocca", "membri": 3, "tratto": "scalpellini",
+			"motto": "Ciò che è di pietra non brucia.",
+			"storia": "Costruivano le mura di Valmora; ne hanno visto crollare l'ultima."
+		},
+		{
+			"casata": "Bentivoglio", "capo": "Ottavia Bentivoglio", "membri": 3, "tratto": "mercanti",
+			"motto": "Ogni cosa ha un prezzo, anche la pace.",
+			"storia": "Mercanti di stoffe, fuggiti con un carro e un forziere mezzo vuoto."
+		},
+		{
+			"casata": "Salimbeni", "capo": "Fra' Anselmo Salimbeni", "membri": 3, "tratto": "devoti",
+			"motto": "Finché il fuoco arde, c'è speranza.",
+			"storia": "Il frate e i suoi nipoti hanno tenuto acceso il falò per tutto il viaggio."
+		},
+		{
+			"casata": "Orsini", "capo": "Guido Orsini", "membri": 4, "tratto": "costruttori",
+			"motto": "Mani svelte, tetto sicuro.",
+			"storia": "Carpentieri del porto: sanno tirare su una casa in un giorno."
+		}
+	],
+	"tratti": {
+		"boscaioli": {"nome": "Boscaioli", "descrizione": "+20% legna", "produzione": {"legna": 1.2}, "area": "legna"},
+		"contadini": {"nome": "Contadini", "descrizione": "+20% cibo", "produzione": {"cibo": 1.2, "grano": 1.2}, "area": "cibo"},
+		"scalpellini": {"nome": "Scalpellini", "descrizione": "+20% pietra e ferro", "produzione": {"pietra": 1.2, "ferro": 1.2}, "area": "costruire"},
+		"mercanti": {"nome": "Mercanti", "descrizione": "+25% oro da tasse e mercato", "produzione": {"oro": 1.25}, "tasse": 1.25, "area": "oro"},
+		"devoti": {"nome": "Devoti", "descrizione": "+5 felicità", "felicita": 5, "area": "felicita"},
+		"costruttori": {"nome": "Costruttori", "descrizione": "cantieri più veloci del 25%", "costruzione": 0.75, "area": "case"}
+	}
+}

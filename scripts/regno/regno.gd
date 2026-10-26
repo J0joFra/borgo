@@ -24,6 +24,10 @@ var _entrando := false
 func _ready() -> void:
 	GameState.avvia()
 	GameState.nel_feudo = false
+	if GameState.capo < 0:
+		# partita nuova: prima il prologo davanti al falò, poi la mappa
+		get_tree().change_scene_to_file.call_deferred("res://scenes/feudo.tscn")
+		return
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_dati = (load("res://data/regioni.json") as JSON).data
 	_genera()
@@ -123,7 +127,7 @@ func _crea_interfaccia() -> void:
 	tema.default_font_size = 8
 	theme = tema
 	var titolo := Label.new()
-	titolo.text = "Il regno  ·  %s, anno %d" % [GameState.STAGIONI[GameState.stagione], GameState.anno]
+	titolo.text = "Le terre dei sopravvissuti di %s  ·  %s, anno %d" % [GameState.dati_famiglie.regno_caduto, GameState.STAGIONI[GameState.stagione], GameState.anno]
 	titolo.add_theme_font_size_override("font_size", 12)
 	titolo.add_theme_color_override("font_color", INCHIOSTRO)
 	titolo.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -146,6 +150,8 @@ func _crea_interfaccia() -> void:
 
 
 func _draw() -> void:
+	if _regioni.is_empty():
+		return  # si sta andando al prologo: niente da disegnare
 	draw_rect(Rect2(Vector2.ZERO, size), PERGAMENA)
 	# macchie della carta, sempre uguali per la stessa partita
 	var rng := RandomNumberGenerator.new()

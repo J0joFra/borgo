@@ -22,6 +22,9 @@ var _modello: Node3D  # modello vero, se trovato
 var _altezza_modello := 0.0
 var _parti_che_girano: Array[Node3D] = []
 var _fase := -1  # fase del cantiere mostrata (con i modelli veri)
+var _fiamme: MeshInstance3D
+var _luce: OmniLight3D
+var _bandiera: Node3D
 var _pale: MeshInstance3D
 var _barra: MeshInstance3D
 var _avviso: MeshInstance3D
@@ -46,6 +49,8 @@ func _ready() -> void:
 	_avviso = _mesh(LowPoly.Costruttore.new().forma(LowPoly.sfera(0.3, 0.6, 4, 2), LowPoly.t(Vector3.ZERO), Color("e03c31")).mesh())
 	_avviso.visible = false
 	_costruisci()
+	GameState.capo_scelto.connect(_su_capo_scelto)
+	_metti_bandiera()
 
 
 func _process(delta: float) -> void:
@@ -70,6 +75,11 @@ func _process(delta: float) -> void:
 		_pale.rotate_z(-delta * 1.5 * GameState.velocita)
 	for parte in _parti_che_girano:
 		parte.rotate_object_local(parte.get_meta("gira"), -delta * 1.5 * GameState.velocita)
+	if _fiamme:
+		# il fuoco tremola: fiamme che si allungano e luce che pulsa
+		var f := 1.0 + 0.12 * sin(_tempo * 11.0) + 0.08 * sin(_tempo * 17.3)
+		_fiamme.scale = Vector3(1.0 / sqrt(f), f, 1.0 / sqrt(f))
+		_luce.light_energy = 2.2 + 0.5 * sin(_tempo * 9.0) + 0.3 * sin(_tempo * 23.0)
 	if _avviso.visible:
 		_avviso.position.y = _altezza_tetto() + 0.8 + sin(_tempo * 4.0) * 0.15
 
@@ -104,8 +114,15 @@ func _costruisci() -> void:
 	if _modello:
 		_modello.queue_free()
 		_modello = null
+	if _fiamme:
+		_fiamme.queue_free()
+		_luce.queue_free()
+		_fiamme = null
+		_luce = null
 	var k := LowPoly.Costruttore.new()
-	if _completo:
+	if _completo and _ha_forma("falo"):
+		_falo(k)
+	elif _completo:
 		_modello = CatalogoModelli.istanzia(b.tipo, _larghezza, _profondita)
 	else:
 		_modello = CatalogoModelli.istanzia_cantiere(b.progresso, _larghezza, _profondita)
@@ -121,6 +138,10 @@ func _costruisci() -> void:
 		var d: Dictionary = GameState.edifici[b.tipo]
 		var tetto := Color(d.colore)
 		match d.get("forma", ""):
+			"falo":
+				pass  # già disegnato da _falo()
+			"tenda":
+				_tenda(k, tetto)
 			"campo":
 				_campo(k)
 			"chiesa":
@@ -138,6 +159,69 @@ func _costruisci() -> void:
 					_crea_pale()
 	_corpo.mesh = k.mesh()
 	aggiorna()
+
+
+## Pietre in cerchio, ciocchi incrociati, fiamme che brillano da sole e una luce calda.
+func _falo(k: LowPoly.Costruttore) -> void:
+	var pietra := PIETRA.darkened(0.15)
+	for i in 9:
+		var a := TAU * i / 9.0
+		k.forma(LowPoly.sfera(0.28, 0.32, 5, 3), LowPoly.t(Vector3(cos(a), 0.12, sin(a)) * Vector3(1.05, 1, 1.05), Vector3(1.2, 1, 1), a), pietra.lightened(0.05 * (i % 3)))
+	for i in 4:
+		var a := PI / 4.0 * i
+		var ciocco := Transform3D(Basis(Vector3.UP, a) * Basis(Vector3.FORWARD, PI / 2.0 - 0.45), Vector3(0, 0.3, 0))
+		k.forma(LowPoly.cilindro(0.1, 0.1, 1.2, 5), ciocco, LEGNO_SCURO)
+	k.forma(LowPoly.cilindro(0.7, 0.75, 0.06, 9), LowPoly.t(Vector3(0, 0.03, 0)), Color("3a2a1e"))
+	var fuoco := LowPoly.Costruttore.new()
+	fuoco.forma(LowPoly.cilindro(0.42, 0.0, 1.1, 6), LowPoly.t(Vector3(0, 0.55, 0)), Color("e8641c"))
+	fuoco.forma(LowPoly.cilindro(0.28, 0.0, 1.4, 5), LowPoly.t(Vector3(0.08, 0.7, 0.05), Vector3.ONE, 0.6), Color("f6a623"))
+	fuoco.forma(LowPoly.cilindro(0.15, 0.0, 0.9, 5), LowPoly.t(Vector3(-0.05, 0.5, -0.06), Vector3.ONE, 1.2), Color("ffe58a"))
+	var mesh := fuoco.mesh()
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.vertex_color_is_srgb = true
+	mesh.surface_set_material(0, mat)
+	_fiamme = _mesh(mesh)
+	_fiamme.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_luce = OmniLight3D.new()
+	_luce.light_color = Color("ff9a3c")
+	_luce.omni_range = 9.0
+	_luce.position = Vector3(0, 1.2, 0)
+	add_child(_luce)
+
+
+## Tenda da campo: telo a capanna, entrata scura davanti, pali e picchetti.
+func _tenda(k: LowPoly.Costruttore, telo: Color) -> void:
+	var largo := _larghezza - 1.4
+	var lungo := _profondita - 1.0
+	var alto := 1.7
+	k.forma(LowPoly.cubo(Vector3(largo + 0.4, 0.05, lungo + 0.3)), LowPoly.t(Vector3(0, 0.025, 0)), Color("8a7a5a"))
+	k.forma(LowPoly.tetto(Vector3(largo, alto, lungo)), LowPoly.t(Vector3(0, alto / 2.0 + 0.05, 0)), telo)
+	k.forma(LowPoly.tetto(Vector3(largo * 0.45, alto * 0.62, 0.06)), LowPoly.t(Vector3(0, alto * 0.31 + 0.05, lungo / 2.0 + 0.01)), Color("3a2a1e"))
+	for z in [-lungo / 2.0 - 0.05, lungo / 2.0 + 0.05]:
+		k.forma(LowPoly.cilindro(0.05, 0.05, alto + 0.35, 5), LowPoly.t(Vector3(0, (alto + 0.35) / 2.0, z)), LEGNO_SCURO)
+	for sx in [-1, 1]:
+		for sz in [-1, 1]:
+			k.forma(LowPoly.cubo(Vector3(0.06, 0.25, 0.06)), LowPoly.t(Vector3(sx * (largo / 2.0 + 0.15), 0.12, sz * lungo * 0.35)), LEGNO_SCURO)
+
+
+func _su_capo_scelto(_indice: int) -> void:
+	_metti_bandiera()
+
+
+## Accanto alla tenda di una famiglia, la bandiera del suo colore (dopo la scelta della guida).
+func _metti_bandiera() -> void:
+	if _bandiera:
+		_bandiera.queue_free()
+		_bandiera = null
+	var i: int = b.get("famiglia", -1)
+	if i < 0 or i >= GameState.famiglie.size() or GameState.famiglie[i].colore == "":
+		return
+	_bandiera = CatalogoModelli.istanzia_parole(["flag_" + GameState.famiglie[i].colore], 1.2, 1.2)
+	if _bandiera:
+		_bandiera.position = Vector3(_larghezza / 2.0 - 0.3, 0, _profondita / 2.0 - 0.3)
+		add_child(_bandiera)
 
 
 func _fase_cantiere() -> int:
