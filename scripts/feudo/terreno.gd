@@ -25,6 +25,7 @@ var seme: int
 var celle := PackedByteArray()
 var fertilita := PackedFloat32Array()  # 0..1 per cella: quanto rende un campo
 var tagliati := PackedInt32Array()     # celle di bosco abbattute dai taglialegna (si salvano)
+var ceppi: Dictionary = {}             # indice cella -> stagioni prima che i ceppi siano tolti e ci si possa costruire
 var selvatiche: Dictionary = {}  # indice cella -> coltura che ci cresce da sola (orzo, grano, rape)
 var piantine: Dictionary = {}    # indice cella -> stagioni che mancano perché diventi bosco
 var nuovo_bosco := PackedInt32Array()  # celle di prato diventate bosco grazie al forestale
@@ -202,7 +203,7 @@ func posizione_valida(tipo: String, cella: Vector2i, rot := 0) -> bool:
 			var c := cella + Vector2i(x, y)
 			var t := tipo_a(c)
 			var i := c.y * LATO + c.x
-			if not nel_feudo(c) or _occupato.has(c) or altezza(c) != quota or mura.has(i) or piantine.has(i):
+			if not nel_feudo(c) or _occupato.has(c) or altezza(c) != quota or mura.has(i) or piantine.has(i) or ceppi.has(i):
 				return false
 			if richiesto >= 0 and t != richiesto:
 				return false
@@ -312,6 +313,21 @@ func celle_zona(tipo: String, cella: Vector2i) -> Array:
 
 ## Abbatte le n celle di bosco più vicine all'edificio (entro il raggio) e le
 ## trasforma in radura. Restituisce le celle tagliate.
+## Dopo il taglio restano i ceppi: per una stagione lì non si costruisce, poi il terreno è libero.
+const STAGIONI_CEPPI := 1
+
+
+## A fine stagione i ceppi invecchiano; restituisce le celle dove ora si può costruire.
+func togli_ceppi() -> Array[Vector2i]:
+	var libere: Array[Vector2i] = []
+	for i in ceppi.keys():
+		ceppi[i] = int(ceppi[i]) - 1
+		if ceppi[i] <= 0:
+			ceppi.erase(i)
+			libere.append(Vector2i(i % LATO, i / LATO))
+	return libere
+
+
 func taglia_bosco(cella: Vector2i, taglia: Vector2i, raggio: int, n: int) -> Array[Vector2i]:
 	var centro := Vector2(cella) + Vector2(taglia) / 2.0
 	var candidati: Array[Vector2i] = []
@@ -326,6 +342,7 @@ func taglia_bosco(cella: Vector2i, taglia: Vector2i, raggio: int, n: int) -> Arr
 	for c in candidati.slice(0, n):
 		celle[c.y * LATO + c.x] = Tipo.ERBA
 		tagliati.append(c.y * LATO + c.x)
+		ceppi[c.y * LATO + c.x] = STAGIONI_CEPPI
 		tagliate.append(c)
 	return tagliate
 
@@ -693,8 +710,8 @@ func verifica_mura(celle_m: Array) -> Dictionary:
 		var i: int = c.y * LATO + c.x
 		if mura.has(i):
 			continue
-		if not nel_feudo(c) or _occupato.has(c) or piantine.has(i):
-			return _no(v, "le mura passano su edifici, alberelli o fuori dal feudo")
+		if not nel_feudo(c) or _occupato.has(c) or piantine.has(i) or ceppi.has(i):
+			return _no(v, "le mura passano su edifici, alberelli, ceppi o fuori dal feudo")
 		if not tipo_a(c) in COSTRUIBILE:
 			return _no(v, "le mura si fanno solo sulla terra libera")
 		v.pietra += COSTO_MURA
@@ -719,7 +736,7 @@ func rimuovi_muro(c: Vector2i) -> bool:
 # --- Salvataggio ---------------------------------------------------------------
 
 func salva() -> Dictionary:
-	return {"strade": strade.keys(), "mura": mura.keys(), "piantine": piantine, "nuovo_bosco": Array(nuovo_bosco)}
+	return {"strade": strade.keys(), "mura": mura.keys(), "piantine": piantine, "nuovo_bosco": Array(nuovo_bosco), "ceppi": ceppi}
 
 
 func applica_salvataggio(d: Dictionary) -> void:
@@ -727,6 +744,9 @@ func applica_salvataggio(d: Dictionary) -> void:
 		strade[int(i)] = true
 	for i in d.get("mura", []):
 		mura[int(i)] = true
+	var cp: Dictionary = d.get("ceppi", {})
+	for k in cp:
+		ceppi[int(k)] = int(cp[k])
 	for i in d.get("nuovo_bosco", []):
 		celle[int(i)] = Tipo.BOSCO
 		nuovo_bosco.append(int(i))

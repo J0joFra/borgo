@@ -64,5 +64,12 @@
 		"leva": 8
 	},
 	"primo_inverno": {"cibo": 50},
-	"suggerimenti": {"ogni": 45}
+	"suggerimenti": {"ogni": 45},
+	"battaglia": {
+		"turni": 6,
+		"fuga": 0.4,
+		"colpi_per_caduto": 6,
+		"valore_nemico": {"signore": 5, "banditi": 4, "libera": 3},
+		"tattiche": {"carica": {"nome": "Carica", "attacco": 1.4, "subiamo": 1.3, "descrizione": "colpiamo forte, ma cadono anche i nostri"}, "linea": {"nome": "Tenere la linea", "attacco": 0.75, "subiamo": 0.6, "descrizione": "perdiamo pochi uomini, ma ne facciamo cadere pochi"}, "frecce": {"nome": "Pioggia di frecce", "attacco": 1.25, "subiamo": 0.8, "armi_per_soldato": 0.34, "descrizione": "colpiamo da lontano, ma consuma armi"}}
+	}
 }

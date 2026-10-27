@@ -606,6 +606,19 @@ func _ready() -> void:
 	_verifica(GameState.attacca(libera) and GameState.soldati_presenti() == 0, "l'esercito parte tutto")
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
 		GameState._avanza_missioni()
+	var bt: Dictionary = GameState.battaglia
+	_verifica(not bt.is_empty() and GameState.velocita == 0 and int(bt.nostri) == 20 and int(bt.loro) >= 2, "arrivato l'esercito si combatte: il tempo si ferma")
+	_verifica(GameState.soldati_presenti() == 0, "in battaglia i soldati non sono a casa")
+	var turni := []
+	GameState.battaglia_turno.connect(func(t): turni.append(t))
+	var armi_prima: float = GameState.risorse.armi
+	GameState.round_battaglia("frecce")
+	_verifica(turni.size() == 1 and GameState.risorse.armi < armi_prima and int(turni[0].perse_loro) > 0, "pioggia di frecce: cadono dei loro e si consumano armi")
+	while not GameState.battaglia.finita:
+		GameState.round_battaglia("carica")
+	_verifica(GameState.battaglia.vinta, "la terra libera cade")
+	GameState.chiudi_battaglia()
+	_verifica(GameState.battaglia.is_empty() and GameState.velocita > 0, "finita la battaglia il tempo riparte")
 	var conquista: Dictionary = GameState.regni[libera]
 	_verifica(conquista.conquistato and int(conquista.vassallo) in GameState.consiglieri(), "vinta la terra libera: un consigliere ne è vassallo")
 	_verifica(GameState.soldati_presenti() > 0 and GameState.soldati <= 20, "i soldati tornano (%d)" % GameState.soldati)
@@ -618,7 +631,20 @@ func _ready() -> void:
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
 		GameState._avanza_missioni()
-	_verifica(not GameState.regni[forte].conquistato and GameState.soldati < 5, "troppo pochi contro un signore forte: sconfitta")
+	_verifica(GameState.perche_no_tattica("frecce") != "", "senza armi niente pioggia di frecce")
+	var giri := 0
+	while not GameState.battaglia.finita and giri < 10:
+		GameState.round_battaglia("linea")
+		giri += 1
+	_verifica(not GameState.battaglia.vinta and not GameState.regni[forte].conquistato and GameState.soldati < 5, "troppo pochi contro un signore forte: sconfitta")
+	GameState.chiudi_battaglia()
+	GameState.soldati = 10
+	GameState.attacca(forte)
+	for i in int(GameState.bil.diplomazia.giorni_marcia):
+		GameState._avanza_missioni()
+	GameState.round_battaglia("ritirata")
+	_verifica(GameState.battaglia.finita and not GameState.battaglia.vinta and GameState.soldati == 10, "la ritirata subito salva tutti")
+	GameState.chiudi_battaglia()
 
 	# Vassalli: tributo, lealtà, ribellione.
 	var chiave_v := libera
@@ -713,6 +739,25 @@ func _ready() -> void:
 		GameState._tick()
 	_verifica(detti.size() == 2, "i suggerimenti si spengono")
 	GameState.dati_eventi.probabilita_per_stagione = 0.85
+
+	# Dove si è tagliato il bosco restano i ceppi: si costruisce dalla stagione dopo.
+	var tc := TerrenoFeudo.new(13)
+	var bosco_c := Vector2i(-1, -1)
+	for i in tc.celle.size():
+		var c := Vector2i(i % TerrenoFeudo.LATO, i / TerrenoFeudo.LATO)
+		if tc.celle[i] == TerrenoFeudo.Tipo.BOSCO and tc.nel_feudo(c):
+			bosco_c = c
+			break
+	var tagliata := tc.taglia_bosco(bosco_c, Vector2i.ONE, 0, 1)
+	_verifica(tagliata.size() == 1 and tc.ceppi.has(bosco_c.y * TerrenoFeudo.LATO + bosco_c.x), "tagliato il bosco restano i ceppi")
+	_verifica(not tc.posizione_valida("palizzata", bosco_c), "sui ceppi non si costruisce")
+	var libere := tc.togli_ceppi()
+	_verifica(libere.has(bosco_c) and tc.posizione_valida("palizzata", bosco_c) == (bosco_c != Vector2i(-1, -1) and tc.tipo_a(bosco_c) in TerrenoFeudo.COSTRUIBILE), "dopo una stagione la cella si può costruire")
+	var salvato_t := tc.salva()
+	var tc2 := TerrenoFeudo.new(13)
+	tc.taglia_bosco(bosco_c + Vector2i(1, 0), Vector2i.ONE, 1, 1)
+	tc2.applica_salvataggio(tc.salva())
+	_verifica(tc2.ceppi.size() == tc.ceppi.size() and not salvato_t.is_empty(), "i ceppi si salvano")
 
 	# Salvataggio della versione 8: esercito, regni, missioni, ponti, mura, rotazione.
 	GameState.ricomincia()

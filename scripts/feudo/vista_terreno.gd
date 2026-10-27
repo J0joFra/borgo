@@ -291,7 +291,7 @@ func _colore_cella(c: Vector2i, stagione: int) -> Color:
 			base = ERBA[stagione].lightened(0.05)
 		_:
 			base = ERBA[stagione]
-	if _tagliate.has(c.y * TerrenoFeudo.LATO + c.x):
+	if _tagliate.has(c.y * TerrenoFeudo.LATO + c.x) and terreno.ceppi.has(c.y * TerrenoFeudo.LATO + c.x):
 		base = base.lerp(RADURA, 0.35 if stagione != GameState.INVERNO else 0.1)
 	elif stagione != GameState.INVERNO and terreno.tipo_a(c) in TerrenoFeudo.COSTRUIBILE:
 		# la terra fertile è un verde più scuro e ricco: si riconosce a occhio
@@ -524,7 +524,10 @@ func _aggiorna_alberi(indice: int) -> void:
 		_scala_alberi(indice, 0.25 + 0.55 * fatto)
 	elif _alberi_cella.has(indice):
 		_tagliate[indice] = true
-		_a_ceppo(indice)
+		if terreno.ceppi.has(indice):
+			_a_ceppo(indice)
+		else:
+			_sgombera(indice)
 
 
 ## Un albero in più dalla scorta, in una posizione fissa per quella cella.
@@ -560,6 +563,15 @@ func _a_ceppo(indice: int) -> void:
 		var orig_tronco: Transform3D = _orig_pool[albero[2]] if albero[0] == 2 else _orig_tronchi[albero[2]]
 		_chiome_di(albero).set_instance_transform(albero[1], Transform3D(Basis.from_scale(Vector3.ONE * 0.001), orig_chioma.origin))
 		_tronchi_di(albero).set_instance_transform(albero[2], Transform3D(orig_tronco.basis * Basis.from_scale(Vector3(1.3, 0.25, 1.3)), orig_tronco.origin))
+
+
+## Tolti i ceppi: la cella è libera, degli alberi non resta nulla.
+func _sgombera(indice: int) -> void:
+	for albero in _alberi_cella.get(indice, []):
+		var orig_chioma: Transform3D = _orig_della_chioma(albero)
+		var orig_tronco: Transform3D = _orig_pool[albero[2]] if albero[0] == 2 else _orig_tronchi[albero[2]]
+		_chiome_di(albero).set_instance_transform(albero[1], Transform3D(Basis.from_scale(Vector3.ONE * 0.001), orig_chioma.origin))
+		_tronchi_di(albero).set_instance_transform(albero[2], Transform3D(Basis.from_scale(Vector3.ONE * 0.001), orig_tronco.origin))
 
 
 func _orig_della_chioma(albero: Array) -> Transform3D:

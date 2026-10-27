@@ -3,7 +3,9 @@
 City builder medievale in 3D low-poly per mobile in orizzontale, fatto con **Godot 4.4**.
 Il design completo è nel documento "Borgo — Game Design Document".
 
+![Il menu principale](docs/menu.png)
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
+![Una battaglia per conquistare un regno](docs/battaglia.png)
 ![Il tutorial dopo il prologo](docs/tutorial.png)
 ![Il primo inverno senza cibo: il castello apre le porte](docs/primo_inverno.png)
 ![Una carta evento raccontata da un consigliere](docs/carta_evento.png)
@@ -43,6 +45,10 @@ altrimenti rendi pubblico il repository.)
 - Per avere sul tuo PC le modifiche arrivate su GitHub: in GitHub Desktop **Fetch origin**, poi **Pull origin**.
   Torna su Godot: si accorge da solo dei file cambiati e li reimporta (se una scena era aperta, chiudila e riaprila).
 - Per mandare su GitHub le tue modifiche: in GitHub Desktop scrivi un messaggio, **Commit to main**, poi **Push origin**.
+
+Il gioco si apre sul **menu principale** (un piccolo diorama del borgo che gira): Continua (con anno, casata e
+livello della partita salvata), Nuova partita (chiede conferma se ce n'è una salvata), Opzioni (tutorial nelle
+partite nuove, suggerimenti, schermo intero) e Crediti. Dalla mappa del regno il pulsante "Menu" ci riporta.
 
 Una partita nuova comincia con il **prologo**: il Regno di Valmora è caduto e, attorno a un falò, restano tre famiglie.
 Scegli quale casata guiderà i sopravvissuti; le altre due diventano il tuo **consiglio** e ti danno suggerimenti
@@ -99,7 +105,11 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   - **Spia** (15 oro, torna dopo un mese): dice quanto è forte il regno e cosa pensa di noi; a volte viene scoperta.
   - **Alleanza** (dono di 30 oro, solo con un signore): più è amichevole, più è facile che accetti. Un alleato manda
     rinforzi contro i banditi e un piccolo dono ogni stagione.
-  - **Attacco**: parte tutto l'esercito a casa, arriva dopo un mese; la sua forza (con le armi) contro quella del regno.
+  - **Attacco e battaglia**: parte tutto l'esercito a casa e arriva dopo un mese. Allora il tempo si ferma e si combatte
+    a turni su un campo di battaglia: le nostre schiere (rosse, in arancio gli uomini dei vassalli) contro le loro.
+    A ogni turno si sceglie la tattica: **Carica** (colpisce forte ma cadono anche i nostri), **Tenere la linea**
+    (prudente), **Pioggia di frecce** (consuma armi) o **Ritirata**. Un esercito fugge quando gli resta meno del 40%;
+    dopo 6 turni senza vittoria l'attacco fallisce.
     Vincendo la regione è nostra e la governa un **vassallo**. Conquistare un covo di banditi fa arrivare meno incursioni.
     Perdendo torna solo una parte dei soldati.
   - **Vassalli** (scheda di una regione conquistata): la governa un consigliere libero oppure un cavaliere ("Affida a").
@@ -149,7 +159,8 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   Taglialegna, cava, cacciatore e raccoglitore rendono di più con tanto bosco o tante rocce attorno; il pescatore rende di
   più sul lago che sul fiume, ma d'inverno il lago gela e la pesca crolla; il campo rende in base alla fertilità.
   Mentre scegli dove costruire, le celle che contano si colorano e il pannello mostra la resa stimata.
-- **Disboscamento**: il taglialegna abbatte il bosco attorno; un bosco grande rende tanto ma sparisce in 3 anni (restano i ceppi).
+- **Disboscamento**: il taglialegna abbatte il bosco attorno; un bosco grande rende tanto ma sparisce in 3 anni.
+  Dove ha tagliato restano i ceppi per una stagione; poi la cella è libera e ci si può costruire.
 - **Miglioramenti** a due livelli: case, magazzini e tutti gli edifici della natura. Costano legna e
   **pietra**, che ora serve anche per case, magazzini e quasi tutti gli edifici.
 - **Campi** disponibili da subito: il grano si raccoglie in autunno e sfama quando il cibo finisce (con mulino e forno vale il doppio).
@@ -187,6 +198,8 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 | Modelli degli edifici | `scripts/feudo/edificio_3d.gd` |
 | Telecamera | `scripts/feudo/camera_iso.gd` |
 | Gesti e scena del feudo | `scripts/feudo/feudo.gd` |
+| Menu principale | `scripts/menu.gd` |
+| Battaglie (regole in `bilanciamento.json`, sezione `battaglia`) | `scripts/ui/battaglia.gd` |
 | Mappa del regno | `scripts/regno/regno.gd` |
 | Interfaccia | `scripts/ui/hud.gd` |
 

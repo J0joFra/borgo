@@ -119,6 +119,7 @@ func _ready() -> void:
 	_crea_fine()
 	GameState.evento.connect(_mostra_carta)
 	GameState.tutorial_cambiato.connect(_mostra_tutorial)
+	GameState.battaglia_iniziata.connect(func(_b): _mostra_battaglia())
 	GameState.suggerimento.connect(func(t): mostra_avviso("Suggerimento: " + t, 8.0))
 	GameState.changed.connect(_aggiorna)
 	GameState.season_changed.connect(func(_s, _a): _aggiorna())
@@ -129,6 +130,8 @@ func _ready() -> void:
 	if not GameState.evento_attivo.is_empty():
 		_mostra_carta(GameState.evento_attivo)
 	_mostra_tutorial(GameState.tutorial_passo)
+	if not GameState.battaglia.is_empty():
+		_mostra_battaglia()
 
 
 func _process(delta: float) -> void:
@@ -478,7 +481,7 @@ func _crea_info() -> void:
 	_btn_suggerimenti = _bottone("", 0, 16)
 	_btn_suggerimenti.toggle_mode = true
 	_btn_suggerimenti.pressed.connect(func():
-		GameState.suggerimenti_attivi = _btn_suggerimenti.button_pressed
+		GameState.imposta_opzione("suggerimenti", _btn_suggerimenti.button_pressed)
 		_aggiorna())
 	col.add_child(_btn_suggerimenti)
 	var tutorial := _bottone("Rivedi il tutorial", 0, 16)
@@ -713,8 +716,17 @@ func _da_mostrare(r: String) -> bool:
 	return false
 
 
+## La battaglia occupa tutto lo schermo finché non si torna al feudo.
+func _mostra_battaglia() -> void:
+	nascondi_pannello()
+	_chiudi_menu()
+	for f in [_info, _consiglio, _mercato, _esercito]:
+		f.visible = false
+	_radice.add_child(SchermataBattaglia.new())
+
+
 func _imposta_velocita(v: int) -> void:
-	if not GameState.evento_attivo.is_empty():
+	if not GameState.evento_attivo.is_empty() or not GameState.battaglia.is_empty():
 		_aggiorna()
 		return  # finché la carta è aperta il tempo resta fermo
 	GameState.velocita = v

@@ -13,6 +13,9 @@ func _via() -> void:
 	var segnaposto := Node.new()
 	get_tree().root.add_child(segnaposto)
 	get_tree().current_scene = segnaposto  # così il cambio di scena non distrugge questo nodo
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+	await _attendi(2.0)
+	await _scatta("0_menu")
 	var inizio := Time.get_ticks_msec()
 	get_tree().change_scene_to_file("res://scenes/regno.tscn")
 	await _attendi(2.5)
@@ -325,6 +328,26 @@ func _via() -> void:
 			GameState.nomina_vassallo(k, GameState.consiglieri()[0])
 			conquistata = k
 			break
+
+	# la battaglia per conquistare un regno
+	for i in int(GameState.bil.diplomazia.giorni_marcia):
+		GameState._avanza_missioni()
+	await _attendi(0.5)
+	await _scatta("31_battaglia")
+	if not GameState.battaglia.is_empty():
+		GameState.round_battaglia("carica")
+		await _attendi(0.5)
+		await _scatta("32_battaglia_scontro")
+		await _attendi(1.0)
+		var giri := 0
+		while not GameState.battaglia.finita and giri < 8:
+			GameState.round_battaglia("carica")
+			giri += 1
+			await _attendi(1.2)
+		await _scatta("33_battaglia_fine")
+		GameState.chiudi_battaglia()
+		for n in f.hud.find_children("*", "SchermataBattaglia", true, false):
+			n.queue_free()
 
 	f._vai_al_regno()
 	await _attendi(1.0)

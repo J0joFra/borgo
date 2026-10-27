@@ -110,7 +110,8 @@ func _inizia_prologo() -> void:
 	prologo.finito.connect(func():
 		hud.visible = true
 		GameState.velocita = 1
-		GameState.inizia_tutorial()
+		if GameState.opzioni.tutorial:
+			GameState.inizia_tutorial()
 		GameState.changed.emit())
 
 

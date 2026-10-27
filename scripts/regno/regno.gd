@@ -113,6 +113,16 @@ func _crea_interfaccia() -> void:
 	_velo.color = Color(0, 0, 0, 0)
 	_velo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_velo.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var menu := Button.new()
+	menu.text = "Menu"
+	menu.theme = Hud.crea_tema()
+	menu.focus_mode = Control.FOCUS_NONE
+	menu.position = Vector2(10, 8)
+	menu.custom_minimum_size = Vector2(40, 16)
+	menu.pressed.connect(func():
+		GameState.salva()
+		get_tree().change_scene_to_file("res://scenes/menu.tscn"))
+	add_child(menu)
 	add_child(_velo)
 	_crea_scheda()
 	GameState.changed.connect(func(): _aggiorna_scheda(); queue_redraw())
