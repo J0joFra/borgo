@@ -684,11 +684,11 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 	_mercato_auto.visible = false
 	col.add_child(_mercato_auto)
 	var griglia := GridContainer.new()
-	griglia.columns = 9
+	griglia.columns = 10
 	griglia.add_theme_constant_override("h_separation", 3)
 	griglia.add_theme_constant_override("v_separation", 1)
 	_mercato_auto.add_child(griglia)
-	for testo in ["", "", "", "", "Vendi oltre", "", "", "Compra sotto", ""]:
+	for testo in ["", "", "Hai", "", "", "Vendi oltre", "", "", "Compra sotto", ""]:
 		var l := Label.new()
 		l.text = testo
 		l.add_theme_font_size_override("font_size", 7)
@@ -703,7 +703,7 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 		scorta.custom_minimum_size.x = 26
 		griglia.add_child(scorta)
 		var vuoto := Control.new()
-		vuoto.custom_minimum_size.x = 6
+		vuoto.custom_minimum_size.x = 16
 		griglia.add_child(vuoto)
 		var celle := [scorta]
 		for chiave in ["vendi_sopra", "compra_sotto"]:
