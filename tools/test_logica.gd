@@ -565,6 +565,40 @@ func _ready() -> void:
 	GameState._paga_soldati()
 	_verifica(GameState.soldati == 5, "senza cibo una formazione se ne va")
 
+	# Caserma grande (15 posti) e tipi di soldati secondo il livello dell'armeria.
+	GameState.abitanti = 40
+	var caserma_b: Dictionary = GameState.buildings.filter(func(x): return x.tipo == "caserma")[0]
+	caserma_b.livello = 2
+	_verifica(GameState.formazioni_massime() == 3, "la caserma grande tiene 15 soldati")
+	_verifica(GameState.perche_non_arruolare("arcieri") == "serve un'armeria", "gli arcieri vogliono un'armeria")
+	GameState.aggiungi_gratis("armeria", Vector2i(10, 8), 1.0)
+	var armeria_b: Dictionary = GameState.buildings.filter(func(x): return x.tipo == "armeria")[0]
+	GameState.risorse.armi = 5.0
+	_verifica(GameState.arruola("arcieri") and int(GameState.truppe.arcieri) == 5 and GameState.risorse.armi == 0.0, "con l'armeria si arruolano arcieri per 5 armi")
+	_verifica(GameState.perche_non_arruolare("balestrieri") == "serve l'armeria fornita", "i balestrieri vogliono l'armeria fornita")
+	armeria_b.livello = 3
+	GameState.risorse.armi = 10.0
+	GameState.risorse.oro = 20.0
+	_verifica(GameState.arruola("cavalieri") and GameState.soldati == 15 and GameState.perche_non_arruolare("fanti") == "le caserme sono piene", "con l'arsenale i cavalieri; poi la caserma è piena")
+	_verifica(GameState.cibo_esercito_al_mese() == 11, "i cavalieri mangiano di più")
+	_verifica(GameState.congeda("arcieri") and int(GameState.truppe.arcieri) == 0 and GameState.soldati == 10, "si congedano gli arcieri")
+
+	# Mercato automatico: si vende l'eccesso e si compra quel che manca, tenendo da parte l'oro.
+	GameState.imposta_auto("legna", "vendi_sopra", 100)
+	GameState.imposta_auto("pietra", "compra_sotto", 50)
+	GameState.risorse.legna = 137.0
+	GameState.risorse.pietra = 0.0
+	GameState.risorse.oro = 200.0
+	GameState.mercato_automatico()
+	_verifica(GameState.risorse.legna == 137.0 and GameState.risorse.pietra == 0.0, "senza un mercato non va da solo")
+	GameState.aggiungi_gratis("mercato", Vector2i(14, 8), 1.0)
+	GameState.riserva_oro = 60
+	GameState.mercato_automatico()
+	_verifica(GameState.risorse.legna == 107.0, "l'eccesso di legna oltre 100 si vende")
+	_verifica(GameState.risorse.pietra > 0.0 and GameState.risorse.pietra < 50.0 and GameState.risorse.oro >= 60.0, "si compra pietra senza scendere sotto la riserva d'oro")
+	GameState.imposta_auto("legna", "compra_sotto", 200)
+	_verifica(int(GameState.mercato_auto.legna.vendi_sopra) == 0, "comprare sopra la soglia di vendita la spegne")
+
 	# Regni vicini: spie, alleanze, guerra (dal Borgo).
 	GameState.livello = 0
 	var chiave := ""
@@ -603,6 +637,7 @@ func _ready() -> void:
 	_verifica(alleati_ok and GameState.perche_no("attacco", chiave) != "", "un signore amico accetta l'alleanza, e gli alleati non si attaccano")
 	_verifica(GameState.difesa().alleati == float(GameState.bil.diplomazia.aiuto_alleato), "gli alleati ci aiutano contro i banditi")
 	GameState.soldati = 20
+	GameState.truppe = {"fanti": 15, "arcieri": 5}
 	GameState.abitanti = 30
 	GameState.risorse.armi = 20.0
 	_verifica(GameState.attacca(libera) and GameState.soldati_presenti() == 0, "l'esercito parte tutto")
@@ -840,7 +875,7 @@ func _ready() -> void:
 	GameState.nuova_partita(60)
 	var soldati_pr := GameState.soldati
 	var abitanti_pr := GameState.abitanti
-	GameState.inizia_prova_battaglia({"nemico": "banditi", "soldati": 15, "armi": 10, "vassalli": 5, "nemici": 12})
+	GameState.inizia_prova_battaglia({"nemico": "banditi", "fanti": 10, "arcieri": 5, "armi": 10, "vassalli": 5, "nemici": 12})
 	var bp: Dictionary = GameState.battaglia
 	_verifica(bp.prova and LogicaBattaglia.vive(bp, "noi").size() == 4 and LogicaBattaglia.vive(bp, "loro").size() == 3, "la prova schiera gli eserciti scelti")
 	for u in LogicaBattaglia.vive(bp, "noi"):

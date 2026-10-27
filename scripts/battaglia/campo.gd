@@ -15,6 +15,9 @@ const COLORI_LATO := {"noi": Color("b03a2e"), "loro": Color("3f6f9f")}
 const COLORI_NEMICI := {"signore": Color("3f6f9f"), "banditi": Color("3a3636"), "libera": Color("8a6a3a")}
 const TUNICHE := {"fanti": Color("a8322a"), "arcieri": Color("3f6b3a"), "vassalli": Color("d0802c"),
 	"cavalieri": Color("3f6f9f"), "balestrieri": Color("2f5a85"), "predoni": Color("2e2a2a"), "contadini": Color("8a6a3a")}
+## Le nostre unità sono sempre nei toni del rosso, quelle nemiche nei colori del loro esercito.
+const TUNICHE_NOSTRE := {"fanti": Color("a8322a"), "arcieri": Color("8a3a2a"), "balestrieri": Color("7a2a22"),
+	"cavalieri": Color("c0402e"), "vassalli": Color("d0802c")}
 const FIGURE_MASSIME := 5
 
 var camera: CameraIso
@@ -170,10 +173,11 @@ func _crea_bandiera() -> void:
 
 # --- Unità --------------------------------------------------------------------------
 
-func _mesh_di(tipo: String) -> ArrayMesh:
-	if _mesh_figure.has(tipo):
-		return _mesh_figure[tipo]
-	var tunica: Color = TUNICHE.get(tipo, Color("7a4a3a"))
+func _mesh_di(tipo: String, lato := "loro") -> ArrayMesh:
+	var chiave := tipo + "|" + lato
+	if _mesh_figure.has(chiave):
+		return _mesh_figure[chiave]
+	var tunica: Color = TUNICHE_NOSTRE.get(tipo, Color("a8322a")) if lato == "noi" else TUNICHE.get(tipo, Color("7a4a3a"))
 	var k := LowPoly.Costruttore.new()
 	if tipo == "cavalieri":
 		# un cavallo sotto il cavaliere
@@ -203,8 +207,8 @@ func _mesh_di(tipo: String) -> ArrayMesh:
 			# contadini con il forcone
 			k.forma(LowPoly.cilindro(0.03, 0.03, 1.5, 4), LowPoly.t(Vector3(0.27, 0.8, 0.05)), Color("8a6a3a"))
 			k.forma(LowPoly.cubo(Vector3(0.22, 0.05, 0.05)), LowPoly.t(Vector3(0.27, 1.55, 0.05)), Color("8a8a8a"))
-	_mesh_figure[tipo] = k.mesh()
-	return _mesh_figure[tipo]
+	_mesh_figure[chiave] = k.mesh()
+	return _mesh_figure[chiave]
 
 
 ## Un'unità: figure in gruppetto (una ogni uomo, fino a FIGURE_MASSIME), stendardo del colore
@@ -251,7 +255,7 @@ func _aggiorna_unita(u: Dictionary) -> void:
 	var posti := [Vector3(0, 0, 0), Vector3(0.6, 0, 0.45), Vector3(-0.6, 0, 0.45), Vector3(0.6, 0, -0.45), Vector3(-0.6, 0, -0.45)]
 	while figure.get_child_count() < quante:
 		var m := MeshInstance3D.new()
-		m.mesh = _mesh_di(u.tipo)
+		m.mesh = _mesh_di(u.tipo, u.lato)
 		m.position = posti[figure.get_child_count()]
 		figure.add_child(m)
 	var etichetta: Label3D = nodo.get_node("Numero")

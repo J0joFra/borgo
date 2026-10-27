@@ -151,11 +151,24 @@ func _via() -> void:
 	f._seleziona(cmp.id)
 	await _attendi(0.5)
 	await _scatta("15_campo_coltura")
+	var altra: String = GameState.nomi_colture().filter(func(n): return n != cmp.get("coltura", ""))[0]
+	f.hud._chiedi_coltura(altra)
+	await _attendi(0.3)
+	await _scatta("15b_conferma_coltura")
+	f.hud._conferma_coltura.visible = false
 	f._seleziona(-1)
 	f.hud._mercato.visible = true
 	f.hud._aggiorna()
 	await _attendi(0.3)
 	await _scatta("16_mercato")
+	GameState.aggiungi_gratis("mercato", t.trova_posto("mercato", GameState.buildings.filter(func(x): return x.tipo == "dimora")[0].cella + Vector2i(-6, 4)), 1.0)
+	GameState.imposta_auto("grano", "vendi_sopra", 200)
+	GameState.imposta_auto("legna", "compra_sotto", 50)
+	f.hud._btn_auto.button_pressed = true
+	f.hud._aggiorna()
+	await _attendi(0.3)
+	await _scatta("16b_mercato_automatico")
+	f.hud._btn_auto.button_pressed = false
 	f.hud._mercato.visible = false
 
 	f.camera.cambia_zoom(-1)
@@ -271,8 +284,9 @@ func _via() -> void:
 		if not casa_x.is_empty():
 			casa_x.progresso = 1.0
 	GameState.risorse.cibo = 200.0
+	GameState.risorse.armi = 20.0
 	GameState.arruola()
-	GameState.arruola()
+	GameState.arruola("arcieri")
 	var pc2: Vector3 = f.vista.centro_area(cas.cella, Vector2i(3, 2))
 	f.camera.position = Vector3(pc2.x, 0, pc2.z)
 	await _attendi(4.0)

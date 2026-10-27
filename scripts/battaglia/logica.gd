@@ -16,7 +16,8 @@ const ALTEZZA := 9
 
 ## Una battaglia nuova: terreno dal seme, le nostre unità (soldati, arcieri se ci sono armi,
 ## uomini dei vassalli) e quelle del regno nemico, con la sua bandiera.
-static func crea(regione: String, tipo_nemico: String, soldati: int, armi: int, aiuti: int, nemici: int, seme: int, cfg: Dictionary) -> Dictionary:
+## truppe: tipo di soldato (fanti, arcieri, balestrieri, cavalieri) -> quanti.
+static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi: int, aiuti: int, nemici: int, seme: int, cfg: Dictionary) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seme
 	var terreno: Array = []
@@ -39,29 +40,31 @@ static func crea(regione: String, tipo_nemico: String, soldati: int, armi: int, 
 	var b := {"regione": regione, "tipo_nemico": tipo_nemico, "turno": 1, "turni": int(cfg.turni),
 		"fase": "noi", "finita": false, "vinta": false, "perche": "", "terreno": terreno,
 		"bandiera": [bandiera.x, bandiera.y], "unita": [], "diario": [], "prossimo_id": 1}
-	# le nostre unità: gruppi di "per_unita" uomini; con abbastanza armi una su tre è di arcieri
+	# le nostre unità: gruppi di "per_unita" uomini per ogni tipo di soldato; chi tira sta dietro
 	var per := int(cfg.per_unita)
-	var gruppi := _gruppi(soldati, per)
-	var arcieri_possibili := armi / per
-	var n_arcieri := mini(arcieri_possibili, gruppi.size() / 3)
-	var righe := _righe_centrali(gruppi.size() + _gruppi(aiuti, per).size())
-	var k := 0
-	for i in gruppi.size():
-		var tipo := "arcieri" if i >= gruppi.size() - n_arcieri else "fanti"
-		_aggiungi(b, "noi", tipo, gruppi[i], Vector2i(1 if tipo == "fanti" else 0, righe[k]), cfg)
-		k += 1
+	var soldati := 0
+	var gruppi := []  # [tipo, uomini]
+	for tipo in ["fanti", "cavalieri", "balestrieri", "arcieri"]:
+		for g in _gruppi(int(truppe.get(tipo, 0)), per):
+			gruppi.append([tipo, g])
+		soldati += int(truppe.get(tipo, 0))
 	for g in _gruppi(aiuti, per):
-		_aggiungi(b, "noi", "vassalli", g, Vector2i(0, righe[k]), cfg)
-		k += 1
-	# le armi che avanzano armano i fanti: combattono meglio (bonus_armati)
-	var restano := armi - n_arcieri * per
-	b.armi_usate = n_arcieri * per
+		gruppi.append(["vassalli", g])
+	var righe := _righe_centrali(gruppi.size())
+	for k in gruppi.size():
+		var tipo: String = gruppi[k][0]
+		var dietro := int(cfg.unita[tipo].gittata) > 1 or tipo == "vassalli"
+		_aggiungi(b, "noi", tipo, gruppi[k][1], Vector2i(0 if dietro else 1, righe[k]), cfg)
+	# le armi armano i fanti: combattono meglio (bonus_armati)
+	var restano := armi
+	b.armi_usate = 0
 	for u in b.unita:
 		if u.tipo == "fanti" and restano >= int(u.uomini):
 			u.armati = true
 			restano -= int(u.uomini)
 			b.armi_usate = int(b.armi_usate) + int(u.uomini)
 	b.nostri_inizio = soldati
+	b.truppe_inizio = truppe.duplicate()
 	# le unità nemiche attorno alla bandiera
 	var tipi: Array = cfg.eserciti[tipo_nemico]
 	var loro := _gruppi(nemici, per)

@@ -98,12 +98,17 @@ var _prossimo_suggerimento := 0
 var _tick_suggerimento := 0
 var dati_tutorial: Array = []
 var dati_suggerimenti: Array = []
-var soldati := 0              # abitanti arruolati: non lavorano, difendono e possono attaccare
+var soldati := 0              # abitanti arruolati (totale): non lavorano, difendono e possono attaccare
+var truppe: Dictionary = {}   # tipo di soldato (fanti, arcieri, balestrieri, cavalieri) -> quanti
+## Mercato automatico: risorsa -> {vendi_sopra, compra_sotto} (0 = spento); e l'oro da non spendere.
+var mercato_auto: Dictionary = {}
+var riserva_oro := 50
+var _auto_conti: Dictionary = {}  # quanto ha comprato/venduto da solo in questa stagione
 var regni: Dictionary = {}    # "indice regione" -> {forza, atteggiamento, spiato, alleato, conquistato, vassallo}
 var missioni: Array = []      # {tipo: spia|alleanza|attacco, regione, mancano, soldati}
 var battaglia: Dictionary = {}  # la battaglia in corso (vedi _battaglia), {} se nessuna
 ## Le impostazioni dell'ultima battaglia di prova (menu → Prova battaglia): non toccano la partita.
-var prova_battaglia := {"nemico": "signore", "soldati": 20, "armi": 10, "vassalli": 5, "nemici": 25}
+var prova_battaglia := {"nemico": "signore", "fanti": 15, "arcieri": 5, "balestrieri": 0, "cavalieri": 0, "armi": 10, "vassalli": 5, "nemici": 25}
 
 var _prossimo_id: int = 1
 var _accumulo: float = 0.0
@@ -330,6 +335,10 @@ func nuova_partita(seme: int = -1) -> void:
 	tutorial_passo = -1
 	_prossimo_suggerimento = 0
 	soldati = 0
+	truppe = {}
+	mercato_auto = {}
+	riserva_oro = 50
+	_auto_conti = {}
 	missioni = []
 	battaglia = {}
 	regni = {}
@@ -870,6 +879,8 @@ func _tick() -> void:
 	if tick_in_stagione % mese == 0:
 		_paga_soldati()
 	_avanza_missioni()
+	if tick_in_stagione % int(bil.mercato_automatico.ogni) == 0:
+		mercato_automatico()
 	if tick_in_stagione == _tick_banditi:
 		_avvista_banditi()
 	elif not banditi.is_empty():
@@ -1409,10 +1420,12 @@ func difesa() -> Dictionary:
 		forza_arcieri *= 1.0 + (float(c.bonus_armi) - 1.0) * armate / arcieri
 	# poi si armano i soldati rimasti a casa, e le armi avanzate vanno alla milizia
 	var presenti := soldati_presenti()
-	var armi_soldati := mini(presenti, int(risorse.armi) - armate)
-	var forza_soldati := presenti * float(bil.esercito.difesa_per_soldato)
-	if presenti > 0:
-		forza_soldati *= 1.0 + (float(c.bonus_armi) - 1.0) * armi_soldati / presenti
+	var qui := truppe_presenti()
+	var armi_soldati := mini(int(qui.get("fanti", 0)), maxi(0, int(risorse.armi) - armate))
+	var forza_soldati := 0.0
+	for t in qui:
+		forza_soldati += int(qui[t]) * float(bil.battaglia.unita[t].forza)
+	forza_soldati += armi_soldati * float(bil.battaglia.unita.fanti.forza) * (float(c.bonus_armi) - 1.0)
 	var civili := maxi(0, abitanti - soldati)
 	var armi_milizia := mini(int(risorse.armi) - armate - armi_soldati, civili)
 	var milizia := civili * float(c.milizia_per_abitante) + armi_milizia * 0.5
@@ -1558,9 +1571,27 @@ func _brucia_qualcosa() -> int:
 # --- Esercito ------------------------------------------------------------------------
 
 ## Si arruola una formazione alla volta (bilanciamento.esercito.per_formazione persone), prese fra
-## chi non lavora. Ogni caserma ne ospita alcune. Ogni formazione mangia del cibo ogni mese.
+## chi non lavora. Ogni caserma ne ospita alcune (di più migliorandola). Che soldati si possono
+## arruolare dipende dal livello dell'armeria: lancieri sempre, arcieri con l'armeria, balestrieri con
+## l'armeria fornita, cavalieri con l'arsenale. Ogni formazione mangia del cibo ogni mese.
+const TIPI_SOLDATI := ["fanti", "arcieri", "balestrieri", "cavalieri"]
+
+
+## Se il totale dei soldati è cambiato da fuori (vecchi salvataggi, prove), la differenza sono lancieri.
+func _allinea_truppe() -> void:
+	var somma := 0
+	for t in truppe:
+		somma += int(truppe[t])
+	if somma != soldati:
+		truppe["fanti"] = maxi(0, int(truppe.get("fanti", 0)) + soldati - somma)
+
+
 func formazioni() -> int:
-	return ceili(soldati / float(bil.esercito.per_formazione))
+	_allinea_truppe()
+	var n := 0
+	for t in truppe:
+		n += ceili(int(truppe[t]) / float(bil.esercito.per_formazione))
+	return n
 
 
 func formazioni_massime() -> int:
@@ -1571,12 +1602,51 @@ func formazioni_massime() -> int:
 	return n
 
 
+## Il livello dell'armeria migliore (0 se non ce n'è una finita).
+func livello_armeria() -> int:
+	var l := 0
+	for b in buildings:
+		if b.tipo == "armeria" and b.progresso >= 1.0:
+			l = maxi(l, int(b.get("livello", 1)))
+	return l
+
+
+func _ricalcola_soldati() -> void:
+	soldati = 0
+	for t in truppe.keys():
+		truppe[t] = maxi(0, int(truppe[t]))
+		soldati += truppe[t]
+
+
+## Le truppe lontane da casa: in marcia verso un regno o in battaglia.
+func truppe_in_marcia() -> Dictionary:
+	var fuori := {}
+	for m in missioni:
+		var mt: Dictionary = m.get("truppe", {})
+		for t in mt:
+			fuori[t] = int(fuori.get(t, 0)) + int(mt[t])
+	if not battaglia.is_empty() and not battaglia.finita and not battaglia.get("prova", false):
+		for t in TIPI_SOLDATI:
+			fuori[t] = int(fuori.get(t, 0)) + LogicaBattaglia.superstiti(battaglia, "noi", [t])
+	return fuori
+
+
+func truppe_presenti() -> Dictionary:
+	_allinea_truppe()
+	var fuori := truppe_in_marcia()
+	var qui := {}
+	for t in truppe:
+		var n := maxi(0, int(truppe[t]) - int(fuori.get(t, 0)))
+		if n > 0:
+			qui[t] = n
+	return qui
+
+
 func soldati_in_marcia() -> int:
 	var n := 0
-	for m in missioni:
-		n += int(m.get("soldati", 0))
-	if not battaglia.is_empty() and not battaglia.finita:
-		n += LogicaBattaglia.superstiti(battaglia, "noi", ["fanti", "arcieri"])
+	var fuori := truppe_in_marcia()
+	for t in fuori:
+		n += int(fuori[t])
 	return n
 
 
@@ -1584,36 +1654,65 @@ func soldati_presenti() -> int:
 	return maxi(0, soldati - soldati_in_marcia())
 
 
-## "" se si può arruolare, altrimenti il perché.
-func perche_non_arruolare() -> String:
+## "" se si può arruolare una formazione di quel tipo, altrimenti il perché.
+func perche_non_arruolare(tipo := "fanti") -> String:
+	var t: Dictionary = bil.esercito.tipi[tipo]
 	if formazioni_massime() == 0:
 		return "serve una caserma"
+	if livello_armeria() < int(t.armeria):
+		return ["", "serve un'armeria", "serve l'armeria fornita", "serve l'arsenale"][int(t.armeria)]
 	if formazioni() >= formazioni_massime():
 		return "le caserme sono piene"
 	if disoccupati() < int(bil.esercito.per_formazione):
 		return "servono %d persone senza lavoro" % int(bil.esercito.per_formazione)
+	for r in t.costo:
+		if risorse[r] < float(t.costo[r]):
+			return "servono %d %s" % [int(t.costo[r]), r]
 	return ""
 
 
-func arruola() -> bool:
-	if perche_non_arruolare() != "":
+func arruola(tipo := "fanti") -> bool:
+	if perche_non_arruolare(tipo) != "":
 		return false
-	soldati += int(bil.esercito.per_formazione)
-	message.emit("Una nuova formazione di %d soldati: mangia %d cibo al mese" % [int(bil.esercito.per_formazione), int(bil.esercito.cibo_al_mese)])
+	var t: Dictionary = bil.esercito.tipi[tipo]
+	for r in t.costo:
+		risorse[r] -= float(t.costo[r])
+	_allinea_truppe()
+	truppe[tipo] = int(truppe.get(tipo, 0)) + int(bil.esercito.per_formazione)
+	_ricalcola_soldati()
+	message.emit("Una nuova formazione di %d %s: mangia %d cibo al mese" % [int(bil.esercito.per_formazione),
+		bil.battaglia.unita[tipo].nome.to_lower(), int(t.cibo_al_mese)])
 	changed.emit()
 	return true
 
 
-func congeda() -> bool:
-	if soldati_presenti() < int(bil.esercito.per_formazione):
+func congeda(tipo := "fanti") -> bool:
+	if int(truppe_presenti().get(tipo, 0)) <= 0:
 		return false
-	soldati -= int(bil.esercito.per_formazione)
+	truppe[tipo] = int(truppe[tipo]) - mini(int(bil.esercito.per_formazione), int(truppe_presenti()[tipo]))
+	_ricalcola_soldati()
 	changed.emit()
 	return true
+
+
+## Toglie n soldati fra quelli a casa: prima i lancieri, poi gli altri.
+func _togli_soldati(n: int) -> void:
+	var qui := truppe_presenti()
+	for t in TIPI_SOLDATI:
+		if n <= 0:
+			break
+		var via := mini(n, int(qui.get(t, 0)))
+		truppe[t] = int(truppe.get(t, 0)) - via
+		n -= via
+	_ricalcola_soldati()
 
 
 func cibo_esercito_al_mese() -> int:
-	return formazioni() * int(bil.esercito.cibo_al_mese)
+	_allinea_truppe()
+	var c := 0
+	for t in truppe:
+		c += ceili(int(truppe[t]) / float(bil.esercito.per_formazione)) * int(bil.esercito.tipi[t].cibo_al_mese)
+	return c
 
 
 ## A ogni mese le formazioni si mangiano la loro razione; se il cibo non basta, una formazione se ne torna a casa.
@@ -1627,8 +1726,24 @@ func _paga_soldati() -> void:
 		risorse[r] -= x
 		preso += x
 	if preso + 0.001 < serve and soldati_presenti() > 0:
-		soldati -= mini(int(bil.esercito.per_formazione), soldati_presenti())
+		_togli_soldati(mini(int(bil.esercito.per_formazione), soldati_presenti()))
 		message.emit("Senza cibo una formazione di soldati ha lasciato l'esercito")
+
+
+## La forza delle truppe (forza di ogni soldato del suo tipo; i lancieri armati di più).
+func forza_truppe(t: Dictionary) -> float:
+	var f := 0.0
+	var armi := int(risorse.armi)
+	for tipo in t:
+		var n := int(t[tipo])
+		var forza := float(bil.battaglia.unita[tipo].forza)
+		if tipo == "fanti":
+			var armati := mini(n, armi)
+			armi -= armati
+			f += (n - armati) * forza + armati * forza * float(bil.battaglia.bonus_armati)
+		else:
+			f += n * forza
+	return f
 
 
 # --- Regni vicini: spie, alleanze, guerra --------------------------------------------
@@ -1665,10 +1780,17 @@ func forza_regno(chiave: String) -> int:
 	return roundi(float(regni[chiave].forza) * (1.0 + float(bil.diplomazia.crescita_forza_per_anno) * (anno - 1)))
 
 
-## La forza in battaglia di n soldati (con le armi), più le truppe mandate dai vassalli.
+## La forza in battaglia di n soldati di quelli a casa (secondo i loro tipi), più le truppe mandate dai vassalli.
 func forza_esercito(n: int) -> float:
-	var armati := mini(n, int(risorse.armi))
-	var f := n * float(bil.esercito.forza_per_soldato) * (1.0 + (float(bil.banditi.bonus_armi) - 1.0) * armati / maxf(1.0, n))
+	var qui := truppe_presenti()
+	var tot := 0
+	for t in qui:
+		tot += int(qui[t])
+	var f := 0.0
+	if tot > 0:
+		f = forza_truppe(qui) * n / float(tot)
+	else:
+		f = n * float(bil.esercito.forza_per_soldato)
 	if n > 0:
 		for k in regni:
 			if regni[k].conquistato:
@@ -1734,7 +1856,8 @@ func proponi_alleanza(chiave: String) -> bool:
 func attacca(chiave: String) -> bool:
 	if perche_no("attacco", chiave) != "":
 		return false
-	missioni.append({"tipo": "attacco", "regione": chiave, "mancano": int(bil.diplomazia.giorni_marcia), "soldati": soldati_presenti()})
+	missioni.append({"tipo": "attacco", "regione": chiave, "mancano": int(bil.diplomazia.giorni_marcia),
+		"soldati": soldati_presenti(), "truppe": truppe_presenti()})
 	changed.emit()
 	return true
 
@@ -1817,7 +1940,8 @@ func _battaglia(m: Dictionary) -> void:
 		if regni[k].conquistato:
 			aiuti += roundi(leva_vassallo(k) / float(c.unita.vassalli.forza))
 	var nemici := maxi(2, roundi(forza_regno(m.regione) / float(c.unita[c.eserciti[r.tipo][0]].forza)))
-	battaglia = LogicaBattaglia.crea(m.regione, r.tipo, int(m.soldati), int(risorse.armi), aiuti, nemici, _rng.randi(), c)
+	var mt: Dictionary = m.get("truppe", {"fanti": int(m.soldati)})
+	battaglia = LogicaBattaglia.crea(m.regione, r.tipo, mt, int(risorse.armi), aiuti, nemici, _rng.randi(), c)
 	risorse.armi = maxf(0.0, risorse.armi - float(battaglia.armi_usate))
 	if velocita > 0:
 		_velocita_prima = velocita
@@ -1862,7 +1986,11 @@ func battaglia_ritirata() -> void:
 func inizia_prova_battaglia(p: Dictionary) -> void:
 	prova_battaglia = p.duplicate()
 	var nomi := {"signore": "Il castello del Duca", "banditi": "Il covo dei banditi", "libera": "La terra libera"}
-	battaglia = LogicaBattaglia.crea("prova", p.nemico, int(p.soldati), int(p.armi), int(p.vassalli), int(p.nemici), randi(), bil.battaglia)
+	var t := {}
+	for tipo in TIPI_SOLDATI:
+		if int(p.get(tipo, 0)) > 0:
+			t[tipo] = int(p[tipo])
+	battaglia = LogicaBattaglia.crea("prova", p.nemico, t, int(p.armi), int(p.vassalli), int(p.nemici), randi(), bil.battaglia)
 	battaglia.prova = true
 	battaglia.titolo = "Prova: %s" % nomi.get(p.nemico, "battaglia")
 
@@ -1880,9 +2008,13 @@ func _dopo_azione() -> void:
 func _fine_battaglia(vinta: bool, perche: String) -> void:
 	var b := battaglia
 	var r: Dictionary = regni[b.regione]
-	var vivi := LogicaBattaglia.superstiti(b, "noi", ["fanti", "arcieri"])
+	var vivi := LogicaBattaglia.superstiti(b, "noi", TIPI_SOLDATI)
 	var caduti := int(b.nostri_inizio) - vivi
-	soldati -= caduti
+	_allinea_truppe()
+	var inizio: Dictionary = b.get("truppe_inizio", {})
+	for t in inizio:
+		truppe[t] = int(truppe.get(t, 0)) - (int(inizio[t]) - LogicaBattaglia.superstiti(b, "noi", [t]))
+	_ricalcola_soldati()
 	abitanti -= caduti
 	var esito := {"tipo": "attacco", "regione": b.regione, "riuscita": vinta, "caduti": caduti, "perche": perche}
 	if vinta:
@@ -2184,6 +2316,66 @@ func ricavo_lotto(r: String) -> int:
 	return mercato.ricavo_lotto(r, stagione, ha_mercato())
 
 
+# --- Mercato automatico ------------------------------------------------------------
+
+## Imposta il mercato automatico di una risorsa: vende tutto quello che supera "vendi_sopra" e
+## compra quando scende sotto "compra_sotto" (0 = spento). Serve un edificio mercato.
+func imposta_auto(r: String, chiave: String, valore: int) -> void:
+	var a: Dictionary = mercato_auto.get(r, {"vendi_sopra": 0, "compra_sotto": 0})
+	a[chiave] = maxi(0, valore)
+	mercato_auto[r] = a
+	# vendere sotto a quanto si compra non ha senso: la soglia di vendita resta sopra
+	if int(a.vendi_sopra) > 0 and int(a.compra_sotto) >= int(a.vendi_sopra):
+		if chiave == "vendi_sopra":
+			a.compra_sotto = 0
+		else:
+			a.vendi_sopra = 0
+	changed.emit()
+
+
+## Ogni tanto il mercato lavora da solo: vende l'eccesso e compra quello che manca, a lotti,
+## senza mai scendere sotto la riserva d'oro. Alla fine della stagione dice cosa ha fatto.
+func mercato_automatico() -> void:
+	if not ha_mercato() or mercato_auto.is_empty():
+		return
+	var lotti := int(bil.mercato_automatico.lotti_per_volta)
+	var lotto := mercato.lotto()
+	for r in mercato_auto:
+		var a: Dictionary = mercato_auto[r]
+		var n := 0
+		while int(a.vendi_sopra) > 0 and risorse[r] - lotto >= float(a.vendi_sopra) and n < lotti:
+			var ricavo := ricavo_lotto(r)
+			if not vendi(r):
+				break
+			_conta_auto(r, -lotto, ricavo)
+			n += 1
+		n = 0
+		while int(a.compra_sotto) > 0 and risorse[r] < float(a.compra_sotto) and n < lotti:
+			var costo := costo_lotto(r)
+			if risorse.oro - costo < riserva_oro or not compra(r):
+				break
+			_conta_auto(r, lotto, -costo)
+			n += 1
+
+
+func _conta_auto(r: String, quanto: int, oro: int) -> void:
+	var c: Dictionary = _auto_conti.get(r, {"quanto": 0, "oro": 0})
+	c.quanto = int(c.quanto) + quanto
+	c.oro = int(c.oro) + oro
+	_auto_conti[r] = c
+
+
+func _riepilogo_auto() -> void:
+	if _auto_conti.is_empty():
+		return
+	var parti: Array[String] = []
+	for r in _auto_conti:
+		var c: Dictionary = _auto_conti[r]
+		parti.append("%s %d %s (%+d oro)" % ["venduti" if int(c.quanto) < 0 else "comprati", absi(int(c.quanto)), r, int(c.oro)])
+	message.emit("Mercato automatico: " + ", ".join(parti))
+	_auto_conti = {}
+
+
 func compra(r: String) -> bool:
 	var costo := costo_lotto(r)
 	if risorse.oro < costo or risorse[r] + mercato.lotto() > capacita():
@@ -2276,6 +2468,7 @@ func _fine_stagione() -> void:
 	_scadono_modificatori()
 	_riscuoti_tasse()
 	_riscuoti_tributi()
+	_riepilogo_auto()
 	if finita:
 		return
 	if abitanti <= 0:
@@ -2467,7 +2660,7 @@ func _togli_abitanti(n: int) -> void:
 	var eccesso := lavoratori_assegnati() + soldati - abitanti
 	var dai_soldati := maxi(0, eccesso - lavoratori_assegnati())
 	if dai_soldati > 0:
-		soldati -= dai_soldati
+		_togli_soldati(dai_soldati)
 		eccesso -= dai_soldati
 	for i in range(buildings.size() - 1, -1, -1):
 		if eccesso <= 0:
@@ -2488,6 +2681,7 @@ func _fine(vittoria: bool, motivo: String) -> void:
 func salva() -> void:
 	if finita or bil.is_empty() or buildings.is_empty():
 		return
+	_allinea_truppe()
 	var lista := []
 	for b in buildings:
 		lista.append({
@@ -2510,7 +2704,7 @@ func salva() -> void:
 		"eventi_usati": eventi_usati, "tick_evento": _tick_evento,
 		"evento_attivo": evento_attivo.get("id", ""),
 		"banditi": _banditi_salvati(), "tick_banditi": _tick_banditi,
-		"soldati": soldati, "regni": regni, "missioni": missioni, "battaglia": battaglia,
+		"soldati": soldati, "truppe": truppe, "mercato_auto": mercato_auto, "riserva_oro": riserva_oro, "regni": regni, "missioni": missioni, "battaglia": battaglia,
 		"aiuto_inverno_dato": aiuto_inverno_dato, "tutorial_passo": tutorial_passo, "re_atteggiamento": re_atteggiamento,
 		"suggerimenti_attivi": suggerimenti_attivi, "prossimo_suggerimento": _prossimo_suggerimento,
 	}
@@ -2573,6 +2767,16 @@ func carica() -> bool:
 	_tick_evento = int(dati.get("tick_evento", -1))
 	_tick_banditi = int(dati.get("tick_banditi", -1))
 	soldati = int(dati.get("soldati", 0))
+	truppe = {}
+	var tr: Dictionary = dati.get("truppe", {"fanti": soldati} if soldati > 0 else {})
+	for t in tr:
+		truppe[t] = int(tr[t])
+	_ricalcola_soldati()
+	mercato_auto = {}
+	var ma: Dictionary = dati.get("mercato_auto", {})
+	for r in ma:
+		mercato_auto[r] = {"vendi_sopra": int(ma[r].get("vendi_sopra", 0)), "compra_sotto": int(ma[r].get("compra_sotto", 0))}
+	riserva_oro = int(dati.get("riserva_oro", 50))
 	aiuto_inverno_dato = bool(dati.get("aiuto_inverno_dato", anno > 1))
 	tutorial_passo = int(dati.get("tutorial_passo", -1))
 	re_atteggiamento = int(dati.get("re_atteggiamento", -40 if livello >= 1 else 0))
@@ -2602,6 +2806,9 @@ func carica() -> bool:
 		m.mancano = int(m.mancano)
 		if m.has("soldati"):
 			m.soldati = int(m.soldati)
+		if m.has("truppe"):
+			for t in m.truppe:
+				m.truppe[t] = int(m.truppe[t])
 	banditi = dati.get("banditi", {})
 	if not banditi.is_empty():
 		banditi.entrata = Vector2i(int(banditi.entrata[0]), int(banditi.entrata[1]))

@@ -42,11 +42,18 @@ var _icone: Dictionary = {}   # chiave -> icona nella barra in alto
 var _mercato: PanelContainer
 var _esercito: PanelContainer
 var _esercito_testo: Label
-var _btn_arruola: Button
-var _btn_congeda: Button
+var _conferma_coltura: PanelContainer
+var _conferma_testo: Label
+var _coltura_scelta := ""
+var _truppe_righe: Dictionary = {}  # tipo -> [numero, arruola, congeda]
 var _mercato_notizia: Label
 var _mercato_righe: Dictionary = {}  # risorsa -> [scorta, tendenza, compra, vendi]
 var _mercato_nota: Label
+var _mercato_manuale: GridContainer
+var _mercato_auto: VBoxContainer
+var _mercato_auto_righe: Dictionary = {}  # risorsa -> [scorta, vendi_sopra, compra_sotto]
+var _riserva: Label
+var _btn_auto: Button
 var _btn_colture: Dictionary = {}  # coltura -> Button
 var _strada := ""  # "nuova" mentre si traccia una strada, "esistente" se ne è toccata una
 var _strada_testo := ""
@@ -114,6 +121,7 @@ func _ready() -> void:
 	_crea_consiglio()
 	_crea_mercato()
 	_crea_esercito()
+	_crea_conferma_coltura()
 	_crea_carta()
 	_crea_tutorial()
 	_crea_fine()
@@ -185,6 +193,7 @@ func nascondi_pannello() -> void:
 	_edificio = -1
 	_piazzamento = ""
 	_pannello.visible = false
+	_conferma_coltura.visible = false
 
 
 func mostra_avviso(testo: String, durata := 3.5) -> void:
@@ -330,6 +339,54 @@ func _apri_finestra(finestra: PanelContainer) -> void:
 	_aggiorna()
 
 
+## Cambiare coltura a un campo va confermato: si riparte dalla semina.
+func _crea_conferma_coltura() -> void:
+	_conferma_coltura = PanelContainer.new()
+	_conferma_coltura.set_anchors_preset(Control.PRESET_CENTER)
+	_conferma_coltura.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_conferma_coltura.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_conferma_coltura.visible = false
+	_radice.add_child(_conferma_coltura)
+	var col := VBoxContainer.new()
+	_conferma_coltura.add_child(col)
+	_conferma_testo = Label.new()
+	_conferma_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_conferma_testo.custom_minimum_size.x = 220
+	col.add_child(_conferma_testo)
+	var riga := HBoxContainer.new()
+	riga.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(riga)
+	var si := _bottone("Sì, cambia", 70, 18)
+	si.pressed.connect(func():
+		_conferma_coltura.visible = false
+		coltura.emit(_edificio, _coltura_scelta))
+	riga.add_child(si)
+	var no := _bottone("No", 50, 18)
+	no.pressed.connect(func():
+		_conferma_coltura.visible = false
+		_aggiorna())
+	riga.add_child(no)
+
+
+func _chiedi_coltura(nome: String) -> void:
+	var b := GameState.trova(_edificio)
+	if b.is_empty():
+		return
+	var adesso: String = b.get("coltura", "")
+	if adesso == nome:
+		_aggiorna()
+		return
+	_coltura_scelta = nome
+	var testo := "Coltivare %s in questo campo?" % GameState.colture[nome].nome.to_lower()
+	if adesso != "":
+		testo = "Cambiare la coltura da %s a %s?" % [GameState.colture[adesso].nome.to_lower(), GameState.colture[nome].nome.to_lower()]
+		if b.get("seminato", false):
+			testo += "\nIl campo è già seminato: il raccolto in corso andrà perso."
+	_conferma_testo.text = testo
+	_conferma_coltura.visible = true
+	_aggiorna()
+
+
 func _crea_esercito() -> void:
 	_esercito = PanelContainer.new()
 	_esercito.set_anchors_preset(Control.PRESET_CENTER)
@@ -343,14 +400,28 @@ func _crea_esercito() -> void:
 	_esercito_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_esercito_testo.custom_minimum_size.x = 300
 	col.add_child(_esercito_testo)
-	var riga := HBoxContainer.new()
-	col.add_child(riga)
-	_btn_arruola = _bottone("", 0, 18)
-	_btn_arruola.pressed.connect(func(): GameState.arruola())
-	riga.add_child(_btn_arruola)
-	_btn_congeda = _bottone("Congeda una formazione", 0, 18)
-	_btn_congeda.pressed.connect(func(): GameState.congeda())
-	riga.add_child(_btn_congeda)
+	# Una riga per tipo di soldato: quali si possono arruolare dipende dall'armeria.
+	var griglia := GridContainer.new()
+	griglia.columns = 4
+	griglia.add_theme_constant_override("h_separation", 4)
+	griglia.add_theme_constant_override("v_separation", 1)
+	col.add_child(griglia)
+	for tipo in GameState.TIPI_SOLDATI:
+		var nome := Label.new()
+		nome.text = GameState.bil.battaglia.unita[tipo].nome
+		nome.custom_minimum_size.x = 64
+		griglia.add_child(nome)
+		var numero := Label.new()
+		numero.custom_minimum_size.x = 40
+		griglia.add_child(numero)
+		var arruola := _bottone("", 0, 15)
+		arruola.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		arruola.pressed.connect(func(): GameState.arruola(tipo))
+		griglia.add_child(arruola)
+		var congeda := _bottone("Congeda", 0, 15)
+		congeda.pressed.connect(func(): GameState.congeda(tipo))
+		griglia.add_child(congeda)
+		_truppe_righe[tipo] = [numero, arruola, congeda]
 	var chiudi := _bottone("Chiudi")
 	chiudi.pressed.connect(func(): _esercito.visible = false)
 	col.add_child(chiudi)
@@ -362,7 +433,7 @@ func _aggiorna_esercito() -> void:
 	righe.append("Soldati: %d (%d formazioni su %d posti in caserma) · a casa %d, in marcia %d" % [GameState.soldati,
 		GameState.formazioni(), GameState.formazioni_massime(), GameState.soldati_presenti(), GameState.soldati_in_marcia()])
 	righe.append("Ogni formazione è di %d persone senza lavoro e mangia %d cibo al mese: ora %d cibo al mese (%d a stagione)." % [
-		int(e.per_formazione), int(e.cibo_al_mese), GameState.cibo_esercito_al_mese(), GameState.cibo_esercito_al_mese() * int(e.mesi_per_stagione)])
+		int(e.per_formazione), int(e.tipi.fanti.cibo_al_mese), GameState.cibo_esercito_al_mese(), GameState.cibo_esercito_al_mese() * int(e.mesi_per_stagione)])
 	righe.append("In difesa ogni soldato vale %d (x%.1f con le armi); in attacco l'esercito vale %d." % [int(e.difesa_per_soldato),
 		float(GameState.bil.banditi.bonus_armi), roundi(GameState.forza_esercito(GameState.soldati_presenti()))])
 	for m in GameState.missioni:
@@ -374,10 +445,23 @@ func _aggiorna_esercito() -> void:
 	else:
 		righe.append("Spie, alleanze e attacchi: tocca \"Regno\" e poi una regione sulla mappa.")
 	_esercito_testo.text = "\n".join(righe)
-	var perche := GameState.perche_non_arruolare()
-	_btn_arruola.text = "Arruola %d soldati" % int(e.per_formazione) + ("" if perche == "" else " (%s)" % perche)
-	_btn_arruola.disabled = perche != ""
-	_btn_congeda.disabled = GameState.soldati_presenti() < int(e.per_formazione)
+	var presenti := GameState.truppe_presenti()
+	for tipo in _truppe_righe:
+		var celle: Array = _truppe_righe[tipo]
+		var t: Dictionary = e.tipi[tipo]
+		celle[0].text = "%d (%d)" % [int(GameState.truppe.get(tipo, 0)), int(presenti.get(tipo, 0))]
+		var perche := GameState.perche_non_arruolare(tipo)
+		var costo: Array[String] = []
+		for r in t.costo:
+			costo.append("%d %s" % [int(t.costo[r]), r])
+		var testo := "Arruola %d" % int(e.per_formazione)
+		if perche != "":
+			testo += " (%s)" % perche
+		elif not costo.is_empty():
+			testo += " (%s)" % ", ".join(costo)
+		celle[1].text = testo
+		celle[1].disabled = perche != ""
+		celle[2].disabled = int(presenti.get(tipo, 0)) <= 0
 
 
 func _crea_menu() -> void:
@@ -442,7 +526,7 @@ func _crea_pannello() -> void:
 	for nome in GameState.nomi_colture():
 		var bc := _bottone(GameState.colture[nome].nome, 0, 18)
 		bc.toggle_mode = true
-		bc.pressed.connect(func(): coltura.emit(_edificio, nome))
+		bc.pressed.connect(_chiedi_coltura.bind(nome))
 		_btn_colture[nome] = bc
 		riga.add_child(bc)
 	for b in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla]:
@@ -555,11 +639,17 @@ func _crea_mercato() -> void:
 	_mercato_notizia.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_mercato_notizia.custom_minimum_size.x = 330
 	col.add_child(_mercato_notizia)
+	_btn_auto = _bottone("Automatico", 0, 14)
+	_btn_auto.toggle_mode = true
+	_btn_auto.toggled.connect(func(v): _mercato_manuale.visible = not v; _mercato_auto.visible = v; _aggiorna())
+	col.add_child(_btn_auto)
 	var griglia := GridContainer.new()
 	griglia.columns = 6
 	griglia.add_theme_constant_override("h_separation", 4)
 	griglia.add_theme_constant_override("v_separation", 1)
 	col.add_child(griglia)
+	_mercato_manuale = griglia
+	_crea_mercato_auto(col)
 	for r in GameState.mercato.risorse() if GameState.mercato else []:
 		griglia.add_child(_icona(r, 9.0))
 		var nome := Label.new()
@@ -587,8 +677,89 @@ func _crea_mercato() -> void:
 	col.add_child(chiudi)
 
 
+## Il mercato automatico: per ogni risorsa "vendi oltre" (l'eccesso si vende da solo) e
+## "compra sotto" (se scende sotto, si compra), più l'oro da tenere sempre da parte.
+func _crea_mercato_auto(col: VBoxContainer) -> void:
+	_mercato_auto = VBoxContainer.new()
+	_mercato_auto.visible = false
+	col.add_child(_mercato_auto)
+	var griglia := GridContainer.new()
+	griglia.columns = 9
+	griglia.add_theme_constant_override("h_separation", 3)
+	griglia.add_theme_constant_override("v_separation", 1)
+	_mercato_auto.add_child(griglia)
+	for testo in ["", "", "", "", "Vendi oltre", "", "", "Compra sotto", ""]:
+		var l := Label.new()
+		l.text = testo
+		l.add_theme_font_size_override("font_size", 7)
+		griglia.add_child(l)
+	for r in GameState.mercato.risorse() if GameState.mercato else []:
+		griglia.add_child(_icona(r, 9.0))
+		var nome := Label.new()
+		nome.text = NOMI_RISORSE.get(r, r)
+		nome.custom_minimum_size.x = 60
+		griglia.add_child(nome)
+		var scorta := Label.new()
+		scorta.custom_minimum_size.x = 26
+		griglia.add_child(scorta)
+		var vuoto := Control.new()
+		vuoto.custom_minimum_size.x = 6
+		griglia.add_child(vuoto)
+		var celle := [scorta]
+		for chiave in ["vendi_sopra", "compra_sotto"]:
+			var meno := _bottone("−", 16, 13)
+			meno.pressed.connect(_soglia.bind(r, chiave, -1))
+			griglia.add_child(meno)
+			var valore := Label.new()
+			valore.custom_minimum_size.x = 30
+			valore.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			griglia.add_child(valore)
+			celle.append(valore)
+			var piu := _bottone("+", 16, 13)
+			piu.pressed.connect(_soglia.bind(r, chiave, 1))
+			griglia.add_child(piu)
+		_mercato_auto_righe[r] = celle
+	var riga := HBoxContainer.new()
+	_mercato_auto.add_child(riga)
+	var l2 := Label.new()
+	l2.text = "Oro da tenere sempre da parte:"
+	riga.add_child(l2)
+	var meno_r := _bottone("−", 16, 13)
+	meno_r.pressed.connect(func(): GameState.riserva_oro = maxi(0, GameState.riserva_oro - 10); _aggiorna())
+	riga.add_child(meno_r)
+	_riserva = Label.new()
+	_riserva.custom_minimum_size.x = 30
+	_riserva.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	riga.add_child(_riserva)
+	var piu_r := _bottone("+", 16, 13)
+	piu_r.pressed.connect(func(): GameState.riserva_oro += 10; _aggiorna())
+	riga.add_child(piu_r)
+
+
+## Passa alla soglia successiva o precedente (spento, 20, 50, 100...).
+func _soglia(r: String, chiave: String, verso: int) -> void:
+	var soglie: Array = GameState.bil.mercato_automatico.soglie
+	var adesso := int(GameState.mercato_auto.get(r, {}).get(chiave, 0))
+	var i := 0
+	for k in soglie.size():
+		if int(soglie[k]) <= adesso:
+			i = k
+	GameState.imposta_auto(r, chiave, int(soglie[clampi(i + verso, 0, soglie.size() - 1)]))
+
+
 func _aggiorna_mercato() -> void:
 	var m := GameState.mercato
+	for r in _mercato_auto_righe:
+		var celle: Array = _mercato_auto_righe[r]
+		var a: Dictionary = GameState.mercato_auto.get(r, {})
+		celle[0].text = str(int(GameState.risorse.get(r, 0.0)))
+		celle[1].text = str(int(a.get("vendi_sopra", 0))) if int(a.get("vendi_sopra", 0)) > 0 else "—"
+		celle[2].text = str(int(a.get("compra_sotto", 0))) if int(a.get("compra_sotto", 0)) > 0 else "—"
+	_riserva.text = str(GameState.riserva_oro)
+	_btn_auto.disabled = not GameState.ha_mercato()
+	_btn_auto.text = "Automatico" if GameState.ha_mercato() else "Automatico (serve un edificio mercato)"
+	if not GameState.ha_mercato() and _btn_auto.button_pressed:
+		_btn_auto.button_pressed = false
 	_mercato_notizia.text = "Mercato del regno · %s" % m.notizia()
 	var lotto := m.lotto()
 	for r in _mercato_righe:

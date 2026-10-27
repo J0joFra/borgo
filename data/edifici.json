@@ -374,6 +374,9 @@
 		"alloggi": 10,
 		"riscaldamento": 4,
 		"formazioni": 2,
-		"colore": "6a4a3a"
+		"colore": "6a4a3a",
+		"miglioramenti": [
+			{"nome": "Caserma grande", "costo": {"legna": 20, "pietra": 30}, "formazioni": 3, "alloggi": 15}
+		]
 	}
 }

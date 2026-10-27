@@ -102,8 +102,11 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   guerra le porte restano chiuse. I banditi camminano attorno ad acqua e mura. Se vinciamo la gente festeggia; se perdiamo rubano una parte delle scorte (tanto più quanto eravamo deboli),
   qualcuno muore e, se eravamo molto deboli, bruciano un edificio (restano le rovine da sgomberare).
 - **Esercito** (pulsante "Esercito", serve una **caserma**, dal Borgo): si arruola una formazione di 5 persone senza
-  lavoro alla volta; ogni caserma ne ospita 2. Ogni formazione mangia **3 cibo al mese** (3 mesi a stagione); se il cibo
-  non basta, una formazione se ne va. I soldati a casa difendono dai banditi (5 a testa, ×1,5 con le armi) e si vedono
+  lavoro alla volta; ogni caserma ne ospita 2, la **caserma grande** (miglioramento) 3, cioè 15 soldati. Ogni formazione
+  mangia **3 cibo al mese** (3 mesi a stagione); se il cibo non basta, una formazione se ne va.
+  Che soldati si arruolano dipende dall'**armeria**: lancieri sempre; arcieri con l'armeria (5 armi), balestrieri con
+  l'armeria fornita (10 armi, 5 ferro), cavalieri con l'arsenale (10 armi, 20 oro; mangiano 5 cibo al mese).
+  In battaglia ogni tipo scende in campo con le sue unità. I soldati a casa difendono dai banditi (5 a testa, ×1,5 con le armi) e si vedono
   attorno alla caserma, in rosso con la lancia; servono per attaccare gli altri regni.
 - **Regni vicini** (dal Borgo, sulla mappa del Regno): toccando un'altra regione si apre la sua scheda.
   - **Spia** (15 oro, torna dopo un mese): dice quanto è forte il regno e cosa pensa di noi; a volte viene scoperta.
@@ -151,12 +154,16 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Popolazione**: la gente arriva un po' alla volta se c'è posto, più spesso se il villaggio è felice e pieno di scorte
   (e di legna prima dell'inverno). Con la fame la felicità scende piano e ogni tanto qualcuno se ne va; idem se si è scontenti.
 - **Colture con semi**: orzo (primavera-estate), grano (estate-autunno), rape (autunno-inverno: crescono anche con la neve).
+  La coltura di un campo si cambia con una conferma (se era già seminato, il raccolto in corso si perde).
   Il campo si semina all'inizio della prima stagione della coltura, consumando semi, e al raccolto ne restituisce di più.
   Sulla mappa ci sono macchie di **piante selvatiche**: si parte con i semi di quella più vicina al falò; un campo messo sopra
   la sua pianta selvatica non chiede semi e rende di più; il raccoglitore vicino alle piante selvatiche raccoglie semi.
 - **Mercato del regno** (pulsante "Mercato"): si compra e si vende a lotti di 10. I prezzi seguono le regioni della mappa
   (più regioni producono una cosa, meno costa), oscillano a ogni stagione e cambiano con gli eventi del regno (carestie,
   incendi, nuove miniere...). D'inverno il cibo rincara. Con un edificio "mercato" si fanno prezzi migliori.
+  Con il mercato costruito si apre la scheda **Automatico**: per ogni risorsa si sceglie "vendi oltre" (es. grano oltre
+  200: l'eccesso si vende da solo) e "compra sotto" (se scende sotto, si compra), più l'oro da tenere sempre da parte.
+  Il mercato ci pensa ogni 10 giorni, fino a 5 lotti per volta; a fine stagione si legge il riepilogo.
 - **Forestale**: ripianta gli alberi nelle radure lasciate dai taglialegna (poi sui prati); in un anno tornano bosco.
 - **Strade** (pulsante "Strade"): non occupano celle, corrono **lungo i bordi fra una cella e l'altra**: così gli
   edifici si possono accostare e la strada passa loro accanto. Si tocca un angolo da cui parte e uno dove finisce

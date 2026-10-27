@@ -8,7 +8,8 @@ const INCHIOSTRO := Color("3b2a1e")
 const NEMICI := [["signore", "Un signore (cavalieri e balestrieri)"], ["banditi", "Un covo di banditi (predoni)"],
 	["libera", "Una terra libera (contadini armati)"]]
 ## [chiave, nome, minimo, massimo, passo]
-const VALORI := [["soldati", "I nostri soldati", 5, 60, 5], ["armi", "Armi (arcieri e fanti armati)", 0, 60, 5],
+const VALORI := [["fanti", "Lancieri", 0, 40, 5], ["arcieri", "Arcieri", 0, 30, 5], ["balestrieri", "Balestrieri", 0, 30, 5],
+	["cavalieri", "Cavalieri", 0, 30, 5], ["armi", "Armi (lancieri armati)", 0, 40, 5],
 	["vassalli", "Uomini dei vassalli", 0, 30, 5], ["nemici", "Uomini del nemico", 5, 60, 5]]
 
 var _p: Dictionary
@@ -20,6 +21,9 @@ func _ready() -> void:
 	GameState.nel_feudo = false
 	Audio.musica("battaglia")
 	_p = GameState.prova_battaglia.duplicate()
+	for v in VALORI:
+		if not _p.has(v[0]):
+			_p[v[0]] = v[2]
 	theme = Hud.crea_tema()
 	var sfondo := ColorRect.new()
 	sfondo.color = PERGAMENA
@@ -31,7 +35,7 @@ func _ready() -> void:
 	pannello.grow_vertical = Control.GROW_DIRECTION_BOTH
 	add_child(pannello)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 4)
+	col.add_theme_constant_override("separation", 2)
 	pannello.add_child(col)
 	var titolo := Label.new()
 	titolo.text = "Prova battaglia"
@@ -65,7 +69,7 @@ func _ready() -> void:
 		col.add_child(riga)
 		var nome := Label.new()
 		nome.text = v[1]
-		nome.custom_minimum_size.x = 170
+		nome.custom_minimum_size.x = 150
 		riga.add_child(nome)
 		var meno := _piccolo("−")
 		meno.pressed.connect(func(): _cambia(v, -1))
@@ -118,5 +122,7 @@ func _aggiorna() -> void:
 
 
 func _combatti() -> void:
+	if int(_p.fanti) + int(_p.arcieri) + int(_p.balestrieri) + int(_p.cavalieri) <= 0:
+		_p.fanti = 5  # almeno qualcuno deve combattere
 	GameState.inizia_prova_battaglia(_p)
 	get_tree().change_scene_to_file("res://scenes/battaglia.tscn")
