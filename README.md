@@ -5,7 +5,8 @@ Il design completo è nel documento "Borgo — Game Design Document".
 
 ![Il menu principale](docs/menu.png)
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
-![Una battaglia per conquistare un regno](docs/battaglia.png)
+![La battaglia sul campo a esagoni](docs/battaglia.png)
+![Vittoria: l'esercito nemico è distrutto](docs/battaglia_fine.png)
 ![Il tutorial dopo il prologo](docs/tutorial.png)
 ![Il primo inverno senza cibo: il castello apre le porte](docs/primo_inverno.png)
 ![Una carta evento raccontata da un consigliere](docs/carta_evento.png)
@@ -105,11 +106,14 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   - **Spia** (15 oro, torna dopo un mese): dice quanto è forte il regno e cosa pensa di noi; a volte viene scoperta.
   - **Alleanza** (dono di 30 oro, solo con un signore): più è amichevole, più è facile che accetti. Un alleato manda
     rinforzi contro i banditi e un piccolo dono ogni stagione.
-  - **Attacco e battaglia**: parte tutto l'esercito a casa e arriva dopo un mese. Allora il tempo si ferma e si combatte
-    a turni su un campo di battaglia: le nostre schiere (rosse, in arancio gli uomini dei vassalli) contro le loro.
-    A ogni turno si sceglie la tattica: **Carica** (colpisce forte ma cadono anche i nostri), **Tenere la linea**
-    (prudente), **Pioggia di frecce** (consuma armi) o **Ritirata**. Un esercito fugge quando gli resta meno del 40%;
-    dopo 6 turni senza vittoria l'attacco fallisce.
+  - **Attacco e battaglia** (in stile Humankind): parte tutto l'esercito a casa e arriva dopo un mese. Allora si apre
+    il **campo di battaglia a esagoni** (pianure, boschi, colline, acqua): le nostre unità a sinistra (fanti; arcieri e
+    fanti armati se ci sono armi; uomini dei vassalli), quelle nemiche a destra a difesa della loro **bandiera**
+    (cavalieri e balestrieri dei signori, predoni, contadini armati). Tocchi un'unità: le celle chiare sono dove può
+    andare (boschi e colline costano 2 mosse), i nemici rossi quelli che può attaccare. Corpo a corpo il difensore
+    risponde, con l'arco no; il bosco difende, la collina dà forza e fa tirare più lontano. "Fine turno" fa muovere
+    il nemico, che difende la bandiera e attacca chi si avvicina. **Si vince** distruggendo il loro esercito o tenendo
+    la loro bandiera per un turno; si perde se cadono tutti i nostri o dopo 6 turni. Si può sempre ritirarsi.
     Vincendo la regione è nostra e la governa un **vassallo**. Conquistare un covo di banditi fa arrivare meno incursioni.
     Perdendo torna solo una parte dei soldati.
   - **Vassalli** (scheda di una regione conquistata): la governa un consigliere libero oppure un cavaliere ("Affida a").
@@ -118,6 +122,17 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
     lealtà scende). Più è leale, più truppe manda contro i banditi e in guerra. Sotto il 30% di lealtà può **ribellarsi**:
     la regione torna libera e, se era un consigliere, la sua casata lascia il consiglio.
   Spie, messaggeri ed esercito viaggiano mentre il tempo scorre nel feudo; sulla mappa si vede la linea del viaggio.
+- **Il re**: in alto, accanto all'oro, la corona mostra la tassa che il re vorrà in autunno (rossa se non basta l'oro).
+  Diventati **Borgo** ci si stacca dal regno: niente più tasse, ma il re ci guarda con diffidenza (la corona mostra
+  cosa pensa di noi). Ogni tanto manda un messo a chiedere un tributo: pagando si calma, rifiutando si arrabbia; se
+  diventa molto ostile manda il suo esercito, che arriva come i banditi (ma più forte).
+- **Tributo delle case**: ogni casa abitata paga ogni stagione 1 moneta se ospita fino a 4 persone, 2 fino a 6,
+  3 fino a 8.
+- **Miglioramenti**: case fino a 8 abitanti (Casa grande 6, Casa in pietra 8); tutte le strutture con lavoratori si
+  migliorano due volte, fino a 4 posti di lavoro, e ogni livello rende di più (+30%, poi +60%). Costano legna e pietra.
+- **Musica e suoni**: tre musiche (il borgo, la mappa e il menu, la battaglia) ed effetti per pulsanti, cantieri,
+  edifici finiti, monete, campana delle stagioni, carte, corno dei banditi, frecce, spade, vittoria e sconfitta.
+  Si spengono dalle Opzioni o dal pannello Info. Tutto è generato da `tools/genera_audio.py` (niente file esterni).
 - **Tasse a ogni stagione**: a fine stagione si incassa oro secondo la media fra risorse, popolazione e gradimento.
   La media cade in una fascia (bassa, media, buona, massima) e ogni stagione ha le sue monete per fascia: in primavera,
   estate e autunno 1-2-3-4, in inverno 2-3-4-5, per ogni 10 abitanti. Tasse basse ne danno la metà (ma la gente è più
@@ -161,8 +176,6 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   Mentre scegli dove costruire, le celle che contano si colorano e il pannello mostra la resa stimata.
 - **Disboscamento**: il taglialegna abbatte il bosco attorno; un bosco grande rende tanto ma sparisce in 3 anni.
   Dove ha tagliato restano i ceppi per una stagione; poi la cella è libera e ci si può costruire.
-- **Miglioramenti** a due livelli: case, magazzini e tutti gli edifici della natura. Costano legna e
-  **pietra**, che ora serve anche per case, magazzini e quasi tutti gli edifici.
 - **Campi** disponibili da subito: il grano si raccoglie in autunno e sfama quando il cibo finisce (con mulino e forno vale il doppio).
 - **Mondo esteso**: il feudo (48×48 celle) sta al centro di un mondo di 112×112; oltre la linea gialla del confine
   ci sono le terre dei vicini, che si vedono ma dove non si costruisce.
@@ -170,7 +183,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Feudo in 3D** con modelli KayKit, telecamera isometrica con zoom e rotazione, stagioni visibili (erba, chiome, neve, luce).
 - **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
 
-**Da fare**: conquista delle regioni e vassalli, mura in pietra, audio.
+**Da fare**: assedi dei castelli con le mura nella battaglia, altre carte evento, bilanciamento con partite vere.
 
 ## Dove cambiare le cose
 
@@ -199,7 +212,9 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 | Telecamera | `scripts/feudo/camera_iso.gd` |
 | Gesti e scena del feudo | `scripts/feudo/feudo.gd` |
 | Menu principale | `scripts/menu.gd` |
-| Battaglie (regole in `bilanciamento.json`, sezione `battaglia`) | `scripts/ui/battaglia.gd` |
+| Battaglie: regole | `scripts/battaglia/logica.gd` (valori in `bilanciamento.json`, sezione `battaglia`) |
+| Battaglie: campo 3D e comandi | `scripts/battaglia/campo.gd` |
+| Musica ed effetti | `scripts/audio.gd` (autoload `Audio`), suoni generati da `tools/genera_audio.py` |
 | Mappa del regno | `scripts/regno/regno.gd` |
 | Interfaccia | `scripts/ui/hud.gd` |
 

@@ -33,6 +33,7 @@ var _scelta := ""  # chiave della regione aperta nella scheda
 func _ready() -> void:
 	GameState.avvia()
 	GameState.nel_feudo = false
+	Audio.musica("regno")
 	if GameState.capo < 0:
 		# partita nuova: prima il prologo davanti al falò, poi la mappa
 		get_tree().change_scene_to_file.call_deferred("res://scenes/feudo.tscn")

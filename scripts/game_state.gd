@@ -17,8 +17,7 @@ signal tutorial_cambiato(passo: int)        # -1: tutorial finito o saltato
 signal banditi_avvistati(dati: Dictionary)  # una banda è in arrivo (vedi banditi)
 signal incursione(esito: Dictionary)        # la banda è arrivata: com'è andata
 signal missione_finita(esito: Dictionary)   # una spia, un messaggero o l'esercito sono tornati
-signal battaglia_iniziata(b: Dictionary)    # l'esercito è arrivato: si combatte a turni (vedi round_battaglia)
-signal battaglia_turno(turno: Dictionary)   # com'è andato un turno
+signal battaglia_iniziata(b: Dictionary)    # l'esercito è arrivato: si combatte sul campo a esagoni (scena battaglia)
 signal battaglia_finita(esito: Dictionary)  # una carta evento da mostrare (il gioco è in pausa)
 signal terreno_cambiato(celle: Array)  # celle cambiate: bosco abbattuto o ricresciuto, piantine, strade
 
@@ -87,11 +86,13 @@ var _cinta := -1  # cinta_chiusa() in cache: -1 da ricalcolare, 0 no, 1 sì
 var banditi: Dictionary = {}  # banda in arrivo: {forza, numero, entrata: Vector2i, mancano, totale} (tick)
 var _tick_banditi := -1       # in quale tick della stagione vengono avvistati (-1: nessuno)
 var ultime_tasse: Dictionary = {}  # l'ultima riscossione, per il pannello Info
+var re_atteggiamento := 0     # cosa pensa di noi il re (-100..100): dal Borgo siamo indipendenti e lui diffida
+var ultimo_affitto := 0       # tributo delle case all'ultima riscossione
 var aiuto_inverno_dato := false  # il primo inverno, se finisce il cibo, il signore apre le dispense (una volta)
 var tutorial_passo := -1         # passo del tutorial iniziale (-1: finito, saltato o mai iniziato)
 var suggerimenti_attivi := true
 ## Opzioni del menu principale, valide per tutte le partite (user://opzioni.cfg).
-var opzioni := {"tutorial": true, "suggerimenti": true, "schermo_intero": false}
+var opzioni := {"tutorial": true, "suggerimenti": true, "schermo_intero": false, "musica": true, "effetti": true}
 const OPZIONI_PATH := "user://opzioni.cfg"
 var _prossimo_suggerimento := 0
 var _tick_suggerimento := 0
@@ -322,6 +323,8 @@ func nuova_partita(seme: int = -1) -> void:
 	_tick_banditi = -1
 	ultime_tasse = {}
 	aiuto_inverno_dato = false
+	re_atteggiamento = 0
+	ultimo_affitto = 0
 	tutorial_passo = -1
 	_prossimo_suggerimento = 0
 	soldati = 0
@@ -637,6 +640,39 @@ func conta_completati(tipo: String) -> int:
 		if b.tipo == tipo and b.progresso >= 1.0:
 			n += 1
 	return n
+
+
+## Dal Borgo in poi il feudo è indipendente: niente più tasse al re (che però diffida di noi).
+func indipendente() -> bool:
+	return livello >= int(bil.re.indipendenza_dal_livello)
+
+
+## Le stagioni che mancano alla riscossione del re (in autunno): 0 se è questa.
+func stagioni_al_re() -> int:
+	return posmod(AUTUNNO - stagione, 4)
+
+
+## Il tributo delle case: ogni casa abitata paga ogni stagione secondo quanta gente può ospitare
+## (bilanciamento.tributo_case: fino a 4 posti 1 moneta, fino a 6 2, fino a 8 3).
+## Le case si riempiono una dopo l'altra; tende, dimora e caserma non pagano.
+func tributo_case() -> int:
+	var restano := abitanti
+	var totale := 0
+	for b in buildings:
+		if b.progresso < 1.0:
+			continue
+		var posti := int(def_di(b).get("alloggi", 0))
+		if posti <= 0:
+			continue
+		var dentro := mini(posti, restano)
+		restano -= dentro
+		if b.tipo != "casa" or dentro <= 0:
+			continue
+		for fascia in bil.tributo_case:
+			if posti <= int(fascia[0]):
+				totale += int(fascia[1])
+				break
+	return totale
 
 
 func tassa_del_re() -> int:
@@ -1026,6 +1062,8 @@ func imposta_opzione(chiave: String, valore: bool) -> void:
 	opzioni[chiave] = valore
 	if chiave == "suggerimenti":
 		suggerimenti_attivi = valore
+	if chiave == "musica":
+		Audio.aggiorna_musica()
 	_applica_schermo()
 	var cfg := ConfigFile.new()
 	for k in opzioni:
@@ -1228,6 +1266,8 @@ func scegli_evento(indice: int) -> void:
 		risorse[k] = clampf(risorse[k] + float(r[k]), 0.0, maxf(cap, risorse[k]))
 	if e.has("felicita"):
 		felicita = clampf(felicita + float(e.felicita), 0.0, 100.0)
+	if e.has("re"):
+		re_atteggiamento = clampi(re_atteggiamento + int(e.re), -100, 100)
 	var n := int(e.get("abitanti", 0))
 	if n > 0:
 		abitanti += n
@@ -1454,6 +1494,12 @@ func _incursione() -> void:
 		"colpiti": float(banditi.get("colpiti", 0.0)), "fuggiti": forza <= 0.0}
 	# le armi si consumano un po' in battaglia (una su tre)
 	risorse.armi = maxf(0.0, risorse.armi - ceilf(dif.armi_usate / 3.0))
+	if banditi.get("regio", false):
+		esito.regio = true
+		# il re rispetta chi gli resiste, e si prende la sua parte da chi perde
+		re_atteggiamento = clampi(re_atteggiamento + (30 if esito.vinto else 15), -100, 100)
+		_racconta("costruire", "Abbiamo respinto l'esercito del re: ora ci rispetta un po' di più." if esito.vinto \
+			else "L'esercito del re ci ha battuti e si è preso la sua parte. Almeno per un po' ci lascerà stare.")
 	if esito.fuggiti:
 		felicita = minf(100.0, felicita + float(c.felicita_vittoria))
 		message.emit("Gli arcieri delle torri hanno messo in fuga i banditi prima che arrivassero!")
@@ -1527,8 +1573,8 @@ func soldati_in_marcia() -> int:
 	var n := 0
 	for m in missioni:
 		n += int(m.get("soldati", 0))
-	if not battaglia.is_empty():
-		n += int(battaglia.nostri)
+	if not battaglia.is_empty() and not battaglia.finita:
+		n += LogicaBattaglia.superstiti(battaglia, "noi", ["fanti", "arcieri"])
 	return n
 
 
@@ -1759,96 +1805,72 @@ func _risposta_alleanza(m: Dictionary) -> void:
 	changed.emit()
 
 
-## L'esercito arriva e si schiera: la battaglia si combatte a turni (round_battaglia), con una
-## tattica scelta a ogni turno. Il tempo si ferma finché non finisce. Vince chi fa fuggire
-## l'altro: un esercito scappa quando gli resta meno di una parte dei suoi (bil.battaglia.fuga).
+## L'esercito arriva e si schiera: la battaglia si combatte sul campo a esagoni (LogicaBattaglia,
+## scena battaglia). Il tempo del feudo si ferma finché non finisce.
 func _battaglia(m: Dictionary) -> void:
 	var r: Dictionary = regni[m.regione]
 	var c: Dictionary = bil.battaglia
-	var valore := float(c.valore_nemico[r.tipo])
 	var aiuti := 0
 	for k in regni:
 		if regni[k].conquistato:
-			aiuti += roundi(leva_vassallo(k) / float(bil.esercito.forza_per_soldato))
-	var loro := maxi(2, roundi(forza_regno(m.regione) / valore))
-	battaglia = {"regione": m.regione, "nostri": int(m.soldati), "nostri_inizio": int(m.soldati),
-		"aiuti": aiuti, "aiuti_inizio": aiuti, "loro": loro, "loro_inizio": loro, "valore": valore,
-		"turno": 0, "turni": int(c.turni), "finita": false, "vinta": false}
+			aiuti += roundi(leva_vassallo(k) / float(c.unita.vassalli.forza))
+	var nemici := maxi(2, roundi(forza_regno(m.regione) / float(c.unita[c.eserciti[r.tipo][0]].forza)))
+	battaglia = LogicaBattaglia.crea(m.regione, r.tipo, int(m.soldati), int(risorse.armi), aiuti, nemici, _rng.randi(), c)
+	risorse.armi = maxf(0.0, risorse.armi - float(battaglia.armi_usate))
 	if velocita > 0:
 		_velocita_prima = velocita
 	velocita = 0
-	_racconta("costruire", "Il nostro esercito è arrivato a %s: %d soldati%s contro %d. Scegli come combattere." % [
-		r.nome, battaglia.nostri, " e %d uomini dei vassalli" % aiuti if aiuti > 0 else "", loro])
+	_racconta("costruire", "Il nostro esercito è arrivato a %s: %d soldati%s contro %d. Si combatte!" % [
+		r.nome, int(m.soldati), " e %d uomini dei vassalli" % aiuti if aiuti > 0 else "", nemici])
 	battaglia_iniziata.emit(battaglia)
 	changed.emit()
 
 
-## Le tattiche di un turno: quanto colpiamo e quanto subiamo.
-func tattiche() -> Dictionary:
-	return bil.battaglia.tattiche
+## Le azioni della battaglia, chiamate dalla scena: muovere, attaccare, finire il turno, ritirarsi.
+func battaglia_muovi(id: int, dove: Vector2i) -> Array[Vector2i]:
+	if battaglia.is_empty() or battaglia.fase != "noi":
+		return []
+	return LogicaBattaglia.muovi(battaglia, id, dove, bil.battaglia)
 
 
-## "" se la tattica si può usare adesso, altrimenti il perché (le frecce vogliono armi).
-func perche_no_tattica(nome: String) -> String:
-	var t: Dictionary = tattiche()[nome]
-	var serve := ceili((int(battaglia.get("nostri", 0))) * float(t.get("armi_per_soldato", 0.0)))
-	if serve > 0 and risorse.armi < serve:
-		return "servono %d armi" % serve
-	return ""
-
-
-## Un turno di battaglia con la tattica scelta (o "ritirata"). Restituisce com'è andato.
-func round_battaglia(nome: String) -> Dictionary:
-	if battaglia.is_empty() or battaglia.finita:
+func battaglia_attacca(id: int, bersaglio: int) -> Dictionary:
+	if battaglia.is_empty() or battaglia.fase != "noi":
 		return {}
-	var b := battaglia
-	var c: Dictionary = bil.battaglia
-	if nome == "ritirata":
-		_fine_battaglia(false, "Ritirata: l'esercito torna a casa con chi è rimasto.")
-		return {"tattica": nome}
-	if perche_no_tattica(nome) != "":
-		return {}
-	var t: Dictionary = tattiche()[nome]
-	b.turno = int(b.turno) + 1
-	var armi_spese := ceili(int(b.nostri) * float(t.get("armi_per_soldato", 0.0)))
-	risorse.armi = maxf(0.0, risorse.armi - armi_spese)
-	var nostri_tot := int(b.nostri) + int(b.aiuti)
-	var armati := mini(int(b.nostri), int(risorse.armi))
-	var forza_unita := float(bil.esercito.forza_per_soldato) * (1.0 + (float(bil.banditi.bonus_armi) - 1.0) * armati / maxf(1.0, int(b.nostri)))
-	var colpo := nostri_tot * forza_unita * float(t.attacco) * _rng.randf_range(0.85, 1.15)
-	var subito := int(b.loro) * float(b.valore) * float(t.subiamo) * _rng.randf_range(0.85, 1.15)
-	var perse_loro := mini(int(b.loro), roundi(colpo / (float(b.valore) * float(c.colpi_per_caduto))))
-	var perse_nostre := mini(nostri_tot, roundi(subito / (float(bil.esercito.forza_per_soldato) * float(c.colpi_per_caduto))))
-	# chi muore fra i nostri e fra gli uomini dei vassalli, in proporzione
-	var perse_aiuti := mini(int(b.aiuti), roundi(perse_nostre * float(b.aiuti) / maxf(1.0, nostri_tot)))
-	var perse_soldati := mini(int(b.nostri), perse_nostre - perse_aiuti)
-	b.loro = int(b.loro) - perse_loro
-	b.nostri = int(b.nostri) - perse_soldati
-	b.aiuti = int(b.aiuti) - perse_aiuti
-	soldati -= perse_soldati
-	abitanti -= perse_soldati
-	var turno := {"tattica": nome, "turno": b.turno, "perse_loro": perse_loro, "perse_nostre": perse_soldati + perse_aiuti,
-		"testo": "%s: cadono %d dei loro e %d dei nostri." % [t.nome, perse_loro, perse_soldati + perse_aiuti]}
-	battaglia_turno.emit(turno)
-	var fuga := float(c.fuga)
-	if int(b.loro) <= int(b.loro_inizio) * fuga:
-		_fine_battaglia(true, "I nemici fuggono! Il campo è nostro.")
-	elif int(b.nostri) + int(b.aiuti) <= (int(b.nostri_inizio) + int(b.aiuti_inizio)) * fuga or int(b.nostri) <= 0:
-		_fine_battaglia(false, "I nostri non reggono più e scappano.")
-	elif int(b.turno) >= int(b.turni):
-		_fine_battaglia(false, "Cala la notte e il castello non è caduto: l'esercito torna a casa.")
-	changed.emit()
-	return turno
+	var e := LogicaBattaglia.attacca(battaglia, id, bersaglio, bil.battaglia, _rng)
+	_dopo_azione()
+	return e
 
 
-## Fine della battaglia: con la vittoria la regione è nostra e la governa un vassallo.
+func battaglia_fine_turno() -> Array:
+	if battaglia.is_empty() or battaglia.fase != "noi":
+		return []
+	var azioni := LogicaBattaglia.fine_turno(battaglia, bil.battaglia, _rng)
+	_dopo_azione()
+	return azioni
+
+
+func battaglia_ritirata() -> void:
+	if battaglia.is_empty():
+		return
+	LogicaBattaglia.ritirata(battaglia)
+	_dopo_azione()
+
+
+func _dopo_azione() -> void:
+	if battaglia.finita and not battaglia.get("chiusa", false):
+		battaglia.chiusa = true
+		_fine_battaglia(battaglia.vinta, battaglia.perche)
+
+
+## Fine della battaglia: i caduti fra i nostri soldati lasciano il villaggio; con la vittoria
+## la regione è nostra e la governa un vassallo.
 func _fine_battaglia(vinta: bool, perche: String) -> void:
 	var b := battaglia
 	var r: Dictionary = regni[b.regione]
-	b.finita = true
-	b.vinta = vinta
-	b.perche = perche
-	var caduti := int(b.nostri_inizio) - int(b.nostri)
+	var vivi := LogicaBattaglia.superstiti(b, "noi", ["fanti", "arcieri"])
+	var caduti := int(b.nostri_inizio) - vivi
+	soldati -= caduti
+	abitanti -= caduti
 	var esito := {"tipo": "attacco", "regione": b.regione, "riuscita": vinta, "caduti": caduti, "perche": perche}
 	if vinta:
 		r.conquistato = true
@@ -1862,9 +1884,8 @@ func _fine_battaglia(vinta: bool, perche: String) -> void:
 		felicita = minf(100.0, felicita + 5.0)
 	else:
 		r.atteggiamento = int(r.atteggiamento) - 40
-		# chi è rimasto si fa più forte: la prossima volta sarà più dura
-		r.forza = int(r.forza) + 2
-		message.emit("%s Tornano %d soldati su %d." % [perche, int(b.nostri), int(b.nostri_inizio)])
+		r.forza = int(r.forza) + 2  # chi ha resistito si fa più forte
+		message.emit("%s Tornano %d soldati su %d." % [perche, vivi, int(b.nostri_inizio)])
 		felicita = maxf(0.0, felicita - 8.0)
 	esito.battaglia = b.duplicate()
 	battaglia_finita.emit(esito)
@@ -2254,6 +2275,7 @@ func _fine_stagione() -> void:
 	mercato.nuova_stagione(seme_mappa, anno, stagione)
 	_programma_evento()
 	_programma_banditi()
+	_il_re_si_fa_sentire()
 	if not mercato.evento.is_empty():
 		message.emit("Dal mercato: " + mercato.evento.testo)
 	_controlla_livello()
@@ -2295,15 +2317,17 @@ const NOMI_FASCE := ["bassa", "media", "buona", "massima"]
 func _riscuoti_tasse() -> void:
 	var v := valutazione_tasse()
 	ultime_tasse = v
-	risorse.oro = minf(capacita(), risorse.oro + v.monete)
-	if stagione != AUTUNNO:
-		message.emit("Tasse di %s: +%d oro (fascia %s)" % [STAGIONI[stagione].to_lower(), v.monete, NOMI_FASCE[v.fascia]])
+	ultimo_affitto = tributo_case()
+	risorse.oro = minf(capacita(), risorse.oro + v.monete + ultimo_affitto)
+	var case := " e %d dalle case" % ultimo_affitto if ultimo_affitto > 0 else ""
+	if stagione != AUTUNNO or indipendente():
+		message.emit("Tasse di %s: +%d oro (fascia %s)%s" % [STAGIONI[stagione].to_lower(), v.monete, NOMI_FASCE[v.fascia], case])
 		return
 	var dovuto := tassa_del_re()
 	if risorse.oro >= dovuto:
 		risorse.oro -= dovuto
 		tasse_non_pagate = 0
-		message.emit("Tasse d'autunno: +%d oro dagli abitanti, %d oro al re" % [v.monete, dovuto])
+		message.emit("Tasse d'autunno: +%d oro dagli abitanti%s, %d oro al re" % [v.monete, case, dovuto])
 		return
 	tasse_non_pagate += 1
 	felicita = maxf(0.0, felicita - bil.re.malus_felicita)
@@ -2365,6 +2389,45 @@ func _controlla_livello() -> void:
 	while livello + 1 < livelli.size() and requisiti_mancanti(livello + 1).is_empty():
 		livello += 1
 		message.emit("Il villaggio ora è un %s! Nuovi edifici disponibili" % livelli[livello].nome)
+		if livello == int(bil.re.indipendenza_dal_livello):
+			_indipendenza()
+
+
+## Diventati Borgo ci stacchiamo dal regno: niente più tasse al re, che ci guarda con diffidenza.
+func _indipendenza() -> void:
+	re_atteggiamento = int(bil.re.atteggiamento_indipendenza)
+	tasse_non_pagate = 0
+	if not evento_attivo.is_empty():
+		message.emit("Siamo un borgo libero: niente più tasse al re, che però ora ci guarda con diffidenza")
+		return
+	var chi := _consigliere_per("oro")
+	mostra_evento({"id": "indipendenza", "area": "oro", "narratore": chi,
+		"titolo": "Un borgo libero",
+		"testo": "Ormai siamo un borgo: non abbiamo più bisogno della protezione del re e non gli pagheremo più le tasse. Ma il re non la prende bene: da oggi ci guarda con diffidenza, e prima o poi manderà qualcuno a chiedere il suo.",
+		"scelte": [{"testo": "Siamo liberi", "effetti": {"felicita": 5}}]})
+
+
+## Ogni stagione, da indipendenti, il re si fa sentire: un messo chiede un tributo (pagando
+## si calma, rifiutando si arrabbia); se è molto ostile manda il suo esercito.
+func _il_re_si_fa_sentire() -> void:
+	if not indipendente() or capo < 0:
+		return
+	var r: Dictionary = bil.re
+	re_atteggiamento = clampi(re_atteggiamento - int(r.diffidenza_per_stagione), -100, 100)
+	if re_atteggiamento <= int(r.soglia_spedizione) and banditi.is_empty() and _rng.randf() < float(r.probabilita_spedizione):
+		_avvista_banditi()
+		banditi.regio = true
+		banditi.forza = float(banditi.forza) * float(r.forza_spedizione)
+		banditi.numero = clampi(roundi(float(banditi.forza) / 3.0), 4, 14)
+		_racconta("costruire", "L'esercito del re marcia contro di noi da %s! Arriva tra %d giorni: forza %d contro la nostra %d." % [
+			banditi.da, int(banditi.mancano), roundi(banditi.forza), roundi(difesa().totale)])
+		banditi_avvistati.emit(banditi)
+	elif _rng.randf() < float(r.probabilita_messo) and evento_attivo.is_empty():
+		var chiesto := roundi(float(r.tributo_messo) * (1.0 + 0.2 * (anno - 1)))
+		mostra_evento({"id": "messo_del_re", "area": "oro", "titolo": "Il messo del re",
+			"testo": "Un messo del re, col mantello blu e la scorta, chiede %d oro: «il prezzo della pace», dice. Il re è %s verso di noi." % [chiesto, testo_atteggiamento(re_atteggiamento)],
+			"scelte": [{"testo": "Paghiamo", "effetti": {"risorse": {"oro": -chiesto}, "re": int(r.pace_pagando)}},
+				{"testo": "Non gli dobbiamo niente", "effetti": {"re": -int(r.offesa_rifiutando)}}]})
 
 
 ## Elenco leggibile di ciò che manca per raggiungere un livello (vuoto = raggiunto).
@@ -2432,7 +2495,7 @@ func salva() -> void:
 		"evento_attivo": evento_attivo.get("id", ""),
 		"banditi": _banditi_salvati(), "tick_banditi": _tick_banditi,
 		"soldati": soldati, "regni": regni, "missioni": missioni, "battaglia": battaglia,
-		"aiuto_inverno_dato": aiuto_inverno_dato, "tutorial_passo": tutorial_passo,
+		"aiuto_inverno_dato": aiuto_inverno_dato, "tutorial_passo": tutorial_passo, "re_atteggiamento": re_atteggiamento,
 		"suggerimenti_attivi": suggerimenti_attivi, "prossimo_suggerimento": _prossimo_suggerimento,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -2496,6 +2559,7 @@ func carica() -> bool:
 	soldati = int(dati.get("soldati", 0))
 	aiuto_inverno_dato = bool(dati.get("aiuto_inverno_dato", anno > 1))
 	tutorial_passo = int(dati.get("tutorial_passo", -1))
+	re_atteggiamento = int(dati.get("re_atteggiamento", -40 if livello >= 1 else 0))
 	_prossimo_suggerimento = int(dati.get("prossimo_suggerimento", 0))
 	var salvati: Dictionary = dati.get("regni", {})
 	for k in salvati:
@@ -2507,9 +2571,17 @@ func carica() -> bool:
 				regni[k][campo] = bool(salvati[k][campo])
 	missioni = dati.get("missioni", [])
 	battaglia = dati.get("battaglia", {})
-	for k in ["nostri", "nostri_inizio", "aiuti", "aiuti_inizio", "loro", "loro_inizio", "turno", "turni"]:
+	if not battaglia.is_empty() and not battaglia.has("unita"):
+		battaglia = {}  # una battaglia del vecchio tipo: si lascia perdere
+	for k in ["turno", "turni", "nostri_inizio", "loro_inizio", "prossimo_id", "armi_usate"]:
 		if battaglia.has(k):
 			battaglia[k] = int(battaglia[k])
+	for u in battaglia.get("unita", []):
+		for k in ["id", "uomini", "max", "mosse"]:
+			u[k] = int(u[k])
+		u.cella = [int(u.cella[0]), int(u.cella[1])]
+	if battaglia.has("terreno"):
+		battaglia.terreno = battaglia.terreno.map(func(x): return int(x))
 	for m in missioni:
 		m.mancano = int(m.mancano)
 		if m.has("soldati"):

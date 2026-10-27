@@ -21,6 +21,7 @@ const NOMI := {
 	"legna": "Legna", "pietra": "Pietra", "cibo": "Cibo", "grano": "Grano", "orzo": "Orzo", "rape": "Rape",
 	"semi_orzo": "Semi d'orzo", "semi_grano": "Semi di grano", "semi_rape": "Semi di rapa",
 	"ferro": "Ferro", "utensili": "Utensili", "armi": "Armi", "oro": "Oro", "farina": "Farina", "pane": "Pane",
+	"re": "Il re",
 	"abitanti": "Abitanti / posti letto", "disponibili": "Persone senza lavoro", "felicita": "Felicità",
 }
 
@@ -78,6 +79,11 @@ func _draw() -> void:
 			draw_circle(Vector2(5, 5), 4.0, Color("a8801a"))
 			draw_circle(Vector2(5, 5), 3.2, Color("e5b53a"))
 			draw_line(Vector2(5, 3), Vector2(5, 7), Color("a8801a"), 1.0)
+		"re":
+			# una corona
+			_poligono([Vector2(1, 8), Vector2(1, 3), Vector2(3, 5.5), Vector2(5, 2), Vector2(7, 5.5), Vector2(9, 3), Vector2(9, 8)], Color("e5b53a"))
+			draw_rect(Rect2(1, 7, 8, 1.6), Color("a8801a"))
+			draw_circle(Vector2(5, 6), 0.8, Color("c0392b"))
 		"abitanti":
 			_persona(Vector2(3.5, 0), Color("6a7a9a"))
 			_persona(Vector2(6.5, 1), Color("7a4a3a"))

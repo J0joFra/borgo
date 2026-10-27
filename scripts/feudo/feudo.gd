@@ -35,6 +35,7 @@ var _distanza_pizzico := 0.0
 func _ready() -> void:
 	GameState.avvia()
 	GameState.nel_feudo = true
+	Audio.musica("feudo")
 	_crea_ambiente()
 
 	vista = VistaTerreno.new()
@@ -90,8 +91,11 @@ func _ready() -> void:
 	GameState.building_added.connect(_su_edificio_aggiunto)
 	vista.aggiorna_ciuffi()
 	GameState.changed.emit()  # l'HUD è pronto: rinfresca i numeri
+	GameState.battaglia_iniziata.connect(func(_b): _vai_in_battaglia())
 	if GameState.capo < 0:
 		_inizia_prologo()
+	elif not GameState.battaglia.is_empty():
+		_vai_in_battaglia.call_deferred()  # una battaglia lasciata a metà
 	else:
 		GameState.riprendi_evento()
 
@@ -367,6 +371,13 @@ func _cambia_lavoratori(id: int, delta: int) -> void:
 		GameState.aggiungi_lavoratore(id)
 	else:
 		GameState.togli_lavoratore(id)
+
+
+## L'esercito è arrivato: si va sul campo di battaglia (e alla fine si torna qui).
+func _vai_in_battaglia() -> void:
+	GameState.salva()
+	GameState.nel_feudo = false
+	get_tree().change_scene_to_file("res://scenes/battaglia.tscn")
 
 
 func _vai_al_regno() -> void:

@@ -218,6 +218,7 @@ func _tira_frecce(delta: float) -> void:
 			continue
 		var da := vista.centro_area(b.cella, GameState.taglia_di(b)) + Vector3(0, 5.5, 0)
 		_freccia(da, bersaglio.position + Vector3(0, 1.0, 0))
+		Audio.effetto("freccia", 0.6)
 
 
 func _freccia(da: Vector3, a: Vector3) -> void:

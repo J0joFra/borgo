@@ -25,6 +25,7 @@ var _btn_schermo: CheckButton
 
 func _ready() -> void:
 	GameState.nel_feudo = false
+	Audio.musica("regno")
 	_crea_ambiente()
 	_crea_diorama()
 	_crea_interfaccia()
@@ -190,6 +191,8 @@ func _crea_interfaccia() -> void:
 	var col: VBoxContainer = _opzioni.get_child(0)
 	_btn_tutorial = _interruttore(col, "Tutorial nelle partite nuove", GameState.opzioni.tutorial, "tutorial")
 	_btn_suggerimenti = _interruttore(col, "Suggerimenti ogni tanto", GameState.opzioni.suggerimenti, "suggerimenti")
+	_interruttore(col, "Musica", GameState.opzioni.musica, "musica")
+	_interruttore(col, "Effetti sonori", GameState.opzioni.effetti, "effetti")
 	if not OS.has_feature("web") and not OS.has_feature("mobile"):
 		_btn_schermo = _interruttore(col, "Schermo intero", GameState.opzioni.schermo_intero, "schermo_intero")
 	var chiudi_o := _bottone("Chiudi", 60)

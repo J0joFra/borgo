@@ -81,8 +81,8 @@ func _ready() -> void:
 	GameState.risorse.cibo = 1000.0
 	for i in 60:
 		GameState._tick()
-	var attese := 20 + int(GameState.ultime_tasse.monete) - 10
-	_verifica(int(GameState.risorse.oro) == attese and int(GameState.ultime_tasse.monete) > 0, "tasse: 20 + %d - 10 = %d oro (era %d)" % [GameState.ultime_tasse.monete, attese, GameState.risorse.oro])
+	var attese := 20 + int(GameState.ultime_tasse.monete) + GameState.ultimo_affitto - 10
+	_verifica(int(GameState.risorse.oro) == attese and int(GameState.ultime_tasse.monete) > 0, "tasse: 20 + %d + %d dalle case - 10 = %d oro (era %d)" % [GameState.ultime_tasse.monete, GameState.ultimo_affitto, attese, GameState.risorse.oro])
 	_verifica(GameState.stagione == GameState.INVERNO, "autunno -> inverno")
 
 	# Due autunni senza pagare: sconfitta.
@@ -98,6 +98,7 @@ func _ready() -> void:
 	GameState.stagione = GameState.AUTUNNO
 	GameState.tick_in_stagione = 0
 	GameState.risorse.cibo = 1000.0
+	GameState.risorse.oro = 0.0
 	for i in 60:
 		GameState._tick()
 	_verifica(perso[0], "secondo mancato pagamento: partita persa")
@@ -311,7 +312,8 @@ func _ready() -> void:
 	GameState.risorse.cibo = 0.0
 	for i in 60:
 		GameState._tick()
-	_verifica(absf(GameState.risorse.cibo - 56.0) < 0.2, "raccoglitore migliorato: 40 -> 56 cibo (%.1f)" % GameState.risorse.cibo)
+	# migliorato: 3 posti di lavoro e +30%; con 2 lavoratori su 3 rende 40 × 1,3 × 2/3
+	_verifica(absf(GameState.risorse.cibo - 40.0 * 1.3 * 2.0 / 3.0) < 0.2, "raccoglitore migliorato: più posti e più efficienza (%.1f)" % GameState.risorse.cibo)
 
 	# Pietra nei costi: la casa la chiede.
 	_verifica(GameState.edifici.casa.costo.has("pietra"), "le case costano anche pietra")
@@ -607,16 +609,28 @@ func _ready() -> void:
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
 		GameState._avanza_missioni()
 	var bt: Dictionary = GameState.battaglia
-	_verifica(not bt.is_empty() and GameState.velocita == 0 and int(bt.nostri) == 20 and int(bt.loro) >= 2, "arrivato l'esercito si combatte: il tempo si ferma")
+	var cfg_b: Dictionary = GameState.bil.battaglia
+	var noi_b := LogicaBattaglia.vive(bt, "noi")
+	var loro_b := LogicaBattaglia.vive(bt, "loro")
+	_verifica(not bt.is_empty() and GameState.velocita == 0 and bt.fase == "noi" and noi_b.size() == 4 and loro_b.size() >= 1, "arrivato l'esercito si schiera sul campo: il tempo si ferma")
+	_verifica(noi_b.any(func(u): return u.tipo == "arcieri") and noi_b.any(func(u): return u.get("armati", false)), "con le armi: arcieri e fanti armati")
 	_verifica(GameState.soldati_presenti() == 0, "in battaglia i soldati non sono a casa")
-	var turni := []
-	GameState.battaglia_turno.connect(func(t): turni.append(t))
-	var armi_prima: float = GameState.risorse.armi
-	GameState.round_battaglia("frecce")
-	_verifica(turni.size() == 1 and GameState.risorse.armi < armi_prima and int(turni[0].perse_loro) > 0, "pioggia di frecce: cadono dei loro e si consumano armi")
-	while not GameState.battaglia.finita:
-		GameState.round_battaglia("carica")
-	_verifica(GameState.battaglia.vinta, "la terra libera cade")
+	_verifica(LogicaBattaglia.distanza(Vector2i(0, 0), Vector2i(2, 0)) == 2 and LogicaBattaglia.vicini(Vector2i(3, 3)).size() == 6, "esagoni: distanze e vicini")
+	var fante: Dictionary = noi_b.filter(func(u): return u.tipo == "fanti")[0]
+	var dove_b: Dictionary = LogicaBattaglia.raggiungibili(bt, fante, cfg_b)
+	var meta_b: Vector2i = dove_b.keys()[0]
+	var mosse_prima := int(fante.mosse)
+	_verifica(not GameState.battaglia_muovi(int(fante.id), meta_b).is_empty() and LogicaBattaglia.cella(fante) == meta_b and int(fante.mosse) < mosse_prima, "un'unità si muove e spende le mosse")
+	# mettiamo un fante accanto a un nemico indebolito: l'attacco lo distrugge e la battaglia è vinta
+	for u in loro_b:
+		u.uomini = 0
+	var ultimo_n: Dictionary = loro_b[0]
+	ultimo_n.uomini = 1
+	var accanto: Vector2i = LogicaBattaglia.vicini(LogicaBattaglia.cella(ultimo_n)).filter(func(c): return LogicaBattaglia.occupante(bt, c) < 0)[0]
+	fante.cella = [accanto.x, accanto.y]
+	fante.attaccato = false
+	var e_b := GameState.battaglia_attacca(int(fante.id), int(ultimo_n.id))
+	_verifica(not e_b.is_empty() and int(e_b.morti_difensore) >= 1 and bt.finita and bt.vinta, "distrutto l'esercito nemico, la battaglia è vinta")
 	GameState.chiudi_battaglia()
 	_verifica(GameState.battaglia.is_empty() and GameState.velocita > 0, "finita la battaglia il tempo riparte")
 	var conquista: Dictionary = GameState.regni[libera]
@@ -625,25 +639,40 @@ func _ready() -> void:
 	var oro_t: float = GameState.risorse.oro
 	GameState._riscuoti_tributi()
 	_verifica(GameState.risorse.oro == oro_t + float(GameState.bil.diplomazia.tributo_oro) + float(GameState.bil.diplomazia.dono_alleato_stagione), "tributo della conquista e dono dell'alleato")
-	GameState.regni[forte].forza = 60
-	GameState.soldati = 5
+	# la bandiera: chi la tiene per un turno vince
+	GameState.soldati = 10
+	GameState.abitanti = 30
 	GameState.risorse.armi = 0.0
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
 		GameState._avanza_missioni()
-	_verifica(GameState.perche_no_tattica("frecce") != "", "senza armi niente pioggia di frecce")
-	var giri := 0
-	while not GameState.battaglia.finita and giri < 10:
-		GameState.round_battaglia("linea")
-		giri += 1
-	_verifica(not GameState.battaglia.vinta and not GameState.regni[forte].conquistato and GameState.soldati < 5, "troppo pochi contro un signore forte: sconfitta")
+	var bf: Dictionary = GameState.battaglia
+	var bandiera_b := Vector2i(int(bf.bandiera[0]), int(bf.bandiera[1]))
+	var loro_f := LogicaBattaglia.vive(bf, "loro")
+	for k in loro_f.size():
+		loro_f[k].uomini = 1 if k == 0 else 0
+	loro_f[0].cella = [0, 0]
+	var nostro_f: Dictionary = LogicaBattaglia.vive(bf, "noi")[0]
+	nostro_f.cella = [bandiera_b.x, bandiera_b.y]
+	GameState.battaglia_fine_turno()
+	_verifica(bf.finita and bf.vinta and GameState.regni[forte].conquistato, "presa e tenuta la loro bandiera: vittoria")
 	GameState.chiudi_battaglia()
+	GameState.regni[forte].conquistato = false
+	# finiscono i turni senza prendere niente: si torna a casa
 	GameState.soldati = 10
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
 		GameState._avanza_missioni()
-	GameState.round_battaglia("ritirata")
-	_verifica(GameState.battaglia.finita and not GameState.battaglia.vinta and GameState.soldati == 10, "la ritirata subito salva tutti")
+	for turno_b in int(GameState.bil.battaglia.turni):
+		GameState.battaglia_fine_turno()
+	_verifica(GameState.battaglia.finita and not GameState.battaglia.vinta and int(GameState.battaglia.turno) == int(GameState.bil.battaglia.turni), "dopo %d turni senza la bandiera la battaglia è persa" % int(GameState.bil.battaglia.turni))
+	GameState.chiudi_battaglia()
+	var soldati_r := GameState.soldati
+	GameState.attacca(forte)
+	for i in int(GameState.bil.diplomazia.giorni_marcia):
+		GameState._avanza_missioni()
+	GameState.battaglia_ritirata()
+	_verifica(GameState.battaglia.finita and not GameState.battaglia.vinta and GameState.soldati == soldati_r, "la ritirata subito salva tutti")
 	GameState.chiudi_battaglia()
 
 	# Vassalli: tributo, lealtà, ribellione.
@@ -663,6 +692,54 @@ func _ready() -> void:
 		if GameState.regni[chiave_v].conquistato:
 			GameState._riscuoti_tributi()
 	_verifica(not GameState.regni[chiave_v].conquistato and not vassallo_v in GameState.consiglieri(), "con lealtà a zero il vassallo si ribella e lascia il consiglio")
+
+	# Miglioramenti: fino a 4 lavoratori per le strutture, 8 abitanti per le case.
+	var al_massimo := true
+	for tipo in GameState.edifici:
+		var dd: Dictionary = GameState.edifici[tipo]
+		var mig: Array = dd.get("miglioramenti", [])
+		if int(dd.lavoratori) > 0 and tipo != "rovine":
+			if mig.is_empty() or int(mig[mig.size() - 1].get("lavoratori", dd.lavoratori)) != 4:
+				al_massimo = false
+	_verifica(al_massimo, "ogni struttura con lavoratori arriva a 4 posti migliorandola")
+	_verifica(int(GameState.edifici.casa.miglioramenti[1].alloggi) == 8, "la casa in pietra ospita 8 persone")
+
+	# Tributo delle case: 1 moneta fino a 4 posti, 2 fino a 6, 3 fino a 8 (solo se abitate).
+	GameState.nuova_partita(50)
+	GameState.aggiungi_gratis("casa", Vector2i(0, 0), 1.0)
+	var casa_6 := GameState.aggiungi_gratis("casa", Vector2i(3, 0), 1.0)
+	var casa_8 := GameState.aggiungi_gratis("casa", Vector2i(6, 0), 1.0)
+	casa_6.livello = 2
+	casa_8.livello = 3
+	GameState.abitanti = 4 + 6 + 8
+	_verifica(GameState.tributo_case() == 1 + 2 + 3, "case piene: 1 + 2 + 3 monete (%d)" % GameState.tributo_case())
+	GameState.abitanti = 5
+	_verifica(GameState.tributo_case() == 1 + 2, "la casa vuota non paga (%d)" % GameState.tributo_case())
+
+	# Il re: si paga fino al Borgo, poi siamo indipendenti e lui diffida.
+	GameState.nuova_partita(51)
+	GameState.capo = 0
+	GameState.abitanti = 10
+	_verifica(not GameState.indipendente() and GameState.tassa_del_re() > 0 and GameState.stagioni_al_re() == 2, "da villaggio il re vuole la sua tassa in autunno")
+	GameState.livello = 0
+	GameState.bil.livelli[1].abitanti = 1
+	GameState.bil.livelli[1].felicita = 0
+	GameState.bil.livelli[1].edifici = {}
+	GameState._controlla_livello()
+	_verifica(GameState.indipendente() and GameState.re_atteggiamento < 0 and GameState.evento_attivo.get("id", "") == "indipendenza", "diventati Borgo: indipendenti, e il re diffida")
+	GameState.scegli_evento(0)
+	GameState.stagione = GameState.AUTUNNO
+	var oro_re: float = GameState.risorse.oro
+	GameState._riscuoti_tasse()
+	_verifica(GameState.risorse.oro >= oro_re and GameState.tasse_non_pagate == 0, "in autunno niente più tasse al re")
+	GameState.re_atteggiamento = -100
+	GameState.bil.re.probabilita_spedizione = 1.0
+	GameState._il_re_si_fa_sentire()
+	_verifica(not GameState.banditi.is_empty() and GameState.banditi.get("regio", false), "un re molto ostile manda il suo esercito")
+	GameState.bil.re.probabilita_spedizione = 0.5
+	GameState.bil.livelli[1].abitanti = 25
+	GameState.bil.livelli[1].felicita = 50
+	GameState.bil.livelli[1].edifici = {"magazzino": 1}
 
 	# Il primo inverno, se finisce il cibo, il signore apre il castello: +50, una volta, e nessuno se ne va.
 	GameState.nuova_partita(40)

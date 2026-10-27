@@ -82,7 +82,7 @@ static func attivi() -> Array:
 	# Oro
 	var v := gs.valutazione_tasse()
 	var incasso := int(v.monete) * (gs.AUTUNNO - gs.stagione + 1)
-	if gs.stagione in [gs.ESTATE, gs.AUTUNNO] and gs.risorse.oro + incasso < gs.tassa_del_re():
+	if not gs.indipendente() and gs.stagione in [gs.ESTATE, gs.AUTUNNO] and gs.risorse.oro + incasso < gs.tassa_del_re():
 		lista.append(_c("oro", 75, "In autunno il re vorrà %d oro e ne avremo circa %d. Un mercato o tasse più alte ci servirebbero." % [gs.tassa_del_re(), int(gs.risorse.oro) + incasso]))
 	if v.fascia <= 1 and gs.abitanti > 0:
 		var debole: String = "le scorte" if v.risorse <= minf(v.popolazione, v.gradimento) else ("la popolazione" if v.popolazione <= v.gradimento else "il gradimento")

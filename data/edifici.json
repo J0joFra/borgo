@@ -80,8 +80,8 @@
 		"capacita": 100,
 		"colore": "7a5c3a",
 		"miglioramenti": [
-			{"nome": "Magazzino ampliato", "costo": {"legna": 10, "pietra": 10}, "capacita": 200},
-			{"nome": "Granaio di pietra", "costo": {"legna": 10, "pietra": 25}, "capacita": 350}
+			{"nome": "Magazzino ampliato", "costo": {"legna": 10, "pietra": 10}, "capacita": 200, "lavoratori": 2, "produzione": 1.3},
+			{"nome": "Granaio di pietra", "costo": {"legna": 10, "pietra": 25}, "capacita": 350, "lavoratori": 4, "produzione": 1.6}
 		]
 	},
 	"taglialegna": {
@@ -96,8 +96,8 @@
 		"colore": "5d7a3a",
 		"zona": {"tipo": "bosco", "raggio": 5, "per_cella": 0.05, "minimo": 0.0, "massimo": 2.0},
 		"miglioramenti": [
-			{"nome": "Segheria", "costo": {"legna": 8, "pietra": 8}, "produzione": 1.4},
-			{"nome": "Grande segheria", "costo": {"legna": 10, "pietra": 15}, "produzione": 1.8, "lavoratori": 3}
+			{"nome": "Segheria", "costo": {"legna": 8, "pietra": 8}, "lavoratori": 3, "produzione": 1.3},
+			{"nome": "Grande segheria", "costo": {"legna": 10, "pietra": 15}, "lavoratori": 4, "produzione": 1.6}
 		]
 	},
 	"cava": {
@@ -111,8 +111,8 @@
 		"colore": "6e6e6e",
 		"zona": {"tipo": "roccia", "raggio": 5, "per_cella": 0.12, "minimo": 0.0, "massimo": 2.0},
 		"miglioramenti": [
-			{"nome": "Cava attrezzata", "costo": {"legna": 10, "pietra": 5}, "produzione": 1.4},
-			{"nome": "Cava profonda", "costo": {"legna": 12, "pietra": 12}, "produzione": 1.8, "lavoratori": 4}
+			{"nome": "Cava attrezzata", "costo": {"legna": 10, "pietra": 5}, "lavoratori": 4, "produzione": 1.3},
+			{"nome": "Cava profonda", "costo": {"legna": 12, "pietra": 12}, "lavoratori": 4, "produzione": 1.6}
 		]
 	},
 	"forestale": {
@@ -127,7 +127,8 @@
 		"stagioni": {"inverno": 0},
 		"zona": {"tipo": "radura", "raggio": 5},
 		"miglioramenti": [
-			{"nome": "Vivaio", "costo": {"legna": 6, "pietra": 6}, "produzione": 1.5, "lavoratori": 2}
+			{"nome": "Vivaio", "costo": {"legna": 6, "pietra": 6}, "lavoratori": 2, "produzione": 1.3},
+			{"nome": "Grande vivaio", "costo": {"legna": 6, "pietra": 7}, "lavoratori": 4, "produzione": 1.6}
 		]
 	},
 	"miniera": {
@@ -139,7 +140,11 @@
 		"lavoratori": 3,
 		"produce": {"ferro": 15},
 		"su": "collina",
-		"colore": "4a4a5a"
+		"colore": "4a4a5a",
+		"miglioramenti": [
+			{"nome": "Miniera puntellata", "costo": {"legna": 6, "pietra": 9}, "lavoratori": 4, "produzione": 1.3},
+			{"nome": "Miniera profonda", "costo": {"legna": 10, "pietra": 20}, "lavoratori": 4, "produzione": 1.6}
+		]
 	},
 	"fabbro": {
 		"nome": "Fabbro",
@@ -150,7 +155,11 @@
 		"lavoratori": 2,
 		"consuma": {"ferro": 10},
 		"produce": {"utensili": 10},
-		"colore": "3d3d3d"
+		"colore": "3d3d3d",
+		"miglioramenti": [
+			{"nome": "Bottega del fabbro", "costo": {"legna": 6, "pietra": 12}, "lavoratori": 3, "produzione": 1.3},
+			{"nome": "Grande fucina", "costo": {"legna": 10, "pietra": 25}, "lavoratori": 4, "produzione": 1.6}
+		]
 	},
 	"raccoglitore": {
 		"nome": "Raccoglitore",
@@ -164,8 +173,8 @@
 		"colore": "8c6d3f",
 		"zona": {"tipo": "bosco", "raggio": 4, "per_cella": 0.04, "minimo": 0.6, "massimo": 1.4},
 		"miglioramenti": [
-			{"nome": "Capanno dei raccoglitori", "costo": {"legna": 6, "pietra": 4}, "produzione": 1.4},
-			{"nome": "Dispensa del bosco", "costo": {"legna": 8, "pietra": 10}, "produzione": 1.8, "lavoratori": 3}
+			{"nome": "Capanno dei raccoglitori", "costo": {"legna": 6, "pietra": 4}, "lavoratori": 3, "produzione": 1.3},
+			{"nome": "Dispensa del bosco", "costo": {"legna": 8, "pietra": 10}, "lavoratori": 4, "produzione": 1.6}
 		],
 		"selvatiche": {"quota": 0.67, "minimo_celle": 2}
 	},
@@ -180,8 +189,8 @@
 		"colore": "3f6f9f",
 		"zona": {"tipo": "acqua", "raggio": 3, "lago": 0.09, "fiume": 0.06, "massimo": 2.0, "inverno": {"lago": 0.1, "fiume": 0.6}},
 		"miglioramenti": [
-			{"nome": "Pontile", "costo": {"legna": 8, "pietra": 4}, "produzione": 1.4},
-			{"nome": "Peschiera", "costo": {"legna": 10, "pietra": 12}, "produzione": 1.8, "lavoratori": 3}
+			{"nome": "Pontile", "costo": {"legna": 8, "pietra": 4}, "lavoratori": 3, "produzione": 1.3},
+			{"nome": "Peschiera", "costo": {"legna": 10, "pietra": 12}, "lavoratori": 4, "produzione": 1.6}
 		]
 	},
 	"cacciatore": {
@@ -195,8 +204,8 @@
 		"colore": "6b3e26",
 		"zona": {"tipo": "bosco", "raggio": 6, "per_cella": 0.035, "minimo": 0.0, "massimo": 1.6},
 		"miglioramenti": [
-			{"nome": "Capanno di caccia", "costo": {"legna": 8, "pietra": 4}, "produzione": 1.4},
-			{"nome": "Riserva di caccia", "costo": {"legna": 10, "pietra": 10}, "produzione": 1.8, "lavoratori": 3}
+			{"nome": "Capanno di caccia", "costo": {"legna": 8, "pietra": 4}, "lavoratori": 3, "produzione": 1.3},
+			{"nome": "Riserva di caccia", "costo": {"legna": 10, "pietra": 10}, "lavoratori": 4, "produzione": 1.6}
 		]
 	},
 	"campo": {
@@ -210,8 +219,8 @@
 		"colore": "c9a94a",
 		"zona": {"tipo": "fertilita", "minimo": 0.2, "massimo": 1.5},
 		"miglioramenti": [
-			{"nome": "Campo arato", "costo": {"legna": 6, "pietra": 4}, "produzione": 1.4},
-			{"nome": "Campo irrigato", "costo": {"legna": 8, "pietra": 12}, "produzione": 1.8, "lavoratori": 3}
+			{"nome": "Campo arato", "costo": {"legna": 6, "pietra": 4}, "lavoratori": 3, "produzione": 1.3},
+			{"nome": "Campo irrigato", "costo": {"legna": 8, "pietra": 12}, "lavoratori": 4, "produzione": 1.6}
 		],
 		"coltura": true
 	},
@@ -225,7 +234,11 @@
 		"consuma": {"grano": 40},
 		"produce": {"farina": 40},
 		"forma": "mulino",
-		"colore": "b0a890"
+		"colore": "b0a890",
+		"miglioramenti": [
+			{"nome": "Mulino a due macine", "costo": {"legna": 7, "pietra": 9}, "lavoratori": 2, "produzione": 1.3},
+			{"nome": "Grande mulino", "costo": {"legna": 12, "pietra": 20}, "lavoratori": 4, "produzione": 1.6}
+		]
 	},
 	"forno": {
 		"nome": "Forno",
@@ -237,7 +250,11 @@
 		"consuma": {"farina": 20},
 		"produce": {"cibo": 40},
 		"pane": true,
-		"colore": "b5653a"
+		"colore": "b5653a",
+		"miglioramenti": [
+			{"nome": "Forno grande", "costo": {"legna": 6, "pietra": 9}, "lavoratori": 3, "produzione": 1.3},
+			{"nome": "Panetteria", "costo": {"legna": 10, "pietra": 20}, "lavoratori": 4, "produzione": 1.6}
+		]
 	},
 	"taverna": {
 		"nome": "Taverna",
@@ -248,7 +265,11 @@
 		"lavoratori": 1,
 		"consuma": {"cibo": 10},
 		"felicita": 15,
-		"colore": "8a3b2e"
+		"colore": "8a3b2e",
+		"miglioramenti": [
+			{"nome": "Taverna con camere", "costo": {"legna": 9, "pietra": 9}, "lavoratori": 2, "produzione": 1.3},
+			{"nome": "Locanda", "costo": {"legna": 15, "pietra": 20}, "lavoratori": 4, "produzione": 1.6}
+		]
 	},
 	"mercato": {
 		"nome": "Mercato",
@@ -260,7 +281,11 @@
 		"produce": {"oro": 10},
 		"felicita": 10,
 		"forma": "mercato",
-		"colore": "c08a2e"
+		"colore": "c08a2e",
+		"miglioramenti": [
+			{"nome": "Mercato coperto", "costo": {"legna": 9, "pietra": 15}, "lavoratori": 3, "produzione": 1.3},
+			{"nome": "Fiera", "costo": {"legna": 15, "pietra": 30}, "lavoratori": 4, "produzione": 1.6}
+		]
 	},
 	"chiesa": {
 		"nome": "Chiesa",
@@ -271,7 +296,11 @@
 		"lavoratori": 1,
 		"felicita": 20,
 		"forma": "chiesa",
-		"colore": "5a6a8a"
+		"colore": "5a6a8a",
+		"miglioramenti": [
+			{"nome": "Chiesa con campanile", "costo": {"legna": 15, "pietra": 36}, "lavoratori": 2, "produzione": 1.3},
+			{"nome": "Pieve", "costo": {"legna": 25, "pietra": 65}, "lavoratori": 4, "produzione": 1.6}
+		]
 	},
 	"maniero": {
 		"nome": "Maniero",
@@ -319,7 +348,11 @@
 		"consuma": {"ferro": 8, "legna": 6},
 		"produce": {"armi": 12},
 		"riscaldamento": 3,
-		"colore": "5a4a3a"
+		"colore": "5a4a3a",
+		"miglioramenti": [
+			{"nome": "Armeria fornita", "costo": {"legna": 9, "pietra": 12}, "lavoratori": 3, "produzione": 1.3},
+			{"nome": "Arsenale", "costo": {"legna": 15, "pietra": 25}, "lavoratori": 4, "produzione": 1.6}
+		]
 	},
 	"rovine": {
 		"nome": "Rovine",

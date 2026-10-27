@@ -329,26 +329,6 @@ func _via() -> void:
 			conquistata = k
 			break
 
-	# la battaglia per conquistare un regno
-	for i in int(GameState.bil.diplomazia.giorni_marcia):
-		GameState._avanza_missioni()
-	await _attendi(0.5)
-	await _scatta("31_battaglia")
-	if not GameState.battaglia.is_empty():
-		GameState.round_battaglia("carica")
-		await _attendi(0.5)
-		await _scatta("32_battaglia_scontro")
-		await _attendi(1.0)
-		var giri := 0
-		while not GameState.battaglia.finita and giri < 8:
-			GameState.round_battaglia("carica")
-			giri += 1
-			await _attendi(1.2)
-		await _scatta("33_battaglia_fine")
-		GameState.chiudi_battaglia()
-		for n in f.hud.find_children("*", "SchermataBattaglia", true, false):
-			n.queue_free()
-
 	f._vai_al_regno()
 	await _attendi(1.0)
 	print("SCENA ", get_tree().current_scene.name)
@@ -361,6 +341,54 @@ func _via() -> void:
 		mappa._apri_scheda(conquistata)
 		await _attendi(0.3)
 		await _scatta("29_vassallo")
+
+	# la battaglia sul campo a esagoni (l'esercito mandato prima arriva)
+	for i in int(GameState.bil.diplomazia.giorni_marcia):
+		GameState._avanza_missioni()
+	print("BATTAGLIA ", not GameState.battaglia.is_empty())
+	if not GameState.battaglia.is_empty():
+		get_tree().change_scene_to_file("res://scenes/battaglia.tscn")
+		await _attendi(2.0)
+		var campo = get_tree().current_scene
+		await _scatta("31_battaglia")
+		var nostri := LogicaBattaglia.vive(GameState.battaglia, "noi")
+		var scelto: Dictionary = nostri[0]
+		campo._scegli(int(scelto.id))
+		await _attendi(0.4)
+		await _scatta("32_battaglia_scelta")
+		# avanza verso la bandiera il più possibile
+		var bandiera := Vector2i(int(GameState.battaglia.bandiera[0]), int(GameState.battaglia.bandiera[1]))
+		for u in nostri:
+			var possibili: Dictionary = LogicaBattaglia.raggiungibili(GameState.battaglia, u, GameState.bil.battaglia)
+			var meglio := LogicaBattaglia.cella(u)
+			for cb in possibili:
+				if LogicaBattaglia.distanza(cb, bandiera) < LogicaBattaglia.distanza(meglio, bandiera):
+					meglio = cb
+			if meglio != LogicaBattaglia.cella(u):
+				await campo._muovi(int(u.id), meglio)
+		for giro in 3:
+			await campo._fine_turno()
+			for u in LogicaBattaglia.vive(GameState.battaglia, "noi"):
+				var bers := LogicaBattaglia.bersagli(GameState.battaglia, u, GameState.bil.battaglia)
+				if not bers.is_empty():
+					await campo._attacca(int(u.id), int(bers[0].id))
+				else:
+					var possibili: Dictionary = LogicaBattaglia.raggiungibili(GameState.battaglia, u, GameState.bil.battaglia)
+					var meglio := LogicaBattaglia.cella(u)
+					for cb in possibili:
+						if LogicaBattaglia.distanza(cb, bandiera) < LogicaBattaglia.distanza(meglio, bandiera):
+							meglio = cb
+					if meglio != LogicaBattaglia.cella(u):
+						await campo._muovi(int(u.id), meglio)
+			if GameState.battaglia.finita:
+				break
+		await _scatta("33_battaglia_scontro")
+		if not GameState.battaglia.finita:
+			GameState.battaglia_ritirata()
+			campo._aggiorna()
+			campo._controlla_fine()
+		await _attendi(0.5)
+		await _scatta("34_battaglia_fine")
 	get_tree().quit()
 
 

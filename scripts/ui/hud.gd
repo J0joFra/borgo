@@ -119,7 +119,6 @@ func _ready() -> void:
 	_crea_fine()
 	GameState.evento.connect(_mostra_carta)
 	GameState.tutorial_cambiato.connect(_mostra_tutorial)
-	GameState.battaglia_iniziata.connect(func(_b): _mostra_battaglia())
 	GameState.suggerimento.connect(func(t): mostra_avviso("Suggerimento: " + t, 8.0))
 	GameState.changed.connect(_aggiorna)
 	GameState.season_changed.connect(func(_s, _a): _aggiorna())
@@ -130,8 +129,6 @@ func _ready() -> void:
 	if not GameState.evento_attivo.is_empty():
 		_mostra_carta(GameState.evento_attivo)
 	_mostra_tutorial(GameState.tutorial_passo)
-	if not GameState.battaglia.is_empty():
-		_mostra_battaglia()
 
 
 func _process(delta: float) -> void:
@@ -244,16 +241,20 @@ func _icona(chiave: String, lato := 10.0) -> Control:
 func _crea_barra() -> void:
 	var barra := PanelContainer.new()
 	barra.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	# la barra ha tante voci: un carattere un po' più piccolo perché ci stiano tutte
+	var tema_barra := crea_tema()
+	tema_barra.default_font_size = 7
+	barra.theme = tema_barra
 	_radice.add_child(barra)
 	var riga := HBoxContainer.new()
 	riga.add_theme_constant_override("separation", 2)
 	barra.add_child(riga)
-	for chiave in GameState.RISORSE_VISIBILI + ["abitanti", "disponibili", "felicita"]:
+	for chiave in GameState.RISORSE_VISIBILI + ["re", "abitanti", "disponibili", "felicita"]:
 		var icona := _icona(chiave)
 		_icone[chiave] = icona
 		riga.add_child(icona)
 		var l := Label.new()
-		l.custom_minimum_size.x = 18 if chiave != "abitanti" else 28
+		l.custom_minimum_size.x = 16 if chiave != "abitanti" else 26
 		l.tooltip_text = IconaRisorsa.NOMI.get(chiave, chiave)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		riga.add_child(l)
@@ -459,6 +460,9 @@ func _crea_info() -> void:
 	var col := VBoxContainer.new()
 	_info.add_child(col)
 	_info_testo = Label.new()
+	_info_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_info_testo.custom_minimum_size.x = 420
+	_info_testo.add_theme_font_size_override("font_size", 7)
 	col.add_child(_info_testo)
 	var riga := HBoxContainer.new()
 	col.add_child(riga)
@@ -484,6 +488,14 @@ func _crea_info() -> void:
 		GameState.imposta_opzione("suggerimenti", _btn_suggerimenti.button_pressed)
 		_aggiorna())
 	col.add_child(_btn_suggerimenti)
+	var audio := HBoxContainer.new()
+	col.add_child(audio)
+	for chiave in ["musica", "effetti"]:
+		var b := _bottone("Musica" if chiave == "musica" else "Effetti sonori", 0, 16)
+		b.toggle_mode = true
+		b.button_pressed = GameState.opzioni[chiave]
+		b.toggled.connect(func(v): GameState.imposta_opzione(chiave, v))
+		audio.add_child(b)
 	var tutorial := _bottone("Rivedi il tutorial", 0, 16)
 	tutorial.pressed.connect(func(): _info.visible = false; GameState.inizia_tutorial())
 	col.add_child(tutorial)
@@ -561,10 +573,10 @@ func _crea_mercato() -> void:
 		tendenza.custom_minimum_size.x = 30
 		griglia.add_child(tendenza)
 		var compra := _bottone("", 100, 14)
-		compra.pressed.connect(func(): GameState.compra(r))
+		compra.pressed.connect(func(): Audio.effetto("moneta" if GameState.compra(r) else "errore"))
 		griglia.add_child(compra)
 		var vendi := _bottone("", 100, 14)
-		vendi.pressed.connect(func(): GameState.vendi(r))
+		vendi.pressed.connect(func(): Audio.effetto("moneta" if GameState.vendi(r) else "errore"))
 		griglia.add_child(vendi)
 		_mercato_righe[r] = [scorta, tendenza, compra, vendi]
 	_mercato_nota = Label.new()
@@ -670,6 +682,18 @@ func _aggiorna() -> void:
 	_numeri.abitanti.text = "%d/%d" % [GameState.abitanti, GameState.alloggi()]
 	_numeri.abitanti.add_theme_color_override("font_color", TESTO_ALLARME if GameState.senza_casa() > 0 else TESTO)
 	_numeri.disponibili.text = str(GameState.disoccupati())
+	# il re: quanto vuole in autunno, oppure (da indipendenti) cosa pensa di noi
+	if GameState.indipendente():
+		var cosa := GameState.testo_atteggiamento(GameState.re_atteggiamento)
+		_numeri.re.text = {"amichevole": "amico", "tranquillo": "calmo", "diffidente": "diffida", "ostile": "ostile"}.get(cosa, cosa)
+		_numeri.re.tooltip_text = "Siamo un borgo libero: niente tasse al re, che è %s verso di noi" % cosa
+		_numeri.re.add_theme_color_override("font_color", TESTO_ALLARME if GameState.re_atteggiamento <= -60 else TESTO)
+	else:
+		var dovuto := GameState.tassa_del_re()
+		var quando := GameState.stagioni_al_re()
+		_numeri.re.text = str(dovuto)
+		_numeri.re.tooltip_text = "Tassa al re: %d oro %s" % [dovuto, "a fine stagione" if quando == 0 else "tra %d stagion%s, in autunno" % [quando, "e" if quando == 1 else "i"]]
+		_numeri.re.add_theme_color_override("font_color", TESTO_ALLARME if GameState.risorse.oro < dovuto else TESTO)
 	_numeri.felicita.text = str(int(GameState.felicita))
 	_allarme.visible = not GameState.banditi.is_empty()
 	if _allarme.visible:
@@ -714,15 +738,6 @@ func _da_mostrare(r: String) -> bool:
 		if r == "armi" and d.has("arcieri"):
 			return true
 	return false
-
-
-## La battaglia occupa tutto lo schermo finché non si torna al feudo.
-func _mostra_battaglia() -> void:
-	nascondi_pannello()
-	_chiudi_menu()
-	for f in [_info, _consiglio, _mercato, _esercito]:
-		f.visible = false
-	_radice.add_child(SchermataBattaglia.new())
 
 
 func _imposta_velocita(v: int) -> void:
@@ -915,7 +930,12 @@ func _aggiorna_info() -> void:
 	var v := GameState.valutazione_tasse()
 	righe.append("Tasse a fine stagione: %d oro, fascia %s (risorse %d%%, popolazione %d%%, gradimento %d%%)" % [v.monete,
 		GameState.NOMI_FASCE[v.fascia], roundi(v.risorse * 100), roundi(v.popolazione * 100), roundi(v.gradimento * 100)])
-	righe.append("Tassa al re in autunno: %d oro · capacità magazzino %d" % [GameState.tassa_del_re(), GameState.capacita()])
+	righe.append("Tributo delle case: %d oro a stagione (1 per casa fino a 4 posti, 2 fino a 6, 3 fino a 8)" % GameState.tributo_case())
+	if GameState.indipendente():
+		righe.append("Il re: siamo indipendenti, niente tasse; è %s verso di noi · capacità magazzino %d" % [
+			GameState.testo_atteggiamento(GameState.re_atteggiamento), GameState.capacita()])
+	else:
+		righe.append("Tassa al re in autunno: %d oro (diventando Borgo non la pagheremo più) · capacità magazzino %d" % [GameState.tassa_del_re(), GameState.capacita()])
 	var dif := GameState.difesa()
 	righe.append("Difesa %d: milizia %d, arcieri %d (forza %d), soldati %d (forza %d), palizzate %d, mura %d%s, alleati %d, vassalli %d%s" % [roundi(dif.totale), roundi(dif.milizia),
 		dif.arcieri, roundi(dif.forza_arcieri), dif.soldati, roundi(dif.forza_soldati), roundi(dif.palizzate), roundi(dif.mura),
