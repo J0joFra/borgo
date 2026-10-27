@@ -49,7 +49,10 @@ altrimenti rendi pubblico il repository.)
 
 Il gioco si apre sul **menu principale** (un piccolo diorama del borgo che gira): Continua (con anno, casata e
 livello della partita salvata), Nuova partita (chiede conferma se ce n'è una salvata), Opzioni (tutorial nelle
-partite nuove, suggerimenti, schermo intero) e Crediti. Dalla mappa del regno il pulsante "Menu" ci riporta.
+partite nuove, suggerimenti, schermo intero), **Prova battaglia** e Crediti. Prova battaglia serve a provare le
+battaglie senza giocare una partita: si sceglie contro chi (signore, banditi, terra libera), quanti soldati, armi e
+uomini dei vassalli abbiamo e quanti uomini ha il nemico, poi si combatte; alla fine si torna alla prova e la
+partita salvata non cambia. Dalla mappa del regno il pulsante "Menu" ci riporta.
 
 Una partita nuova comincia con il **prologo**: il Regno di Valmora è caduto e, attorno a un falò, restano tre famiglie.
 Scegli quale casata guiderà i sopravvissuti; le altre due diventano il tuo **consiglio** e ti danno suggerimenti

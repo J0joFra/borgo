@@ -102,6 +102,8 @@ var soldati := 0              # abitanti arruolati: non lavorano, difendono e po
 var regni: Dictionary = {}    # "indice regione" -> {forza, atteggiamento, spiato, alleato, conquistato, vassallo}
 var missioni: Array = []      # {tipo: spia|alleanza|attacco, regione, mancano, soldati}
 var battaglia: Dictionary = {}  # la battaglia in corso (vedi _battaglia), {} se nessuna
+## Le impostazioni dell'ultima battaglia di prova (menu → Prova battaglia): non toccano la partita.
+var prova_battaglia := {"nemico": "signore", "soldati": 20, "armi": 10, "vassalli": 5, "nemici": 25}
 
 var _prossimo_id: int = 1
 var _accumulo: float = 0.0
@@ -1856,7 +1858,18 @@ func battaglia_ritirata() -> void:
 	_dopo_azione()
 
 
+## Una battaglia di prova, senza partita: si sceglie tutto e alla fine non cambia niente.
+func inizia_prova_battaglia(p: Dictionary) -> void:
+	prova_battaglia = p.duplicate()
+	var nomi := {"signore": "Il castello del Duca", "banditi": "Il covo dei banditi", "libera": "La terra libera"}
+	battaglia = LogicaBattaglia.crea("prova", p.nemico, int(p.soldati), int(p.armi), int(p.vassalli), int(p.nemici), randi(), bil.battaglia)
+	battaglia.prova = true
+	battaglia.titolo = "Prova: %s" % nomi.get(p.nemico, "battaglia")
+
+
 func _dopo_azione() -> void:
+	if battaglia.get("prova", false):
+		return  # la prova non cambia la partita
 	if battaglia.finita and not battaglia.get("chiusa", false):
 		battaglia.chiusa = true
 		_fine_battaglia(battaglia.vinta, battaglia.perche)
@@ -1896,6 +1909,9 @@ func _fine_battaglia(vinta: bool, perche: String) -> void:
 ## Chiude la schermata della battaglia: il tempo riparte.
 func chiudi_battaglia() -> void:
 	if battaglia.is_empty() or not battaglia.finita:
+		return
+	if battaglia.get("prova", false):
+		battaglia = {}
 		return
 	battaglia = {}
 	velocita = maxi(1, _velocita_prima)

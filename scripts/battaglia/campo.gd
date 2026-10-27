@@ -49,7 +49,7 @@ func _ready() -> void:
 	Audio.musica("battaglia")
 	_cfg = GameState.bil.battaglia
 	if GameState.battaglia.is_empty():
-		get_tree().change_scene_to_file.call_deferred("res://scenes/feudo.tscn")
+		get_tree().change_scene_to_file.call_deferred("res://scenes/menu.tscn")
 		return
 	_crea_ambiente()
 	_crea_campo()
@@ -428,7 +428,8 @@ func _crea_interfaccia() -> void:
 	radice.theme = Hud.crea_tema()
 	livello.add_child(radice)
 	var b := GameState.battaglia
-	var regione: Dictionary = GameState.regni[b.regione]
+	var prova: bool = b.get("prova", false)
+	var regione: Dictionary = {"nome": b.get("titolo", "prova"), "signore": "senza partita"} if prova else GameState.regni[b.regione]
 
 	var testa := PanelContainer.new()
 	testa.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -438,7 +439,7 @@ func _crea_interfaccia() -> void:
 	var col := VBoxContainer.new()
 	testa.add_child(col)
 	_titolo = Label.new()
-	_titolo.text = "Battaglia di %s  ·  %s" % [regione.nome, regione.signore]
+	_titolo.text = b.titolo if prova else "Battaglia di %s  ·  %s" % [regione.nome, regione.signore]
 	_titolo.add_theme_font_size_override("font_size", 11)
 	_titolo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(_titolo)
@@ -515,12 +516,12 @@ func _crea_interfaccia() -> void:
 	_esito_testo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ce.add_child(_esito_testo)
 	var torna := Button.new()
-	torna.text = "Torna al feudo"
+	torna.text = "Torna alla prova" if prova else "Torna al feudo"
 	torna.custom_minimum_size = Vector2(0, 22)
 	torna.focus_mode = Control.FOCUS_NONE
 	torna.pressed.connect(func():
 		GameState.chiudi_battaglia()
-		get_tree().change_scene_to_file("res://scenes/feudo.tscn"))
+		get_tree().change_scene_to_file("res://scenes/prova_battaglia.tscn" if prova else "res://scenes/feudo.tscn"))
 	ce.add_child(torna)
 	_controlla_fine()
 

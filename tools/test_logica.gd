@@ -836,6 +836,21 @@ func _ready() -> void:
 	tc2.applica_salvataggio(tc.salva())
 	_verifica(tc2.ceppi.size() == tc.ceppi.size() and not salvato_t.is_empty(), "i ceppi si salvano")
 
+	# Prova battaglia: senza partita, e non cambia niente.
+	GameState.nuova_partita(60)
+	var soldati_pr := GameState.soldati
+	var abitanti_pr := GameState.abitanti
+	GameState.inizia_prova_battaglia({"nemico": "banditi", "soldati": 15, "armi": 10, "vassalli": 5, "nemici": 12})
+	var bp: Dictionary = GameState.battaglia
+	_verifica(bp.prova and LogicaBattaglia.vive(bp, "noi").size() == 4 and LogicaBattaglia.vive(bp, "loro").size() == 3, "la prova schiera gli eserciti scelti")
+	for u in LogicaBattaglia.vive(bp, "noi"):
+		u.uomini = 0
+	LogicaBattaglia._controlla_fine(bp)
+	GameState._dopo_azione()
+	_verifica(bp.finita and GameState.soldati == soldati_pr and GameState.abitanti == abitanti_pr, "perdere la prova non toglie nessuno alla partita")
+	GameState.chiudi_battaglia()
+	_verifica(GameState.battaglia.is_empty(), "chiusa la prova non resta niente")
+
 	# Salvataggio della versione 8: esercito, regni, missioni, ponti, mura, rotazione.
 	GameState.ricomincia()
 	GameState.avvia()
@@ -907,7 +922,16 @@ func _ready() -> void:
 
 	# Collegamento alla piazza: senza strada si lavora il 2% in meno.
 	var piazza_b: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "piazza")[0]
-	var lontano := GameState.aggiungi_gratis("raccoglitore", GameState.terreno.trova_posto("raccoglitore", piazza_b.cella + Vector2i(0, 9)), 1.0)
+	# un posto davvero lontano dalle strade (su alcune mappe la strada iniziale passa vicino)
+	var lontano: Dictionary = {}
+	for scarto in [Vector2i(0, 9), Vector2i(9, 0), Vector2i(-9, 0), Vector2i(0, -9), Vector2i(12, 12), Vector2i(-12, 12), Vector2i(12, -12)]:
+		if not lontano.is_empty():
+			if not GameState.collegato(lontano):
+				break
+			GameState.buildings.erase(lontano)
+			GameState.terreno.libera(lontano)
+			GameState._rete_valida = false
+		lontano = GameState.aggiungi_gratis("raccoglitore", GameState.terreno.trova_posto("raccoglitore", piazza_b.cella + scarto), 1.0)
 	_verifica(not GameState.collegato(lontano) and is_equal_approx(GameState.efficienza(lontano), 0.98), "lontano dalle strade: -2%")
 	_verifica(GameState.collegato(dimora) and GameState.collegato(piazza_b), "piazza e dimora sono il centro")
 	var verso := TerrenoFeudo.percorso(GameState._bordo(piazza_b)[0], GameState._bordo(lontano)[0])
