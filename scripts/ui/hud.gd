@@ -33,8 +33,14 @@ const NOMI_RISORSE := {
 	"semi_orzo": "Semi d'orzo", "semi_grano": "Semi di grano", "semi_rape": "Semi di rapa",
 	"ferro": "Ferro", "utensili": "Utensili", "armi": "Armi", "oro": "Oro",
 }
+
+# --- Palette semantica ---------------------------------------------------------
+const COLORE_OK := Color("9fd18b")           # verde: va bene, guadagno
+const COLORE_ATTENZIONE := Color("f2d24b")   # giallo: attenzione, soglia
+const COLORE_ERRORE := Color("ff6b5b")       # rosso: pericolo, perdita
+const COLORE_INFO := Color("a0c0e0")         # azzurro: informazione neutra
 const TESTO := Color("f3e3c3")
-const TESTO_ALLARME := Color("ff6b5b")
+const TESTO_ALLARME := COLORE_ERRORE          # alias storico, per compatibilità
 
 var _radice: Control
 var _numeri: Dictionary = {}  # chiave -> Label nella barra in alto
@@ -44,6 +50,9 @@ var _esercito: PanelContainer
 var _esercito_testo: Label
 var _conferma_coltura: PanelContainer
 var _conferma_testo: Label
+var _conferma_si: Button
+var _conferma_no: Button
+var _conferma_azione: Callable = Callable()  # cosa fare se si conferma
 var _coltura_scelta := ""
 var _truppe_righe: Dictionary = {}  # tipo -> [numero, arruola, congeda]
 var _mercato_notizia: Label
@@ -149,6 +158,34 @@ func _process(delta: float) -> void:
 			_aggiorna_pannello()
 
 
+## ESC / tasto "indietro": chiude i pannelli aperti in ordine di priorità.
+## Le carte evento e la schermata di fine partita richiedono una scelta e non si chiudono.
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	if _carta.visible or _fine.visible:
+		return
+	if _conferma_coltura.visible:
+		_chiudi_conferma()
+		get_viewport().set_input_as_handled()
+		return
+	if _mercato.visible:
+		_mercato.visible = false
+	elif _esercito.visible:
+		_esercito.visible = false
+	elif _info.visible:
+		_info.visible = false
+	elif _consiglio.visible:
+		_consiglio.visible = false
+	elif _menu.visible:
+		_chiudi_menu()
+	elif _pannello.visible:
+		chiudi_pannello.emit()
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
 # --- API usata da main.gd ----------------------------------------------------
 
 func mostra_edificio(id: int) -> void:
@@ -208,12 +245,12 @@ func mostra_avviso(testo: String, durata := 3.5) -> void:
 static func crea_tema() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 8
-	t.set_stylebox("panel", "PanelContainer", _riquadro(Color("3b2a1e"), Color("6b4a2e")))
-	t.set_stylebox("normal", "Button", _riquadro(Color("7a5634"), Color("a0784a")))
-	t.set_stylebox("hover", "Button", _riquadro(Color("8a6440"), Color("c09060")))
-	t.set_stylebox("pressed", "Button", _riquadro(Color("5a3e24"), Color("f2d24b")))
-	t.set_stylebox("hover_pressed", "Button", _riquadro(Color("5a3e24"), Color("f2d24b")))
-	t.set_stylebox("disabled", "Button", _riquadro(Color("4a4038"), Color("5a5048")))
+	t.set_stylebox("panel", "PanelContainer", _riquadro(Color("3b2a1e"), Color("6b4a2e"), 6))
+	t.set_stylebox("normal", "Button", _riquadro(Color("7a5634"), Color("a0784a"), 2))
+	t.set_stylebox("hover", "Button", _riquadro(Color("8a6440"), Color("c09060"), 2))
+	t.set_stylebox("pressed", "Button", _riquadro(Color("5a3e24"), Color("f2d24b"), 2))
+	t.set_stylebox("hover_pressed", "Button", _riquadro(Color("5a3e24"), Color("f2d24b"), 2))
+	t.set_stylebox("disabled", "Button", _riquadro(Color("4a4038"), Color("5a5048"), 2))
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
 	for nome in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
 		t.set_color(nome, "Button", TESTO)
@@ -224,20 +261,23 @@ static func crea_tema() -> Theme:
 	return t
 
 
-static func _riquadro(sfondo: Color, bordo: Color) -> StyleBoxFlat:
+static func _riquadro(sfondo: Color, bordo: Color, margine := 3) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = sfondo
 	s.border_color = bordo
 	s.set_border_width_all(1)
-	s.set_content_margin_all(3)
+	s.set_corner_radius_all(2)
+	s.set_content_margin_all(margine)
 	return s
 
 
-func _bottone(testo: String, larghezza := 0, altezza := 16) -> Button:
+func _bottone(testo: String, larghezza := 0, altezza := 16, motivo := "") -> Button:
 	var b := Button.new()
 	b.text = testo
 	b.custom_minimum_size = Vector2(larghezza, altezza)
 	b.focus_mode = Control.FOCUS_NONE
+	if motivo != "":
+		b.tooltip_text = motivo
 	return b
 
 
@@ -250,20 +290,23 @@ func _icona(chiave: String, lato := 10.0) -> Control:
 func _crea_barra() -> void:
 	var barra := PanelContainer.new()
 	barra.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	# la barra ha tante voci: un carattere un po' più piccolo perché ci stiano tutte
+	# la barra ha tante voci: font 8 (leggibile) e icone leggermente più piccole (8px)
+	# così tutto ci sta senza ridurre il testo sotto la soglia di leggibilità.
 	var tema_barra := crea_tema()
-	tema_barra.default_font_size = 7
+	tema_barra.default_font_size = 8
 	barra.theme = tema_barra
 	_radice.add_child(barra)
 	var riga := HBoxContainer.new()
 	riga.add_theme_constant_override("separation", 2)
 	barra.add_child(riga)
 	for chiave in GameState.RISORSE_VISIBILI + ["re", "abitanti", "disponibili", "felicita"]:
-		var icona := _icona(chiave)
+		var icona := _icona(chiave, 8.0)
 		_icone[chiave] = icona
 		riga.add_child(icona)
 		var l := Label.new()
 		l.custom_minimum_size.x = 16 if chiave != "abitanti" else 26
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		l.clip_text = true
 		l.tooltip_text = IconaRisorsa.NOMI.get(chiave, chiave)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		riga.add_child(l)
@@ -274,7 +317,8 @@ func _crea_barra() -> void:
 	_tempo = Label.new()
 	riga.add_child(_tempo)
 	for i in 4:
-		var b := _bottone(["||", "x1", "x2", "x3"][i], 14, 12)
+		var b := _bottone(["||", "x1", "x2", "x3"][i], 14, 12,
+			"Metti in pausa" if i == 0 else "Velocità x%d" % i)
 		b.toggle_mode = true
 		b.pressed.connect(_imposta_velocita.bind(i))
 		riga.add_child(b)
@@ -286,11 +330,11 @@ func _crea_lati() -> void:
 	sinistra.position = Vector2(4, 24)
 	_radice.add_child(sinistra)
 	for c in CATEGORIE:
-		var b := _bottone(c[0], 46, 30)
+		var b := _bottone(c[0], 46, 30, "Costruisci: %s" % c[0].to_lower())
 		b.pressed.connect(_apri_categoria.bind(c[1]))
 		sinistra.add_child(b)
 		_pulsanti[c[0]] = b
-	var strada := _bottone("Strade", 46, 30)
+	var strada := _bottone("Strade", 46, 30, "Traccia una strada (1 pietra per lato)")
 	_pulsanti["Strade"] = strada
 	strada.pressed.connect(func(): _chiudi_menu(); strade.emit())
 	sinistra.add_child(strada)
@@ -301,23 +345,23 @@ func _crea_lati() -> void:
 	destra.offset_right = -4
 	destra.offset_top = 24
 	_radice.add_child(destra)
-	var regno := _bottone("Regno", 46, 30)
+	var regno := _bottone("Regno", 46, 30, "Mappa del regno: spie, alleanze, attacchi")
 	_pulsanti["Regno"] = regno
 	regno.pressed.connect(func(): vai_al_regno.emit())
 	destra.add_child(regno)
-	var info := _bottone("Info", 46, 30)
+	var info := _bottone("Info", 46, 30, "Statistiche, tasse, opzioni")
 	_pulsanti["Info"] = info
 	info.pressed.connect(func(): _apri_finestra(_info))
 	destra.add_child(info)
-	var consiglio := _bottone("Consiglio", 46, 30)
+	var consiglio := _bottone("Consiglio", 46, 30, "I consiglieri e i loro pareri")
 	_pulsanti["Consiglio"] = consiglio
 	consiglio.pressed.connect(func(): _apri_finestra(_consiglio))
 	destra.add_child(consiglio)
-	var mercato := _bottone("Mercato", 46, 30)
+	var mercato := _bottone("Mercato", 46, 30, "Compra e vendi risorse")
 	_pulsanti["Mercato"] = mercato
 	mercato.pressed.connect(func(): _apri_finestra(_mercato))
 	destra.add_child(mercato)
-	var esercito := _bottone("Esercito", 46, 30)
+	var esercito := _bottone("Esercito", 46, 30, "Soldati, formazioni, missioni")
 	_pulsanti["Esercito"] = esercito
 	esercito.pressed.connect(func(): _apri_finestra(_esercito))
 	destra.add_child(esercito)
@@ -325,7 +369,8 @@ func _crea_lati() -> void:
 	giro.add_theme_constant_override("separation", 2)
 	destra.add_child(giro)
 	for verso in [-1, 1]:
-		var b := _bottone("<" if verso < 0 else ">", 22, 30)
+		var b := _bottone("<" if verso < 0 else ">", 22, 30,
+			"Ruota la vista a sinistra" if verso < 0 else "Ruota la vista a destra")
 		b.pressed.connect(func(): ruota.emit(verso))
 		giro.add_child(b)
 
@@ -339,7 +384,9 @@ func _apri_finestra(finestra: PanelContainer) -> void:
 	_aggiorna()
 
 
-## Cambiare coltura a un campo va confermato: si riparte dalla semina.
+# --- Conferma generica ---------------------------------------------------------
+
+## Pannello di conferma riusabile: serve sia per cambiare coltura sia per demolire.
 func _crea_conferma_coltura() -> void:
 	_conferma_coltura = PanelContainer.new()
 	_conferma_coltura.set_anchors_preset(Control.PRESET_CENTER)
@@ -356,18 +403,39 @@ func _crea_conferma_coltura() -> void:
 	var riga := HBoxContainer.new()
 	riga.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(riga)
-	var si := _bottone("Sì, cambia", 70, 18)
-	si.pressed.connect(func():
-		_conferma_coltura.visible = false
-		coltura.emit(_edificio, _coltura_scelta))
-	riga.add_child(si)
-	var no := _bottone("No", 50, 18)
-	no.pressed.connect(func():
-		_conferma_coltura.visible = false
-		_aggiorna())
-	riga.add_child(no)
+	_conferma_si = _bottone("Sì", 70, 18)
+	_conferma_si.pressed.connect(_conferma)
+	riga.add_child(_conferma_si)
+	_conferma_no = _bottone("No", 50, 18)
+	_conferma_no.pressed.connect(_chiudi_conferma)
+	riga.add_child(_conferma_no)
 
 
+## Mostra una conferma generica: testo + cosa fare se si conferma.
+## Usata per cambiare coltura e per demolire. Se l'azione è nulla, mostra solo un avviso.
+func _chiedi_conferma(testo: String, azione: Callable, etichetta_si := "Sì") -> void:
+	_conferma_testo.text = testo
+	_conferma_si.text = etichetta_si
+	_conferma_azione = azione
+	_conferma_coltura.visible = true
+
+
+func _conferma() -> void:
+	_conferma_coltura.visible = false
+	var a := _conferma_azione
+	_conferma_azione = Callable()
+	if a.is_valid():
+		a.call()
+	_aggiorna()
+
+
+func _chiudi_conferma() -> void:
+	_conferma_coltura.visible = false
+	_conferma_azione = Callable()
+	_aggiorna()
+
+
+## Cambiare coltura a un campo va confermato: si riparte dalla semina.
 func _chiedi_coltura(nome: String) -> void:
 	var b := GameState.trova(_edificio)
 	if b.is_empty():
@@ -382,10 +450,24 @@ func _chiedi_coltura(nome: String) -> void:
 		testo = "Cambiare la coltura da %s a %s?" % [GameState.colture[adesso].nome.to_lower(), GameState.colture[nome].nome.to_lower()]
 		if b.get("seminato", false):
 			testo += "\nIl campo è già seminato: il raccolto in corso andrà perso."
-	_conferma_testo.text = testo
-	_conferma_coltura.visible = true
-	_aggiorna()
+	_chiedi_conferma(testo, func(): coltura.emit(_edificio, nome), "Sì, cambia")
 
+
+## Chiede conferma prima di demolire un edificio (o rimuovere una strada/muro).
+func _chiedi_demolizione() -> void:
+	if _strada == "esistente":
+		_chiedi_conferma("Rimuovere %s?" % _strada_titolo.to_lower(),
+			func(): rimuovi_strada.emit(), "Sì, rimuovi")
+		return
+	var b := GameState.trova(_edificio)
+	if b.is_empty():
+		return
+	var nome: String = GameState.def_di(b).nome
+	_chiedi_conferma("Demolire %s?\nNon si può annullare." % nome.to_lower(),
+		func(): demolisci.emit(_edificio), "Sì, demolisci")
+
+
+# --- Esercito ------------------------------------------------------------------
 
 func _crea_esercito() -> void:
 	_esercito = PanelContainer.new()
@@ -418,7 +500,7 @@ func _crea_esercito() -> void:
 		arruola.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		arruola.pressed.connect(func(): GameState.arruola(tipo))
 		griglia.add_child(arruola)
-		var congeda := _bottone("Congeda", 0, 15)
+		var congeda := _bottone("Congeda", 0, 15, "Rimanda a casa i soldati di questo tipo")
 		congeda.pressed.connect(func(): GameState.congeda(tipo))
 		griglia.add_child(congeda)
 		_truppe_righe[tipo] = [numero, arruola, congeda]
@@ -461,7 +543,9 @@ func _aggiorna_esercito() -> void:
 			testo += " (%s)" % ", ".join(costo)
 		celle[1].text = testo
 		celle[1].disabled = perche != ""
+		celle[1].tooltip_text = perche if perche != "" else "Costo: %s" % ", ".join(costo)
 		celle[2].disabled = int(presenti.get(tipo, 0)) <= 0
+		celle[2].tooltip_text = "" if not celle[2].disabled else "Nessun soldato di questo tipo da congedare"
 
 
 func _crea_menu() -> void:
@@ -501,30 +585,26 @@ func _crea_pannello() -> void:
 	_dettagli.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_dettagli.custom_minimum_size.x = 280
 	testi.add_child(_dettagli)
-	_btn_meno = _bottone("-", 18, 18)
+	_btn_meno = _bottone("-", 18, 18, "Togli un lavoratore")
 	_btn_meno.pressed.connect(func(): cambia_lavoratori.emit(_edificio, -1))
-	_btn_piu = _bottone("+", 18, 18)
+	_btn_piu = _bottone("+", 18, 18, "Aggiungi un lavoratore")
 	_btn_piu.pressed.connect(func(): cambia_lavoratori.emit(_edificio, 1))
-	_btn_demolisci = _bottone("Demolisci", 0, 18)
-	_btn_demolisci.pressed.connect(func():
-		if _strada == "esistente":
-			rimuovi_strada.emit()
-		else:
-			demolisci.emit(_edificio))
-	_btn_migliora = _bottone("Migliora", 0, 18)
+	_btn_demolisci = _bottone("Demolisci", 0, 18, "Demolisci l'edificio (chiede conferma)")
+	_btn_demolisci.pressed.connect(_chiedi_demolizione)
+	_btn_migliora = _bottone("Migliora", 0, 18, "Passa al livello successivo")
 	_btn_migliora.pressed.connect(func(): migliora.emit(_edificio))
-	_btn_ruota = _bottone("Ruota", 0, 18)
+	_btn_ruota = _bottone("Ruota", 0, 18, "Ruota l'edificio di 90°")
 	_btn_ruota.pressed.connect(func(): ruota_edificio.emit())
-	_btn_ok = _bottone("Costruisci", 0, 18)
+	_btn_ok = _bottone("Costruisci", 0, 18, "Conferma il piazzamento")
 	_btn_ok.pressed.connect(func(): conferma_piazzamento.emit())
-	_btn_annulla = _bottone("Annulla", 0, 18)
+	_btn_annulla = _bottone("Annulla", 0, 18, "Annulla il piazzamento (o premi ESC)")
 	_btn_annulla.pressed.connect(func(): annulla_piazzamento.emit())
-	_btn_chiudi = _bottone("X", 18, 18)
+	_btn_chiudi = _bottone("X", 18, 18, "Chiudi (o premi ESC)")
 	_btn_chiudi.pressed.connect(func(): chiudi_pannello.emit())
 	_btn_chiudi.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	sopra.add_child(_btn_chiudi)
 	for nome in GameState.nomi_colture():
-		var bc := _bottone(GameState.colture[nome].nome, 0, 18)
+		var bc := _bottone(GameState.colture[nome].nome, 0, 18, "Coltiva %s in questo campo" % GameState.colture[nome].nome.to_lower())
 		bc.toggle_mode = true
 		bc.pressed.connect(_chiedi_coltura.bind(nome))
 		_btn_colture[nome] = bc
@@ -554,7 +634,8 @@ func _crea_info() -> void:
 	l.text = "Tasse:"
 	riga.add_child(l)
 	for livello in ["basse", "normali", "alte"]:
-		var b := _bottone(livello.capitalize(), 40)
+		var b := _bottone(livello.capitalize(), 40,
+			"", "Tasse %s: più oro, ma la felicità scende" % livello if livello != "normali" else "Tasse normali: equilibrio")
 		b.toggle_mode = true
 		b.pressed.connect(func(): GameState.tasse = livello; _aggiorna())
 		riga.add_child(b)
@@ -566,7 +647,7 @@ func _crea_info() -> void:
 		var n := Label.new()
 		n.text = IconaRisorsa.NOMI.get(chiave, chiave).split(" ")[0].to_lower()
 		legenda.add_child(n)
-	_btn_suggerimenti = _bottone("", 0, 16)
+	_btn_suggerimenti = _bottone("", 0, 16, "Mostra un suggerimento ogni tanto")
 	_btn_suggerimenti.toggle_mode = true
 	_btn_suggerimenti.pressed.connect(func():
 		GameState.imposta_opzione("suggerimenti", _btn_suggerimenti.button_pressed)
@@ -575,12 +656,13 @@ func _crea_info() -> void:
 	var audio := HBoxContainer.new()
 	col.add_child(audio)
 	for chiave in ["musica", "effetti"]:
-		var b := _bottone("Musica" if chiave == "musica" else "Effetti sonori", 0, 16)
+		var b := _bottone("Musica" if chiave == "musica" else "Effetti sonori", 0, 16,
+			"Attiva o disattiva la musica" if chiave == "musica" else "Attiva o disattiva gli effetti sonori")
 		b.toggle_mode = true
 		b.button_pressed = GameState.opzioni[chiave]
 		b.toggled.connect(func(v): GameState.imposta_opzione(chiave, v))
 		audio.add_child(b)
-	var tutorial := _bottone("Rivedi il tutorial", 0, 16)
+	var tutorial := _bottone("Rivedi il tutorial", 0, 16, "Ricomincia il tutorial dall'inizio")
 	tutorial.pressed.connect(func(): _info.visible = false; GameState.inizia_tutorial())
 	col.add_child(tutorial)
 	var chiudi := _bottone("Chiudi")
@@ -641,6 +723,7 @@ func _crea_mercato() -> void:
 	col.add_child(_mercato_notizia)
 	_btn_auto = _bottone("Automatico", 0, 14)
 	_btn_auto.toggle_mode = true
+	_btn_auto.tooltip_text = "Compra e vendi da solo secondo le soglie che imposti"
 	_btn_auto.toggled.connect(func(v): _mercato_manuale.visible = not v; _mercato_auto.visible = v; _aggiorna())
 	col.add_child(_btn_auto)
 	var griglia := GridContainer.new()
@@ -658,9 +741,11 @@ func _crea_mercato() -> void:
 		griglia.add_child(nome)
 		var scorta := Label.new()
 		scorta.custom_minimum_size.x = 28
+		scorta.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		griglia.add_child(scorta)
 		var tendenza := Label.new()
 		tendenza.custom_minimum_size.x = 30
+		tendenza.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		griglia.add_child(tendenza)
 		var compra := _bottone("", 100, 14)
 		compra.pressed.connect(func(): Audio.effetto("moneta" if GameState.compra(r) else "errore"))
@@ -701,13 +786,14 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 		griglia.add_child(nome)
 		var scorta := Label.new()
 		scorta.custom_minimum_size.x = 26
+		scorta.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		griglia.add_child(scorta)
 		var vuoto := Control.new()
 		vuoto.custom_minimum_size.x = 16
 		griglia.add_child(vuoto)
 		var celle := [scorta]
 		for chiave in ["vendi_sopra", "compra_sotto"]:
-			var meno := _bottone("−", 16, 13)
+			var meno := _bottone("−", 16, 13, "Soglia più bassa")
 			meno.pressed.connect(_soglia.bind(r, chiave, -1))
 			griglia.add_child(meno)
 			var valore := Label.new()
@@ -715,7 +801,7 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 			valore.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			griglia.add_child(valore)
 			celle.append(valore)
-			var piu := _bottone("+", 16, 13)
+			var piu := _bottone("+", 16, 13, "Soglia più alta")
 			piu.pressed.connect(_soglia.bind(r, chiave, 1))
 			griglia.add_child(piu)
 		_mercato_auto_righe[r] = celle
@@ -724,14 +810,14 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 	var l2 := Label.new()
 	l2.text = "Oro da tenere sempre da parte:"
 	riga.add_child(l2)
-	var meno_r := _bottone("−", 16, 13)
+	var meno_r := _bottone("−", 16, 13, "Tieni da parte meno oro")
 	meno_r.pressed.connect(func(): GameState.riserva_oro = maxi(0, GameState.riserva_oro - 10); _aggiorna())
 	riga.add_child(meno_r)
 	_riserva = Label.new()
 	_riserva.custom_minimum_size.x = 30
 	_riserva.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	riga.add_child(_riserva)
-	var piu_r := _bottone("+", 16, 13)
+	var piu_r := _bottone("+", 16, 13, "Tieni da parte più oro")
 	piu_r.pressed.connect(func(): GameState.riserva_oro += 10; _aggiorna())
 	riga.add_child(piu_r)
 
@@ -756,26 +842,35 @@ func _aggiorna_mercato() -> void:
 		celle[1].text = str(int(a.get("vendi_sopra", 0))) if int(a.get("vendi_sopra", 0)) > 0 else "—"
 		celle[2].text = str(int(a.get("compra_sotto", 0))) if int(a.get("compra_sotto", 0)) > 0 else "—"
 	_riserva.text = str(GameState.riserva_oro)
-	_btn_auto.disabled = not GameState.ha_mercato()
-	_btn_auto.text = "Automatico" if GameState.ha_mercato() else "Automatico (serve un edificio mercato)"
-	if not GameState.ha_mercato() and _btn_auto.button_pressed:
+	var ha := GameState.ha_mercato()
+	_btn_auto.disabled = not ha
+	_btn_auto.text = "Automatico" if ha else "Automatico 🔒"
+	_btn_auto.tooltip_text = "Compra e vendi da solo secondo le soglie che imposti" if ha \
+		else "Serve un edificio mercato per attivare il commercio automatico"
+	if not ha and _btn_auto.button_pressed:
 		_btn_auto.button_pressed = false
 	_mercato_notizia.text = "Mercato del regno · %s" % m.notizia()
 	var lotto := m.lotto()
 	for r in _mercato_righe:
 		var riga: Array = _mercato_righe[r]
 		riga[0].text = str(int(GameState.risorse.get(r, 0.0)))
+		# frecce ▲▼ con colore semantico (rosso = sale, verde = scende)
 		var t := m.tendenza(r, GameState.stagione)
-		riga[1].text = "sale" if t > 0 else ("scende" if t < 0 else "")
-		riga[1].add_theme_color_override("font_color", TESTO_ALLARME if t > 0 else Color("9fd18b"))
+		riga[1].text = "▲" if t > 0 else ("▼" if t < 0 else "—")
+		riga[1].add_theme_color_override("font_color", COLORE_ERRORE if t > 0 else (COLORE_OK if t < 0 else Color(1, 1, 1, 0.4)))
 		var costo := GameState.costo_lotto(r)
 		var ricavo := GameState.ricavo_lotto(r)
-		riga[2].text = "Compra %d · %d oro" % [lotto, costo]
+		var unit := float(costo) / lotto
+		riga[2].text = "Compra %d · %d oro (%.1f/u)" % [lotto, costo, unit]
 		riga[2].disabled = GameState.risorse.oro < costo or GameState.risorse[r] + lotto > GameState.capacita()
-		riga[3].text = "Vendi %d · %d oro" % [lotto, ricavo]
+		riga[2].tooltip_text = "Non hai abbastanza oro" if GameState.risorse.oro < costo \
+			else ("Magazzino pieno: %d/%d" % [GameState.risorse[r], GameState.capacita()] if GameState.risorse[r] + lotto > GameState.capacita() else "")
+		var unit_v := float(ricavo) / lotto
+		riga[3].text = "Vendi %d · %d oro (%.1f/u)" % [lotto, ricavo, unit_v]
 		riga[3].disabled = GameState.risorse[r] < lotto
+		riga[3].tooltip_text = "Ti servono almeno %d %s" % [lotto, NOMI_RISORSE.get(r, r).to_lower()] if riga[3].disabled else ""
 	_mercato_nota.text = "Hai %d oro. Con un mercato costruito si compra e si vende a prezzi migliori." % int(GameState.risorse.oro) \
-		if not GameState.ha_mercato() else "Hai %d oro. Il tuo mercato ti fa avere prezzi migliori." % int(GameState.risorse.oro)
+		if not ha else "Hai %d oro. Il tuo mercato ti fa avere prezzi migliori." % int(GameState.risorse.oro)
 
 
 func _nuovo_consiglio(famiglia: int, testo: String) -> void:
@@ -806,7 +901,7 @@ func _crea_allarme() -> void:
 	_allarme.offset_left = -170
 	_allarme.offset_right = 170
 	_allarme.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_allarme.add_theme_color_override("font_color", Color("ffb0a0"))
+	_allarme.add_theme_color_override("font_color", COLORE_ERRORE.lightened(0.25))
 	_allarme.add_theme_color_override("font_outline_color", Color("3a0a08"))
 	_allarme.add_theme_constant_override("outline_size", 3)
 	_allarme.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -829,7 +924,7 @@ func _crea_fine() -> void:
 	_fine_testo = Label.new()
 	_fine_testo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(_fine_testo)
-	var b := _bottone("Nuova partita", 0, 20)
+	var b := _bottone("Nuova partita", 0, 20, "Ricomincia da capo")
 	b.pressed.connect(func(): nuova_partita.emit())
 	col.add_child(b)
 
@@ -849,29 +944,35 @@ func _aggiorna() -> void:
 		var allarme := delta < 0.0 and valore / -delta < 2.0 * tps
 		if r == "cibo" and GameState.tick_fame > 0:
 			allarme = true
-		_numeri[r].add_theme_color_override("font_color", TESTO_ALLARME if allarme else TESTO)
+		_numeri[r].add_theme_color_override("font_color", COLORE_ERRORE if allarme else TESTO)
+		# tooltip ricco, aggiornato a ogni refresh
+		var nome := NOMI_RISORSE.get(r, r)
+		_numeri[r].tooltip_text = "%s\nHai: %d\nVariazione: %+.1f a stagione" % [nome, int(valore), delta * tps]
 	_numeri.abitanti.text = "%d/%d" % [GameState.abitanti, GameState.alloggi()]
-	_numeri.abitanti.add_theme_color_override("font_color", TESTO_ALLARME if GameState.senza_casa() > 0 else TESTO)
+	_numeri.abitanti.add_theme_color_override("font_color", COLORE_ERRORE if GameState.senza_casa() > 0 else TESTO)
+	_numeri.abitanti.tooltip_text = "Abitanti: %d\nPosti letto: %d\nSenza casa: %d" % [GameState.abitanti, GameState.alloggi(), GameState.senza_casa()]
 	_numeri.disponibili.text = str(GameState.disoccupati())
+	_numeri.disponibili.tooltip_text = "Persone senza lavoro: %d\nServono case e posti di lavoro" % GameState.disoccupati()
 	# il re: quanto vuole in autunno, oppure (da indipendenti) cosa pensa di noi
 	if GameState.indipendente():
 		var cosa := GameState.testo_atteggiamento(GameState.re_atteggiamento)
 		_numeri.re.text = {"amichevole": "amico", "tranquillo": "calmo", "diffidente": "diffida", "ostile": "ostile"}.get(cosa, cosa)
 		_numeri.re.tooltip_text = "Siamo un borgo libero: niente tasse al re, che è %s verso di noi" % cosa
-		_numeri.re.add_theme_color_override("font_color", TESTO_ALLARME if GameState.re_atteggiamento <= -60 else TESTO)
+		_numeri.re.add_theme_color_override("font_color", COLORE_ERRORE if GameState.re_atteggiamento <= -60 else TESTO)
 	else:
 		var dovuto := GameState.tassa_del_re()
 		var quando := GameState.stagioni_al_re()
 		_numeri.re.text = str(dovuto)
 		_numeri.re.tooltip_text = "Tassa al re: %d oro %s" % [dovuto, "a fine stagione" if quando == 0 else "tra %d stagion%s, in autunno" % [quando, "e" if quando == 1 else "i"]]
-		_numeri.re.add_theme_color_override("font_color", TESTO_ALLARME if GameState.risorse.oro < dovuto else TESTO)
+		_numeri.re.add_theme_color_override("font_color", COLORE_ERRORE if GameState.risorse.oro < dovuto else TESTO)
 	_numeri.felicita.text = str(int(GameState.felicita))
+	_numeri.felicita.tooltip_text = "Felicità: %d/100\nSotto 35 la gente se ne va" % int(GameState.felicita)
 	_allarme.visible = not GameState.banditi.is_empty()
 	if _allarme.visible:
 		var dif: Dictionary = GameState.difesa()
 		_allarme.text = "Banditi da %s tra %d giorni · loro %d, noi %d" % [GameState.banditi.da, int(GameState.banditi.mancano),
 			roundi(GameState.banditi.forza), roundi(dif.totale)]
-	_numeri.felicita.add_theme_color_override("font_color", TESTO_ALLARME if GameState.felicita < 35.0 else TESTO)
+	_numeri.felicita.add_theme_color_override("font_color", COLORE_ERRORE if GameState.felicita < 35.0 else TESTO)
 	(_icone.felicita.get_child(0) as IconaRisorsa).imposta_valore(GameState.felicita)
 	_tempo.text = "%s, anno %d" % [GameState.STAGIONI[GameState.stagione], GameState.anno]
 	for i in _velocita.size():
@@ -958,14 +1059,17 @@ func _riempi_menu() -> void:
 			b.text = "Mura in pietra  ·  %d pietra per cella" % TerrenoFeudo.COSTO_MURA if GameState.livello >= dal \
 				else "Mura in pietra  (serve %s)" % GameState.bil.livelli[dal].nome
 			b.disabled = GameState.livello < dal
+			b.tooltip_text = "" if not b.disabled else "Serve il livello %s" % GameState.bil.livelli[dal].nome
 			continue
 		var d: Dictionary = GameState.edifici[tipo]
 		if GameState.sbloccato(tipo):
 			b.text = "%s  ·  %s" % [d.nome, GameState.testo_costo(tipo)]
 			b.disabled = not GameState.puo_permettersi(tipo)
+			b.tooltip_text = "" if not b.disabled else "Non hai abbastanza risorse"
 		else:
 			b.text = "%s  (serve %s)" % [d.nome, GameState.bil.livelli[int(d.livello)].nome]
 			b.disabled = true
+			b.tooltip_text = "Serve il livello %s" % GameState.bil.livelli[int(d.livello)].nome
 
 
 const MURA := "__mura"
@@ -982,6 +1086,8 @@ func _scegli_dal_menu(b: Button) -> void:
 func _aggiorna_pannello() -> void:
 	for x in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla, _btn_chiudi] + _btn_colture.values():
 		x.visible = false
+	# la X (chiudi) è sempre visibile quando c'è un pannello: piazzamento, strada o edificio
+	_btn_chiudi.visible = true
 	if _strada != "":
 		_pannello.visible = true
 		_titolo.text = _strada_titolo
@@ -993,11 +1099,11 @@ func _aggiorna_pannello() -> void:
 				_dettagli.text = "Le strade corrono sui bordi delle celle e partono da falò o piazza, dimora o torri di guardia. La gente ci cammina; chi non è collegato lavora il 2% in meno."
 			_btn_demolisci.text = "Rimuovi"
 			_btn_demolisci.visible = true
-			_btn_chiudi.visible = true
 		else:
 			_dettagli.text = _strada_testo
 			_btn_ok.visible = true
 			_btn_ok.disabled = not _strada_valida
+			_btn_ok.tooltip_text = "" if _strada_valida else "Percorso non valido: controlla il messaggio sotto"
 			_btn_annulla.visible = true
 		return
 	_btn_demolisci.text = "Demolisci"
@@ -1008,7 +1114,9 @@ func _aggiorna_pannello() -> void:
 		if _piazzamento_valido and _stima_piazzamento != "":
 			_dettagli.text = _stima_piazzamento
 		_btn_ok.visible = true
-		_btn_ok.disabled = not (_piazzamento_valido and GameState.puo_permettersi(_piazzamento))
+		var puo := _piazzamento_valido and GameState.puo_permettersi(_piazzamento)
+		_btn_ok.disabled = not puo
+		_btn_ok.tooltip_text = "" if puo else ("Posizione non valida" if not _piazzamento_valido else "Non hai abbastanza risorse")
 		_btn_ruota.visible = true
 		_btn_annulla.visible = true
 		_pannello.visible = true
@@ -1020,7 +1128,6 @@ func _aggiorna_pannello() -> void:
 	var d := GameState.def_di(b)
 	_pannello.visible = true
 	_btn_demolisci.visible = not d.get("fisso", false)
-	_btn_chiudi.visible = true
 	if b.progresso < 1.0:
 		_titolo.text = "%s  ·  in costruzione %d%%" % [d.nome, int(b.progresso * 100)]
 		_dettagli.text = GameState.testo_effetto(b.tipo)
@@ -1040,6 +1147,7 @@ func _aggiorna_pannello() -> void:
 		_btn_migliora.visible = true
 		_btn_migliora.text = "Migliora (%s)" % GameState._elenco(prossimo.costo)
 		_btn_migliora.disabled = not GameState.puo_migliorare(b)
+		_btn_migliora.tooltip_text = "" if not _btn_migliora.disabled else "Non hai abbastanza risorse"
 		testo += "\nProssimo livello: %s" % prossimo.nome
 	if d.has("arcieri"):
 		testo = "Arcieri sulla torre: %d su %d. Tirano ai banditi che passano entro %d celle (riquadro giallo); se il centro del borgo è nel raggio combattono anche lì (%d ciascuno, x%.1f con le armi). Avvistano i banditi prima. Se un arciere muore, ne sale uno nuovo a ogni stagione." % [
@@ -1060,6 +1168,7 @@ func _aggiorna_pannello() -> void:
 		_btn_meno.disabled = b.lavoratori == 0
 		_btn_piu.visible = true
 		_btn_piu.disabled = b.lavoratori >= int(d.lavoratori) or GameState.disoccupati() == 0
+		_btn_piu.tooltip_text = "" if not _btn_piu.disabled else ("Tutti i posti sono occupati" if b.lavoratori >= int(d.lavoratori) else "Nessun disoccupato disponibile")
 	_dettagli.text = testo
 
 
@@ -1124,7 +1233,7 @@ func _aggiorna_info() -> void:
 ## Il riquadro del tutorial, in alto a destra: un passo alla volta. Il pulsante da usare lampeggia.
 func _crea_tutorial() -> void:
 	_tutorial = PanelContainer.new()
-	_tutorial.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e")))
+	_tutorial.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e"), 4))
 	_tutorial.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_tutorial.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_tutorial.offset_right = -54
@@ -1149,10 +1258,10 @@ func _crea_tutorial() -> void:
 	var riga := HBoxContainer.new()
 	riga.alignment = BoxContainer.ALIGNMENT_END
 	col.add_child(riga)
-	var salta := _bottone("Salta", 0, 12)
+	var salta := _bottone("Salta", 0, 12, "Salta il tutorial")
 	salta.pressed.connect(func(): GameState.salta_tutorial())
 	riga.add_child(salta)
-	_tutorial_avanti = _bottone("Avanti", 0, 12)
+	_tutorial_avanti = _bottone("Avanti", 0, 12, "Vai al passo successivo")
 	_tutorial_avanti.pressed.connect(func(): GameState.avanti_tutorial())
 	riga.add_child(_tutorial_avanti)
 
@@ -1187,7 +1296,7 @@ func _crea_carta() -> void:
 	_carta.set_anchors_preset(Control.PRESET_CENTER)
 	_carta.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_carta.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_carta.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e")))
+	_carta.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e"), 6))
 	_carta.visible = false
 	_radice.add_child(_carta)
 	var col := VBoxContainer.new()
@@ -1238,6 +1347,7 @@ func _mostra_carta(carta: Dictionary) -> void:
 		b.disabled = not GameState.scelta_possibile(i)
 		if b.disabled:
 			b.text += " · non abbiamo abbastanza"
+			b.tooltip_text = "Non hai abbastanza risorse per questa scelta"
 		b.pressed.connect(func():
 			_carta.visible = false
 			GameState.scegli_evento(i))
