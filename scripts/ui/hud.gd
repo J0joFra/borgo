@@ -11,6 +11,7 @@ signal annulla_piazzamento
 signal cambia_lavoratori(id: int, delta: int)
 signal demolisci(id: int)
 signal migliora(id: int)
+signal collega(id: int)
 signal coltura(id: int, nome: String)
 signal strade
 signal mura
@@ -39,7 +40,13 @@ const COLORE_OK := Color("9fd18b")
 const COLORE_ATTENZIONE := Color("f2d24b")
 const COLORE_ERRORE := Color("ff6b5b")
 const COLORE_INFO := Color("a0c0e0")
-const TESTO := Color("f3e3c3")
+const TESTO := Color("ece6da")
+const TESTO_SPENTO := Color(0.93, 0.9, 0.85, 0.38)
+const ORO := Color("e8c060")
+# stile scuro minimale: pannelli semitrasparenti, angoli tondi, accento oro
+const FONDO := Color(0.075, 0.085, 0.105, 0.9)
+const FONDO_CAPSULA := Color(0.075, 0.085, 0.105, 0.78)
+const BORDO := Color(1, 1, 1, 0.07)
 const TESTO_ALLARME := COLORE_ERRORE  # alias storico
 
 # --- Margini uniformi (in pixel base 480×270) -----------------------------------
@@ -63,7 +70,7 @@ var _truppe_righe: Dictionary = {}
 var _mercato_notizia: Label
 var _mercato_righe: Dictionary = {}
 var _mercato_nota: Label
-var _mercato_manuale: GridContainer
+var _mercato_manuale: Control
 var _mercato_auto: VBoxContainer
 var _mercato_auto_righe: Dictionary = {}
 var _riserva: Label
@@ -83,6 +90,8 @@ var _lampeggia: Tween
 var _btn_suggerimenti: Button
 var _tempo: Label
 var _velocita: Array[Button] = []
+var _nome_pulsante: PanelContainer
+var _nome_testo: Label
 var _menu: PanelContainer
 var _menu_lista: VBoxContainer
 var _categoria_aperta := ""
@@ -93,6 +102,7 @@ var _btn_meno: Button
 var _btn_piu: Button
 var _btn_demolisci: Button
 var _btn_migliora: Button
+var _btn_collega: Button
 var _btn_ok: Button
 var _btn_annulla: Button
 var _btn_chiudi: Button
@@ -246,29 +256,53 @@ func mostra_avviso(testo: String, durata := 3.5) -> void:
 static func crea_tema() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 8
-	t.set_stylebox("panel", "PanelContainer", _riquadro(Color("3b2a1e"), Color("6b4a2e"), 6))
-	t.set_stylebox("normal", "Button", _riquadro(Color("7a5634"), Color("a0784a"), 2))
-	t.set_stylebox("hover", "Button", _riquadro(Color("8a6440"), Color("c09060"), 2))
-	t.set_stylebox("pressed", "Button", _riquadro(Color("5a3e24"), Color("f2d24b"), 2))
-	t.set_stylebox("hover_pressed", "Button", _riquadro(Color("5a3e24"), Color("f2d24b"), 2))
-	t.set_stylebox("disabled", "Button", _riquadro(Color("4a4038"), Color("5a5048"), 2))
+	t.set_stylebox("panel", "PanelContainer", _riquadro(FONDO, BORDO, 6, 8, true))
+	# pieni (non trasparenti): si leggono anche sopra il cielo chiaro del menu e della battaglia
+	t.set_stylebox("normal", "Button", _riquadro(Color(0.17, 0.18, 0.21, 0.95), Color(1, 1, 1, 0.07), 3, 5))
+	t.set_stylebox("hover", "Button", _riquadro(Color(0.23, 0.24, 0.28, 0.95), Color(1, 1, 1, 0.14), 3, 5))
+	t.set_stylebox("pressed", "Button", _riquadro(Color(0.22, 0.19, 0.12, 0.96), ORO, 3, 5))
+	t.set_stylebox("hover_pressed", "Button", _riquadro(Color(0.26, 0.22, 0.13, 0.96), ORO, 3, 5))
+	t.set_stylebox("disabled", "Button", _riquadro(Color(0.13, 0.14, 0.16, 0.8), Color(1, 1, 1, 0.03), 3, 5))
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
-	for nome in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
+	for nome in ["font_color", "font_hover_color", "font_focus_color"]:
 		t.set_color(nome, "Button", TESTO)
-	t.set_color("font_disabled_color", "Button", Color("8a8070"))
+	t.set_color("font_pressed_color", "Button", ORO)
+	t.set_color("font_hover_pressed_color", "Button", ORO)
+	t.set_color("font_disabled_color", "Button", TESTO_SPENTO)
 	t.set_color("font_color", "Label", TESTO)
 	t.set_constant("separation", "VBoxContainer", SEPARAZIONE)
 	t.set_constant("separation", "HBoxContainer", SEPARAZIONE)
+	# pulsanti tondi a icona (lati, velocità)
+	t.set_type_variation("Tondo", "Button")
+	t.set_stylebox("normal", "Tondo", _riquadro(FONDO_CAPSULA, BORDO, 0, 99, true))
+	t.set_stylebox("hover", "Tondo", _riquadro(Color(0.16, 0.17, 0.2, 0.9), Color(1, 1, 1, 0.14), 0, 99, true))
+	t.set_stylebox("pressed", "Tondo", _riquadro(Color(0.2, 0.17, 0.1, 0.92), ORO, 0, 99, true))
+	t.set_stylebox("hover_pressed", "Tondo", _riquadro(Color(0.2, 0.17, 0.1, 0.92), ORO, 0, 99, true))
+	t.set_stylebox("disabled", "Tondo", _riquadro(Color(0.075, 0.085, 0.105, 0.5), BORDO, 0, 99))
+	# capsule della barra in alto
+	t.set_type_variation("Capsula", "PanelContainer")
+	t.set_stylebox("panel", "Capsula", _riquadro(FONDO_CAPSULA, BORDO, 2, 99, true))
+	# barre di scorrimento sottili
+	var sb := _riquadro(Color(1, 1, 1, 0.05), Color(0, 0, 0, 0), 0, 3)
+	t.set_stylebox("scroll", "VScrollBar", sb)
+	t.set_stylebox("grabber", "VScrollBar", _riquadro(Color(1, 1, 1, 0.25), Color(0, 0, 0, 0), 0, 3))
+	t.set_stylebox("grabber_highlight", "VScrollBar", _riquadro(Color(ORO, 0.6), Color(0, 0, 0, 0), 0, 3))
+	t.set_stylebox("grabber_pressed", "VScrollBar", _riquadro(ORO, Color(0, 0, 0, 0), 0, 3))
 	return t
 
 
-static func _riquadro(sfondo: Color, bordo: Color, margine := 3) -> StyleBoxFlat:
+static func _riquadro(sfondo: Color, bordo: Color, margine := 3, raggio := 2, ombra := false) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = sfondo
 	s.border_color = bordo
 	s.set_border_width_all(1)
-	s.set_corner_radius_all(2)
+	s.set_corner_radius_all(raggio)
 	s.set_content_margin_all(margine)
+	s.anti_aliasing = true
+	if ombra:
+		s.shadow_color = Color(0, 0, 0, 0.28)
+		s.shadow_size = 3
+		s.shadow_offset = Vector2(0, 1)
 	return s
 
 
@@ -280,6 +314,57 @@ func _bottone(testo: String, larghezza := 0, altezza := 16, motivo := "") -> But
 	if motivo != "":
 		b.tooltip_text = motivo
 	return b
+
+
+## Un pulsante tondo con solo l'icona: il nome compare tenendolo premuto (o col mouse sopra).
+func _bottone_icona(icona: String, nome: String, motivo := "", lato := 24) -> Button:
+	var b := Button.new()
+	b.theme_type_variation = "Tondo"
+	b.custom_minimum_size = Vector2(lato, lato)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	b.focus_mode = Control.FOCUS_NONE
+	var ic := IconaUi.new(icona, lato * 0.6)
+	ic.set_anchors_preset(Control.PRESET_CENTER)
+	ic.offset_left = -lato * 0.3
+	ic.offset_top = -lato * 0.3
+	ic.offset_right = lato * 0.3
+	ic.offset_bottom = lato * 0.3
+	b.add_child(ic)
+	var testo := nome if motivo == "" else "%s · %s" % [nome, motivo]
+	b.button_down.connect(_mostra_nome.bind(b, testo))
+	b.button_up.connect(_nascondi_nome)
+	b.mouse_entered.connect(_mostra_nome.bind(b, testo))
+	b.mouse_exited.connect(_nascondi_nome)
+	return b
+
+
+## Il nome di un pulsante a icona, accanto al pulsante (verso il centro dello schermo).
+func _mostra_nome(b: Button, testo: String) -> void:
+	if _nome_pulsante == null:
+		_nome_pulsante = PanelContainer.new()
+		_nome_pulsante.theme_type_variation = "Capsula"
+		_nome_pulsante.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_nome_pulsante.z_index = 10
+		_nome_testo = Label.new()
+		_nome_testo.add_theme_font_size_override("font_size", 7)
+		_nome_pulsante.add_child(_nome_testo)
+		_radice.add_child(_nome_pulsante)
+	_nome_testo.text = "  %s  " % testo
+	_nome_pulsante.reset_size()
+	var r := b.get_global_rect()
+	var schermo := _radice.get_viewport_rect().size
+	var x := r.end.x + 3.0 if r.get_center().x < schermo.x / 2.0 else r.position.x - 3.0 - _nome_pulsante.get_combined_minimum_size().x
+	var y := r.get_center().y - _nome_pulsante.get_combined_minimum_size().y / 2.0
+	if r.get_center().y < 30.0:
+		x = clampf(r.get_center().x - _nome_pulsante.get_combined_minimum_size().x / 2.0, 2.0, schermo.x - 2.0 - _nome_pulsante.get_combined_minimum_size().x)
+		y = r.end.y + 3.0
+	_nome_pulsante.position = Vector2(x, y)
+	_nome_pulsante.visible = true
+
+
+func _nascondi_nome() -> void:
+	if _nome_pulsante:
+		_nome_pulsante.visible = false
 
 
 func _icona(chiave: String, lato := 10.0) -> Control:
@@ -306,6 +391,7 @@ func _pannello_centrale(titolo: String) -> Array:
 		var t := Label.new()
 		t.text = titolo
 		t.add_theme_font_size_override("font_size", 10)
+		t.add_theme_color_override("font_color", ORO)
 		col.add_child(t)
 	return [pannello, col]
 
@@ -313,45 +399,65 @@ func _pannello_centrale(titolo: String) -> Array:
 # --- Barra risorse ----------------------------------------------------------------
 
 func _crea_barra() -> void:
-	var barra := PanelContainer.new()
-	barra.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	# margini interni: 2px come da base 480×270
-	var sb := _riquadro(Color("3b2a1e"), Color("6b4a2e"), MARGINE_BARRA)
-	barra.add_theme_stylebox_override("panel", sb)
-	_radice.add_child(barra)
+	# due capsule sospese sopra la mappa: risorse a sinistra, tempo e velocità a destra
+	var mc := MarginContainer.new()
+	mc.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	mc.add_theme_constant_override("margin_left", MARGINE)
+	mc.add_theme_constant_override("margin_right", MARGINE)
+	mc.add_theme_constant_override("margin_top", MARGINE)
+	mc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(mc)
 	var riga := HBoxContainer.new()
-	riga.add_theme_constant_override("separation", SEPARAZIONE)
-	barra.add_child(riga)
+	riga.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mc.add_child(riga)
+	var sinistra := PanelContainer.new()
+	sinistra.theme_type_variation = "Capsula"
+	riga.add_child(sinistra)
+	var risorse := HBoxContainer.new()
+	risorse.add_theme_constant_override("separation", 5)
+	sinistra.add_child(risorse)
 	for chiave in GameState.RISORSE_VISIBILI + ["re", "abitanti", "disponibili", "felicita"]:
+		var chip := HBoxContainer.new()
+		chip.add_theme_constant_override("separation", 2)
+		risorse.add_child(chip)
 		var icona := _icona(chiave, 8.0)
 		_icone[chiave] = icona
-		riga.add_child(icona)
+		chip.add_child(icona)
 		var l := Label.new()
-		l.custom_minimum_size.x = 16 if chiave != "abitanti" else 26
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		l.clip_text = true
+		l.custom_minimum_size.x = 0 if chiave != "abitanti" else 20
+		l.add_theme_font_size_override("font_size", 7)
 		l.tooltip_text = IconaRisorsa.NOMI.get(chiave, chiave)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
-		riga.add_child(l)
+		chip.add_child(l)
 		_numeri[chiave] = l
 	var spazio := Control.new()
 	spazio.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spazio.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	riga.add_child(spazio)
+	var destra := PanelContainer.new()
+	destra.theme_type_variation = "Capsula"
+	riga.add_child(destra)
+	var tempo := HBoxContainer.new()
+	tempo.add_theme_constant_override("separation", 2)
+	destra.add_child(tempo)
 	_tempo = Label.new()
-	riga.add_child(_tempo)
+	_tempo.add_theme_font_size_override("font_size", 7)
+	tempo.add_child(_tempo)
 	for i in 4:
-		var b := _bottone(["||", "x1", "x2", "x3"][i], 14, 12,
-			"Metti in pausa" if i == 0 else "Velocità x%d" % i)
+		var b := _bottone_icona(["pausa", "x1", "x2", "x3"][i], "Pausa" if i == 0 else "Velocità x%d" % i, "", 12)
 		b.toggle_mode = true
 		b.pressed.connect(_imposta_velocita.bind(i))
-		riga.add_child(b)
+		tempo.add_child(b)
 		_velocita.append(b)
 
 
 # --- Lati -------------------------------------------------------------------------
 
+const ICONE_CATEGORIE := {"case": "case", "risorse": "risorse", "cibo": "cibo", "servizi": "servizi", "difese": "difese"}
+
+
 func _crea_lati() -> void:
-	# Sinistra: ancorata in alto a sinistra, margine uniforme, contenuto in alto
+	# Sinistra: costruire (categorie e strade), pulsanti tondi a icona
 	var mc_s := MarginContainer.new()
 	mc_s.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	mc_s.add_theme_constant_override("margin_left", MARGINE)
@@ -359,20 +465,20 @@ func _crea_lati() -> void:
 	mc_s.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radice.add_child(mc_s)
 	var sinistra := VBoxContainer.new()
-	sinistra.add_theme_constant_override("separation", SEPARAZIONE)
+	sinistra.add_theme_constant_override("separation", 4)
 	sinistra.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	mc_s.add_child(sinistra)
 	for c in CATEGORIE:
-		var b := _bottone(c[0], 46, 30, "Costruisci: %s" % c[0].to_lower())
+		var b := _bottone_icona(ICONE_CATEGORIE[c[1]], c[0], "costruisci")
 		b.pressed.connect(_apri_categoria.bind(c[1]))
 		sinistra.add_child(b)
 		_pulsanti[c[0]] = b
-	var strada := _bottone("Strade", 46, 30, "Traccia una strada (1 pietra per lato)")
+	var strada := _bottone_icona("strade", "Strade", "tocca un edificio e la strada si fa da sola")
 	_pulsanti["Strade"] = strada
 	strada.pressed.connect(func(): _chiudi_menu(); strade.emit())
 	sinistra.add_child(strada)
 
-	# Destra: ancorata in alto a destra, margine uniforme
+	# Destra: regno e finestre, poi la rotazione della vista
 	var mc_d := MarginContainer.new()
 	mc_d.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	mc_d.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -381,36 +487,35 @@ func _crea_lati() -> void:
 	mc_d.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radice.add_child(mc_d)
 	var destra := VBoxContainer.new()
-	destra.add_theme_constant_override("separation", SEPARAZIONE)
+	destra.add_theme_constant_override("separation", 4)
 	destra.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	destra.size_flags_horizontal = Control.SIZE_SHRINK_END
 	mc_d.add_child(destra)
-	var regno := _bottone("Regno", 46, 30, "Mappa del regno: spie, alleanze, attacchi")
+	var regno := _bottone_icona("regno", "Regno", "spie, alleanze, attacchi")
 	_pulsanti["Regno"] = regno
 	regno.pressed.connect(func(): vai_al_regno.emit())
 	destra.add_child(regno)
-	var info := _bottone("Info", 46, 30, "Statistiche, tasse, opzioni")
+	var info := _bottone_icona("info", "Info", "statistiche, tasse, opzioni")
 	_pulsanti["Info"] = info
 	info.pressed.connect(func(): _apri_finestra(_info))
 	destra.add_child(info)
-	var consiglio := _bottone("Consiglio", 46, 30, "I consiglieri e i loro pareri")
+	var consiglio := _bottone_icona("consiglio", "Consiglio", "i pareri dei consiglieri")
 	_pulsanti["Consiglio"] = consiglio
 	consiglio.pressed.connect(func(): _apri_finestra(_consiglio))
 	destra.add_child(consiglio)
-	var mercato := _bottone("Mercato", 46, 30, "Compra e vendi risorse")
+	var mercato := _bottone_icona("mercato", "Mercato", "compra e vendi")
 	_pulsanti["Mercato"] = mercato
 	mercato.pressed.connect(func(): _apri_finestra(_mercato))
 	destra.add_child(mercato)
-	var esercito := _bottone("Esercito", 46, 30, "Soldati, formazioni, missioni")
+	var esercito := _bottone_icona("esercito", "Esercito", "soldati e missioni")
 	_pulsanti["Esercito"] = esercito
 	esercito.pressed.connect(func(): _apri_finestra(_esercito))
 	destra.add_child(esercito)
 	var giro := HBoxContainer.new()
-	giro.add_theme_constant_override("separation", SEPARAZIONE)
+	giro.add_theme_constant_override("separation", 2)
 	destra.add_child(giro)
 	for verso in [-1, 1]:
-		var b := _bottone("<" if verso < 0 else ">", 22, 30,
-			"Ruota la vista a sinistra" if verso < 0 else "Ruota la vista a destra")
+		var b := _bottone_icona("sinistra" if verso < 0 else "destra", "Ruota la vista", "", 18)
 		b.pressed.connect(func(): ruota.emit(verso))
 		giro.add_child(b)
 
@@ -642,6 +747,8 @@ func _crea_pannello() -> void:
 	_btn_demolisci.pressed.connect(_chiedi_demolizione)
 	_btn_migliora = _bottone("Migliora", 0, 18, "Passa al livello successivo")
 	_btn_migliora.pressed.connect(func(): migliora.emit(_edificio))
+	_btn_collega = _bottone("Collega", 0, 18, "Mostra la strada che lo collega alla piazza")
+	_btn_collega.pressed.connect(func(): collega.emit(_edificio))
 	_btn_ruota = _bottone("Ruota", 0, 18, "Ruota l'edificio di 90°")
 	_btn_ruota.pressed.connect(func(): ruota_edificio.emit())
 	_btn_ok = _bottone("Costruisci", 0, 18, "Conferma il piazzamento")
@@ -658,7 +765,7 @@ func _crea_pannello() -> void:
 		bc.pressed.connect(_chiedi_coltura.bind(nome))
 		_btn_colture[nome] = bc
 		riga.add_child(bc)
-	for b in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla]:
+	for b in [_btn_meno, _btn_piu, _btn_collega, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla]:
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		riga.add_child(b)
 
@@ -669,11 +776,15 @@ func _crea_info() -> void:
 	var r := _pannello_centrale("Info")
 	_info = r[0]
 	var col: VBoxContainer = r[1]
+	var scorre := ScrollContainer.new()
+	scorre.custom_minimum_size = Vector2(420, 118)
+	scorre.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scorre)
 	_info_testo = Label.new()
 	_info_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_info_testo.custom_minimum_size.x = 420
+	_info_testo.custom_minimum_size.x = 410
 	_info_testo.add_theme_font_size_override("font_size", 7)
-	col.add_child(_info_testo)
+	scorre.add_child(_info_testo)
 	var riga := HBoxContainer.new()
 	col.add_child(riga)
 	var l := Label.new()
@@ -764,12 +875,17 @@ func _crea_mercato() -> void:
 	_btn_auto.tooltip_text = "Compra e vendi da solo secondo le soglie che imposti"
 	_btn_auto.toggled.connect(func(v): _mercato_manuale.visible = not v; _mercato_auto.visible = v; _aggiorna())
 	col.add_child(_btn_auto)
+	var scorre := ScrollContainer.new()
+	scorre.custom_minimum_size.y = 140
+	scorre.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scorre)
+	_mercato_manuale = scorre
 	var griglia := GridContainer.new()
 	griglia.columns = 6
 	griglia.add_theme_constant_override("h_separation", 4)
 	griglia.add_theme_constant_override("v_separation", 1)
-	col.add_child(griglia)
-	_mercato_manuale = griglia
+	griglia.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scorre.add_child(griglia)
 	_crea_mercato_auto(col)
 	for r2 in GameState.mercato.risorse() if GameState.mercato else []:
 		griglia.add_child(_icona(r2, 9.0))
@@ -991,7 +1107,7 @@ func _aggiorna() -> void:
 	for r in GameState.RISORSE_VISIBILI:
 		var mostra := _da_mostrare(r)
 		_numeri[r].visible = mostra
-		_icone[r].visible = mostra
+		_icone[r].get_parent().visible = mostra
 		var valore: float = GameState.risorse.get(r, 0.0)
 		var delta: float = GameState.ultimo_delta.get(r, 0.0)
 		_numeri[r].text = str(int(valore))
@@ -1135,7 +1251,7 @@ func _scegli_dal_menu(b: Button) -> void:
 
 
 func _aggiorna_pannello() -> void:
-	for x in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla, _btn_chiudi] + _btn_colture.values():
+	for x in [_btn_meno, _btn_piu, _btn_collega, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla, _btn_chiudi] + _btn_colture.values():
 		x.visible = false
 	_btn_chiudi.visible = true
 	if _strada != "":
@@ -1214,7 +1330,8 @@ func _aggiorna_pannello() -> void:
 	elif b.tipo == "rovine":
 		testo = "Bruciato dai banditi. Demolisci per sgomberare le rovine."
 	if int(d.lavoratori) > 0 and not GameState.collegato(b):
-		testo += "\nNon collegato alla piazza: -%d%% di lavoro (serve una strada che lo tocchi)" % roundi(float(GameState.bil.strade.malus_non_collegato) * 100)
+		testo += "\nNon collegato alla piazza: -%d%% di lavoro. Tocca \"Collega\" per vedere la strada." % roundi(float(GameState.bil.strade.malus_non_collegato) * 100)
+		_btn_collega.visible = true
 	var durata := int(GameState.edifici[b.tipo].get("durata_stagioni", 0))
 	if durata > 0:
 		testo += "\nRegge una stagione: si strappa a fine %s. Costruisci case vere." % GameState.STAGIONI[(GameState.stagione + maxi(0, durata - 1 - int(b.get("eta", 0)))) % 4].to_lower()
@@ -1297,7 +1414,7 @@ func _crea_tutorial() -> void:
 	mc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radice.add_child(mc)
 	_tutorial = PanelContainer.new()
-	_tutorial.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e"), 4))
+	_tutorial.add_theme_stylebox_override("panel", _riquadro(FONDO, Color(ORO, 0.55), 5, 8, true))
 	_tutorial.custom_minimum_size.x = 130
 	_tutorial.visible = false
 	mc.add_child(_tutorial)
@@ -1305,9 +1422,9 @@ func _crea_tutorial() -> void:
 	col.custom_minimum_size.x = 130
 	col.add_theme_constant_override("separation", 1)
 	_tutorial.add_child(col)
-	var inchiostro := Color("3b2a1e")
+	var inchiostro := TESTO
 	_tutorial_titolo = Label.new()
-	_tutorial_titolo.add_theme_color_override("font_color", Color("7a4a2a"))
+	_tutorial_titolo.add_theme_color_override("font_color", ORO)
 	_tutorial_titolo.add_theme_font_size_override("font_size", 7)
 	col.add_child(_tutorial_titolo)
 	_tutorial_testo = Label.new()
@@ -1358,16 +1475,16 @@ func _crea_carta() -> void:
 	centro.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radice.add_child(centro)
 	_carta = PanelContainer.new()
-	_carta.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e"), 6))
+	_carta.add_theme_stylebox_override("panel", _riquadro(FONDO, Color(ORO, 0.55), 8, 8, true))
 	_carta.custom_minimum_size.x = 260
 	_carta.visible = false
 	centro.add_child(_carta)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 3)
 	_carta.add_child(col)
-	var inchiostro := Color("3b2a1e")
+	var inchiostro := TESTO
 	_carta_chi = Label.new()
-	_carta_chi.add_theme_color_override("font_color", Color("7a4a2a"))
+	_carta_chi.add_theme_color_override("font_color", ORO)
 	col.add_child(_carta_chi)
 	_carta_titolo = Label.new()
 	_carta_titolo.add_theme_font_size_override("font_size", 12)

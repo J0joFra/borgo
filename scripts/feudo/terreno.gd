@@ -639,6 +639,74 @@ func verifica_strada(vertici: Array) -> Dictionary:
 	return v
 
 
+## Quanto "costa" al percorso automatico un lato: le strade già fatte quasi niente, poi
+## piano < salita < ponte < passerella; -1 se di lì non si passa (dentro un edificio, fra
+## bosco o rocce, sul bordo di una collina, fuori dal feudo). Le regole sono quelle di verifica_strada.
+func peso_lato(k: int) -> int:
+	var c := celle_del_lato(k)
+	if not nel_feudo(c[0]) or not nel_feudo(c[1]):
+		return -1
+	if edificio_a(c[0]) >= 0 and edificio_a(c[0]) == edificio_a(c[1]):
+		return -1
+	if strade.has(k):
+		return 1
+	match tipo_lato(k):
+		"ponte":
+			return 12
+		"passerella":
+			return 20
+	var aperto := func(x: Vector2i) -> bool: return tipo_a(x) in COSTRUIBILE or _acqua(x)
+	if not (aperto.call(c[0]) or aperto.call(c[1])):
+		return -1
+	if not _acqua(c[0]) and not _acqua(c[1]) and altezza(c[0]) != altezza(c[1]):
+		return -1
+	return 8 if tipo_a(c[0]) == Tipo.COLLINA or tipo_a(c[1]) == Tipo.COLLINA else 4
+
+
+## Il percorso di strada più conveniente da uno dei vertici di partenza a uno di arrivo, che gira
+## attorno a case, bosco, rocce e bordi di collina (vertici in ordine, dalla partenza). [] se non c'è.
+func instrada(partenze: Array, arrivi: Array) -> Array[Vector2i]:
+	var meta := {}
+	for v in arrivi:
+		meta[v] = true
+	var dist := {}
+	var da := {}
+	# coda a secchi (i pesi sono piccoli interi): secchi[d] = vertici a distanza d
+	var secchi: Array = [[]]
+	for v in partenze:
+		dist[v] = 0
+		secchi[0].append(v)
+	var d := 0
+	while d < secchi.size():
+		var secchio: Array = secchi[d]
+		while not secchio.is_empty():
+			var v: Vector2i = secchio.pop_back()
+			if int(dist.get(v, -1)) != d:
+				continue
+			if meta.has(v):
+				var cammino: Array[Vector2i] = [v]
+				while da.has(cammino[0]):
+					cammino.push_front(da[cammino[0]])
+				return cammino
+			for dir in DIREZIONI:
+				var w: Vector2i = v + dir
+				if w.x < FEUDO.position.x or w.y < FEUDO.position.y or w.x > FEUDO.end.x or w.y > FEUDO.end.y:
+					continue
+				var peso := peso_lato(lato(v, w))
+				if peso < 0:
+					continue
+				var nd := d + peso
+				if dist.has(w) and int(dist[w]) <= nd:
+					continue
+				dist[w] = nd
+				da[w] = v
+				while secchi.size() <= nd:
+					secchi.append([])
+				secchi[nd].append(w)
+		d += 1
+	return []
+
+
 func _no(v: Dictionary, motivo: String) -> Dictionary:
 	v.ok = false
 	v.motivo = motivo

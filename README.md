@@ -168,12 +168,19 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   (oro insufficiente o magazzino pieno).
 - **Forestale**: ripianta gli alberi nelle radure lasciate dai taglialegna (poi sui prati); in un anno tornano bosco.
 - **Strade** (pulsante "Strade"): non occupano celle, corrono **lungo i bordi fra una cella e l'altra**: così gli
-  edifici si possono accostare e la strada passa loro accanto. Si tocca un angolo da cui parte e uno dove finisce
-  (percorso a L). Partono dal falò o dalla piazza, dalla dimora del signore o da una torre di guardia: un edificio con
+  edifici si possono accostare e la strada passa loro accanto. Basta **toccare un edificio o un punto**: la strada
+  parte da sola dalla rete già collegata e cerca il percorso più conveniente, girando attorno a case, bosco, rocce e
+  bordi di collina (se non c'è passaggio lo dice). Un edificio non collegato ha il pulsante **Collega** e, sulla mappa,
+  un segnale rosso da toccare: mostrano subito la strada da fare. Partono dal falò o dalla piazza, dalla dimora del signore o da una torre di guardia: un edificio con
   lavoratori che non è collegato a una di queste (con una strada, o toccandole) lavora il **2% in meno**.
   1 pietra per tratto in piano, 2 in salita; non si fanno lungo il bordo di una collina (a metà del gradino). Fra due celle di fiume la strada è un **ponte** (3 legna e 2 pietra), fra
   due di lago una **passerella** (3 legna, al massimo 3 tratti di fila). Una strada non può passare dentro un edificio.
   Toccando un tratto di strada lo si può togliere. All'inizio dalla dimora parte già una strada corta.
+- **Segni sopra gli edifici**: un anello che si riempie fino alla prossima consegna del raccolto (con l'icona della
+  risorsa), un anello col martello sui cantieri, una **freccia verde** dove si può migliorare adesso (toccandola si
+  apre l'edificio) e un **segnale rosso** dove manca la strada (toccandolo la si traccia).
+- **Interfaccia** scura e minimale, pensata per il telefono in orizzontale: risorse e tempo in due capsule in alto,
+  pulsanti tondi a icona ai lati (tenendoli premuti compare il nome), pannelli semitrasparenti con l'oro come accento.
 - **Ruotare gli edifici**: mentre si piazza, pulsante "Ruota" (o tasto R) per girarlo di 90°.
 - **Piazza**: dopo il primo anno il falò diventa la piazza del borgo (un pozzo sul selciato), il centro delle strade.
 - **Tende e senzatetto**: le tende reggono una sola stagione, poi si strappano: bisogna costruire case. Chi resta
@@ -232,7 +239,8 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 | Battaglie: campo 3D e comandi | `scripts/battaglia/campo.gd` |
 | Musica ed effetti | `scripts/audio.gd` (autoload `Audio`), suoni generati da `tools/genera_audio.py` |
 | Mappa del regno | `scripts/regno/regno.gd` |
-| Interfaccia | `scripts/ui/hud.gd` |
+| Interfaccia | `scripts/ui/hud.gd` (tema in `Hud.crea_tema()`), icone dei pulsanti in `scripts/ui/icona_ui.gd` |
+| Segni sopra gli edifici | `scripts/ui/segni_edifici.gd` |
 
 La logica di gioco lavora su una griglia 2D di celle; il 3D è solo la sua rappresentazione.
 
@@ -270,6 +278,7 @@ godot --headless --path . res://tools/test_logica.tscn
 Controlla produzione, fame, inverno, tasse, livelli, salvataggio e regole del terreno. Stampa `TEST: OK` se tutto torna.
 
 `tools/prova_visiva.tscn` gioca da solo qualche minuto e salva screenshot in `user://` (serve una finestra, non `--headless`).
+`tools/prova_rapida.tscn` fa lo stesso in pochi secondi con una partita già avviata: utile per ritoccare la grafica.
 
 ## Esportare su Android
 

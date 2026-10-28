@@ -2227,6 +2227,21 @@ func verifica_strada(celle: Array) -> Dictionary:
 	return terreno.verifica_strada(celle)
 
 
+## La strada più conveniente dalla rete già collegata (falò, dimora, torri e strade che partono
+## da lì) fino a uno di questi vertici. [] se non ci si arriva; [v] se v è già collegato.
+func strada_verso(arrivi: Array) -> Array[Vector2i]:
+	if terreno == null:
+		return []
+	if not _rete_valida:
+		_calcola_rete()
+	return terreno.instrada(_rete_strade.keys(), arrivi)
+
+
+## La strada che collega questo edificio alla rete (vedi strada_verso).
+func strada_per(b: Dictionary) -> Array[Vector2i]:
+	return strada_verso(_bordo(b))
+
+
 ## Costruisce la strada lungo questi vertici (vedi TerrenoFeudo.verifica_strada).
 func costruisci_strada(vertici: Array) -> bool:
 	var v := verifica_strada(vertici)

@@ -3,7 +3,7 @@ extends Control
 ## poi si combatte sul campo a esagoni. Non serve una partita e non la cambia: utile per
 ## provare le battaglie senza dover far crescere il borgo.
 
-const PERGAMENA := Color("dccba2")
+const PERGAMENA := Color("1b1f26")  # sfondo scuro, come l'interfaccia
 const INCHIOSTRO := Color("3b2a1e")
 const NEMICI := [["signore", "Un signore (cavalieri e balestrieri)"], ["banditi", "Un covo di banditi (predoni)"],
 	["libera", "Una terra libera (contadini armati)"]]

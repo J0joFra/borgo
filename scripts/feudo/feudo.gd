@@ -10,6 +10,7 @@ const COLORI_LUCE := [Color("fff6e8"), Color("fff0d0"), Color("ffd6a8"), Color("
 var vista: VistaTerreno
 var camera: CameraIso
 var hud: Hud
+var segni: SegniEdifici
 var banditi: Banditi3D
 var luce: DirectionalLight3D
 
@@ -64,6 +65,15 @@ func _ready() -> void:
 	camera.position = Vector3(centro.x, 0, centro.y)
 	camera.oltre_zoom_minimo.connect(_vai_al_regno)
 
+	# i segni sopra gli edifici stanno sotto l'interfaccia
+	var livello_segni := CanvasLayer.new()
+	livello_segni.layer = 0
+	add_child(livello_segni)
+	segni = SegniEdifici.new()
+	segni.camera = camera.camera
+	segni.vista = vista
+	livello_segni.add_child(segni)
+
 	hud = Hud.new()
 	add_child(hud)
 	hud.costruisci.connect(_inizia_piazzamento)
@@ -74,6 +84,7 @@ func _ready() -> void:
 	hud.migliora.connect(GameState.migliora)
 	hud.coltura.connect(GameState.cambia_coltura)
 	hud.strade.connect(_inizia_strada)
+	hud.collega.connect(_collega)
 	hud.mura.connect(_inizia_mura)
 	hud.ruota_edificio.connect(_ruota_piazzamento)
 	hud.rimuovi_strada.connect(_rimuovi_strada)
@@ -235,20 +246,26 @@ func _inizia_strada() -> void:
 	modo = Modo.STRADA
 	_strada_da = Vector2i(-1, -1)
 	_strada_vertici = []
-	hud.mostra_strada("Tocca un angolo da cui parte la strada (dal falò o piazza, dalla dimora o da una torre), poi dove finisce. Le strade corrono fra le celle. 1 pietra per tratto in piano, 2 in salita; sul fiume un ponte, sul lago una passerella (max 3).", false)
+	hud.mostra_strada("Tocca un edificio o un punto: la strada parte da sola dalle strade già collegate e gira attorno a case, bosco e colline. 1 pietra per tratto (2 in salita).", false)
 
 
-func _tocco_strada(vertice: Vector2i) -> void:
-	if _strada_da.x < 0:
-		_strada_da = vertice
-	_strada_vertici = TerrenoFeudo.percorso(_strada_da, vertice)
+## Un tocco: la strada più conveniente dalla rete collegata fin lì (o fino all'edificio toccato).
+func _tocco_strada(vertice: Vector2i, id_edificio := -1) -> void:
+	var b := GameState.trova(id_edificio) if id_edificio >= 0 else {}
+	_strada_vertici = GameState.strada_per(b) if not b.is_empty() else GameState.strada_verso([vertice])
+	if _strada_vertici.is_empty():
+		vista.nascondi_zona()
+		hud.mostra_strada("Lì non si arriva: case, bosco, rocce o colline chiudono ogni passaggio. Prova un altro punto.", false)
+		return
+	if _strada_vertici.size() < 2:
+		vista.nascondi_zona()
+		hud.mostra_strada("%s è già collegato alla rete di strade." % ("L'edificio" if not b.is_empty() else "Questo punto"), false)
+		return
 	var v := GameState.verifica_strada(_strada_vertici)
 	var colore := Color(0.95, 0.8, 0.45, 0.85) if v.ok else Color(0.95, 0.25, 0.2, 0.7)
 	vista.mostra_lati(TerrenoFeudo.lati_di(_strada_vertici), colore)
-	if _strada_vertici.size() < 2:
-		hud.mostra_strada("Ora tocca dove finisce la strada.", false)
-	elif not v.ok:
-		hud.mostra_strada("Non si può: %s. Scegli un'altra fine." % v.motivo, false)
+	if not v.ok:
+		hud.mostra_strada("Non si può: %s. Prova un altro punto." % v.motivo, false)
 	else:
 		var basta: bool = GameState.risorse.pietra >= v.pietra and GameState.risorse.legna >= v.legna
 		var parti: Array[String] = ["%d tratti" % v.lati]
@@ -267,12 +284,18 @@ func _tocco_strada(vertice: Vector2i) -> void:
 		hud.mostra_strada(" · ".join(parti) + ("" if basta else " (non basta)"), basta and not costo.is_empty())
 
 
+## Dal pannello di un edificio non collegato: mostra subito la strada che lo collega.
+func _collega(id: int) -> void:
+	_inizia_strada()
+	_tocco_strada(Vector2i(-1, -1), id)
+
+
 func _costruisci_strada() -> void:
 	if GameState.costruisci_strada(_strada_vertici):
 		_strada_da = Vector2i(-1, -1)
 		_strada_vertici = []
 		vista.nascondi_zona()
-		hud.mostra_strada("Strada fatta. Tocca per iniziarne un'altra, o Annulla.", false)
+		hud.mostra_strada("Strada fatta. Tocca un altro punto per continuare, o Annulla.", false)
 
 
 ## Modalità mura: come le strade, ma cella per cella.
@@ -405,11 +428,17 @@ func _tocco(posizione: Vector2) -> void:
 		_sposta_anteprima(cella)
 	elif modo == Modo.STRADA:
 		var r := camera.raggio(posizione)
-		_tocco_strada(vista.vertice_da_raggio(r[0], r[1]))
+		_tocco_strada(vista.vertice_da_raggio(r[0], r[1]), GameState.terreno.edificio_a(cella))
 	elif modo == Modo.MURA:
 		_tocco_mura(cella)
 	else:
+		var segno := segni.segno_a(posizione)
+		if segno.get("azione", "") == "collega":
+			_collega(int(segno.id))
+			return
 		var id := GameState.terreno.edificio_a(cella)
+		if segno.get("azione", "") == "migliora":
+			id = int(segno.id)
 		vista.nascondi_zona()
 		_seleziona(id)
 		_lato_toccato = -1

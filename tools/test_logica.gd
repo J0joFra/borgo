@@ -1004,9 +1004,28 @@ func _ready() -> void:
 		lontano = GameState.aggiungi_gratis("raccoglitore", GameState.terreno.trova_posto("raccoglitore", piazza_b.cella + scarto), 1.0)
 	_verifica(not GameState.collegato(lontano) and is_equal_approx(GameState.efficienza(lontano), 0.98), "lontano dalle strade: -2%")
 	_verifica(GameState.collegato(dimora) and GameState.collegato(piazza_b), "piazza e dimora sono il centro")
-	var verso := TerrenoFeudo.percorso(GameState._bordo(piazza_b)[0], GameState._bordo(lontano)[0])
-	GameState.terreno_cambiato.emit(GameState.terreno.aggiungi_strada(verso))
-	_verifica(GameState.collegato(lontano) and is_equal_approx(GameState.efficienza(lontano), 1.0), "con la strada fino alla piazza il malus sparisce")
+	# la strada si trova da sola: dalla rete collegata fino al bordo dell'edificio, girando attorno agli ostacoli
+	var auto := GameState.strada_per(lontano)
+	var v_auto := GameState.verifica_strada(auto)
+	_verifica(auto.size() >= 2 and v_auto.ok and GameState._rete_strade.has(auto[0]) and GameState._bordo(lontano).has(auto[-1]),
+		"il percorso automatico va dalla rete all'edificio (%d tratti)" % (auto.size() - 1))
+	GameState.risorse.pietra = 200.0
+	GameState.risorse.legna = 200.0
+	_verifica(GameState.costruisci_strada(auto) and GameState.collegato(lontano) and is_equal_approx(GameState.efficienza(lontano), 1.0), "con la strada fino alla piazza il malus sparisce")
+	_verifica(GameState.strada_per(lontano).size() == 1, "un edificio già collegato non chiede strade")
+	# un ostacolo sul percorso dritto: il percorso lo aggira
+	var tz_r := GameState.terreno
+	var muro_case := tz_r.trova_posto("casa", piazza_b.cella + Vector2i(8, -6))
+	if muro_case.x >= 0:
+		var casa_r := GameState.aggiungi_gratis("casa", muro_case, 1.0)
+		var attorno := GameState.strada_verso([muro_case + GameState.taglia_di(casa_r) + Vector2i(1, 1)])
+		var dentro := false
+		for k in TerrenoFeudo.lati_di(attorno):
+			var cc: Array[Vector2i] = TerrenoFeudo.celle_del_lato(k)
+			dentro = dentro or (tz_r.edificio_a(cc[0]) == casa_r.id and tz_r.edificio_a(cc[1]) == casa_r.id)
+		_verifica(attorno.size() >= 2 and not dentro and GameState.verifica_strada(attorno).ok, "il percorso automatico non attraversa le case")
+	else:
+		_verifica(false, "posto per la casa del test sulle strade")
 
 	# Senza casa: mezza stagione, poi se ne vanno.
 	GameState.nuova_partita(5)
