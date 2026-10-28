@@ -194,6 +194,13 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   abitanti/posti letto, persone senza lavoro e la felicità (una faccina che sorride o si imbroncia).
 - **Forma del feudo**: dalle partite nuove il feudo non è più un quadrato al centro del mondo, ma una forma
   tondeggiante con il bordo ondulato, in un punto che cambia da partita a partita.
+- **Climi**: ogni regione del Regno ha un clima (più freddo a nord, più caldo a sud): **temperato**, **savana**,
+  **deserto** o **tundra**, scritto sulla mappa. Il feudo prende il clima della sua regione: edifici, risorse e regole
+  sono gli stessi, ma si adattano. Cambiano i nomi (nel deserto la casa è una casa di fango, il mercato un suq, il
+  raccoglitore raccoglie datteri), le colture con le loro stagioni (savana: miglio, sorgo e arachidi; deserto: ceci,
+  frumento e datteri; tundra: segale), le zone (palmeto, oasi e rocce rosse nel deserto; boscaglia di acacie, pozze e
+  altopiano in savana; taiga, torbiera e rocce gelate nella tundra), i colori del suolo e gli alberi (acacie, baobab,
+  palme, betulle, abeti). In savana e nel deserto non nevica. Tutto è in `data/climi.json`.
 - **Biomi**: attorno all'accampamento c'è la prateria; in tre direzioni diverse una **pineta** (bosco fitto di conifere,
   taglialegna +25%, caccia +15%, campi -15%), una **palude** (stagni e canne, pesca +25%, raccolta +20%, campi -20%) e
   delle **rupi** (colline e rocce, cava e miniera +30%, campi -25%). I valori sono in `bilanciamento.json` (`biomi`);
@@ -251,6 +258,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 | Mappa del regno | `scripts/regno/regno.gd` |
 | Interfaccia | `scripts/ui/hud.gd` (tema in `Hud.crea_tema()`), icone dei pulsanti in `scripts/ui/icona_ui.gd` |
 | Segni sopra gli edifici | `scripts/ui/segni_edifici.gd` |
+| Climi: nomi, colture, suolo, alberi | `data/climi.json` |
 
 La logica di gioco lavora su una griglia 2D di celle; il 3D è solo la sua rappresentazione.
 

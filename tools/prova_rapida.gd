@@ -13,6 +13,10 @@ func _via() -> void:
 	var segnaposto := Node.new()
 	get_tree().root.add_child(segnaposto)
 	get_tree().current_scene = segnaposto
+	# PROVA_CLIMA=deserto (o savana, tundra, temperato) per vedere un clima preciso
+	if OS.get_environment("PROVA_CLIMA") != "":
+		GameState.clima_forzato = OS.get_environment("PROVA_CLIMA")
+		GameState.ricomincia()
 	get_tree().change_scene_to_file("res://scenes/feudo.tscn")
 	await _attendi(2.0)
 	var f = get_tree().current_scene

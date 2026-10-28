@@ -394,7 +394,7 @@ func _campo(k: LowPoly.Costruttore) -> void:
 		var crescita := 0.5 if posizione <= 0 else 1.0
 		colore = Color(c.colore).lerp(Color("6aa040"), 0.5 * (1.0 - crescita))
 		alt = 0.15 + 0.25 * crescita
-	if inverno and not (seminato and "inverno" in c.stagioni):
+	if inverno and GameState.dati_clima().get("neve", true) and not (seminato and "inverno" in c.stagioni):
 		colore = Color("e6ecef")
 		alt = 0.05
 	var z := -dd / 2 + 0.45

@@ -386,7 +386,7 @@ func effetto_bioma(tipo: String, cella: Vector2i) -> Array:
 	var molt := float(GameState.bil.get("biomi", {}).get(nome, {}).get(tipo, 1.0))
 	if is_equal_approx(molt, 1.0):
 		return [1.0, ""]
-	return [molt, "%s %+d%%" % [nome, roundi((molt - 1.0) * 100.0)]]
+	return [molt, "%s %+d%%" % [GameState.nome_zona(bioma_a(centro)), roundi((molt - 1.0) * 100.0)]]
 
 
 ## Resa e spiegazione per l'interfaccia: {resa, testo}, con l'effetto del bioma.

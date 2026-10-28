@@ -6,6 +6,7 @@ var _errori := 0
 
 
 func _ready() -> void:
+	GameState.clima_forzato = "temperato"  # i conti dei test sono quelli del clima temperato
 	GameState.cancella_salvataggio()
 	GameState.nuova_partita(42)
 	GameState.abitanti = 10
@@ -1382,7 +1383,40 @@ func _ready() -> void:
 	GameState.in_corso = false
 	GameState.versione_mappa = 1
 	GameState.avvia()
-	_verifica(GameState.versione_mappa == 2, "la versione della mappa si salva")
+	_verifica(GameState.versione_mappa == 3, "la versione della mappa si salva")
+	GameState.cancella_salvataggio()
+
+	# Climi: ogni regione ne ha uno; il feudo prende quello della sua regione, con nomi e colture adatti.
+	var climi_visti := {}
+	for seme_c in 8:
+		var gc := Regioni.genera(seme_c, 3)
+		for reg_c in gc.regioni:
+			climi_visti[reg_c.clima] = true
+	_verifica(climi_visti.size() == 4, "sulla mappa ci sono climi diversi %s" % str(climi_visti.keys()))
+	_verifica(Regioni.genera(3, 2).regioni.all(func(r): return r.clima == "temperato"), "nelle partite di prima è tutto temperato")
+	GameState.clima_forzato = "deserto"
+	GameState.nuova_partita(5)
+	_verifica(GameState.clima == "deserto" and GameState.nome_risorsa("rape") == "Datteri" and GameState.colture.rape.nome == "Datteri",
+		"nel deserto le rape sono datteri")
+	_verifica(GameState.edifici.casa.nome == "Casa di fango" and GameState.edifici.casa.miglioramenti[1].nome == "Casa di pietra bianca"
+		and GameState.edifici.casa.alloggi == GameState.edifici.casa.alloggi, "gli edifici prendono nomi del deserto")
+	_verifica(GameState.colture.orzo.stagioni == ["inverno", "primavera"], "e le colture le loro stagioni (ceci d'inverno)")
+	GameState.clima_forzato = "savana"
+	GameState.nuova_partita(5)
+	_verifica(GameState.nome_risorsa("grano") == "Sorgo" and GameState.edifici.casa.nome == "Capanna", "in savana sorgo e capanne")
+	GameState.clima_forzato = "temperato"
+	GameState.nuova_partita(5)
+	_verifica(GameState.edifici.casa.nome == "Casa" and GameState.nome_risorsa("rape") == "Rape" and GameState.colture.orzo.stagioni == ["primavera", "estate"],
+		"tornando al temperato tutto torna come prima")
+	GameState.clima_forzato = "tundra"
+	GameState.ricomincia()
+	GameState.avvia()
+	GameState.scegli_capo(0)
+	GameState.salva()
+	GameState.in_corso = false
+	GameState.clima_forzato = "temperato"
+	GameState.avvia()
+	_verifica(GameState.clima == "tundra" and GameState.nome_risorsa("grano") == "Segale", "il clima si salva")
 	GameState.cancella_salvataggio()
 
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])

@@ -62,6 +62,22 @@ static func genera(seme: int, versione := -1) -> Dictionary:
 		r.signore = proprietario.nome
 		r.colore = Color(proprietario.colore)
 		regioni.append(r)
+	# il clima: più freddo a nord, più caldo a sud, con un po' di caso (dalla versione 3)
+	var rng_c := RandomNumberGenerator.new()
+	rng_c.seed = seme + 123
+	for i in n:
+		var latitudine := siti[i].y + rng_c.randf_range(-0.18, 0.18)
+		var c := "temperato"
+		if versione >= 3:
+			if latitudine < 0.25:
+				c = "tundra"
+			elif latitudine < 0.6:
+				c = "temperato"
+			elif latitudine < 0.82:
+				c = "savana"
+			else:
+				c = "deserto"
+		regioni[i].clima = c
 	return {"siti": siti, "regioni": regioni, "mia": mia}
 
 

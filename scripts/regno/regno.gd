@@ -335,7 +335,10 @@ func _draw() -> void:
 		draw_string(font, c + Vector2(-60, -4), r.nome, HORIZONTAL_ALIGNMENT_CENTER, 120, 9, INCHIOSTRO)
 		draw_circle(c + Vector2(0, 7), 5.5, Color(COLORI_RISORSE[r.risorsa], 0.9))
 		draw_arc(c + Vector2(0, 7), 5.5, 0, TAU, 16, INCHIOSTRO, 1.0, true)
-		draw_string(font, c + Vector2(-60, 20), r.signore, HORIZONTAL_ALIGNMENT_CENTER, 120, 6, Color(INCHIOSTRO, 0.8))
+		var sotto: String = r.signore
+		if r.get("clima", "temperato") != "temperato":
+			sotto += " · " + str(GameState.climi.get(r.clima, {}).get("nome", r.clima)).to_lower()
+		draw_string(font, c + Vector2(-70, 20), sotto, HORIZONTAL_ALIGNMENT_CENTER, 140, 6, Color(INCHIOSTRO, 0.8))
 	draw_rect(Rect2(Vector2(4, 4), size - Vector2(8, 8)), INCHIOSTRO, false, 1.5)
 
 

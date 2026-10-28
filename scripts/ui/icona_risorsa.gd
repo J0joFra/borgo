@@ -39,7 +39,7 @@ func _init(t := "", lato := LATO) -> void:
 	tipo = t
 	custom_minimum_size = Vector2(lato, lato)
 	mouse_filter = Control.MOUSE_FILTER_PASS
-	tooltip_text = NOMI.get(t, t)
+	tooltip_text = GameState.nome_risorsa(t)
 
 
 const NOMI := {
@@ -62,7 +62,25 @@ func _draw() -> void:
 	var k := minf(size.x, size.y) / LATO
 	draw_set_transform((size - Vector2.ONE * LATO * k) / 2.0, 0.0, Vector2(k, k))
 	_ombra()
-	match tipo:
+	match GameState.icona_di(tipo):
+		"datteri":
+			# un grappolo di datteri su un rametto
+			draw_line(Vector2(5, 0.8), Vector2(5, 3.4), C_LEGNA_SCURA, 0.8)
+			for p in [Vector2(3.4, 4.2), Vector2(6.6, 4.2), Vector2(5, 5.0), Vector2(3.0, 6.6), Vector2(7.0, 6.6), Vector2(5, 7.4), Vector2(4.0, 8.8), Vector2(6.0, 8.8)]:
+				draw_circle(p, 1.25, Color("7a3a1e"))
+				draw_circle(p - Vector2(0.4, 0.4), 0.45, Color("b0603a"))
+		"arachidi":
+			# due baccelli di arachide
+			for c in [Vector2(3.6, 4.0), Vector2(6.4, 6.4)]:
+				draw_circle(c + Vector2(-1.0, -0.8), 1.6, Color("c8a070"))
+				draw_circle(c + Vector2(1.0, 0.8), 1.6, Color("c8a070"))
+				draw_circle(c, 1.1, Color("b08a5a"))
+				draw_circle(c + Vector2(-1.4, -1.2), 0.5, Color("e0c090"))
+		"ceci":
+			for p in [Vector2(3, 4), Vector2(6.6, 3.6), Vector2(4.6, 7), Vector2(7.6, 7.2), Vector2(2.6, 7.6)]:
+				draw_circle(p, 1.5, Color("c8a868"))
+				draw_circle(p - Vector2(0.4, 0.4), 0.6, Color("ecd8a8"))
+				draw_circle(p + Vector2(0.6, -0.6), 0.25, Color("8a6a3a"))
 		"legna":
 			_tronco(Vector2(1.0, 5.4), C_LEGNA)
 			_tronco(Vector2(2.4, 2.4), C_LEGNA_CHIARA)

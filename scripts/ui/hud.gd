@@ -430,7 +430,7 @@ func _crea_barra() -> void:
 		var l := Label.new()
 		l.custom_minimum_size.x = 0 if chiave != "abitanti" else 20
 		l.add_theme_font_size_override("font_size", 7)
-		l.tooltip_text = IconaRisorsa.NOMI.get(chiave, chiave)
+		l.tooltip_text = GameState.nome_risorsa(chiave)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		chip.add_child(l)
 		_numeri[chiave] = l
@@ -812,7 +812,7 @@ func _crea_info() -> void:
 	for chiave in GameState.RISORSE_VISIBILI + ["abitanti", "disponibili", "felicita"]:
 		legenda.add_child(_icona(chiave, 8.0))
 		var n := Label.new()
-		n.text = IconaRisorsa.NOMI.get(chiave, chiave).split(" ")[0].to_lower()
+		n.text = GameState.nome_risorsa(chiave).split(" ")[0].to_lower()
 		legenda.add_child(n)
 	_btn_suggerimenti = _bottone("", 0, 16, "Mostra un suggerimento ogni tanto")
 	_btn_suggerimenti.toggle_mode = true
@@ -900,7 +900,7 @@ func _crea_mercato() -> void:
 	for r2 in GameState.mercato.risorse() if GameState.mercato else []:
 		griglia.add_child(_icona(r2, 9.0))
 		var nome := Label.new()
-		nome.text = NOMI_RISORSE.get(r2, r2)
+		nome.text = GameState.nome_risorsa(r2)
 		nome.custom_minimum_size.x = 64
 		griglia.add_child(nome)
 		var scorta := Label.new()
@@ -953,7 +953,7 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 	for r2 in GameState.mercato.risorse() if GameState.mercato else []:
 		griglia.add_child(_icona(r2, 9.0))
 		var nome := Label.new()
-		nome.text = NOMI_RISORSE.get(r2, r2)
+		nome.text = GameState.nome_risorsa(r2)
 		nome.custom_minimum_size.x = 60
 		griglia.add_child(nome)
 		var scorta := Label.new()
@@ -1038,7 +1038,7 @@ func _aggiorna_mercato() -> void:
 		var unit_v := float(ricavo) / lotto
 		riga[3].text = "Vendi %d · %d oro (%.1f/u)" % [lotto, ricavo, unit_v]
 		riga[3].disabled = GameState.risorse[r] < lotto
-		riga[3].tooltip_text = "Ti servono almeno %d %s" % [lotto, NOMI_RISORSE.get(r, r).to_lower()] if riga[3].disabled else ""
+		riga[3].tooltip_text = "Ti servono almeno %d %s" % [lotto, GameState.nome_risorsa(r).to_lower()] if riga[3].disabled else ""
 	_mercato_nota.text = "Hai %d oro. Con un mercato costruito si compra e si vende a prezzi migliori." % int(GameState.risorse.oro) \
 		if not ha else "Hai %d oro. Il tuo mercato ti fa avere prezzi migliori." % int(GameState.risorse.oro)
 
@@ -1127,7 +1127,7 @@ func _aggiorna() -> void:
 		if r == "cibo" and GameState.tick_fame > 0:
 			allarme = true
 		_numeri[r].add_theme_color_override("font_color", COLORE_ERRORE if allarme else TESTO)
-		var nome: String = NOMI_RISORSE.get(r, r)
+		var nome: String = GameState.nome_risorsa(r)
 		_numeri[r].tooltip_text = "%s\nHai: %d\nVariazione: %+.1f a stagione" % [nome, int(valore), delta * tps]
 		if float(arrivo.get(r, 0.0)) >= 1.0:
 			_numeri[r].tooltip_text += "\nIn arrivo %s: circa %d" % [GameState.quando_consegna(), int(arrivo[r])]
@@ -1328,7 +1328,7 @@ func _aggiorna_pannello() -> void:
 		var parti: Array[String] = []
 		for r in pronto:
 			if float(pronto[r]) >= 1.0:
-				parti.append("%d %s" % [int(pronto[r]), NOMI_RISORSE.get(r, r).to_lower()])
+				parti.append("%d %s" % [int(pronto[r]), GameState.nome_risorsa(r).to_lower()])
 		testo += "\nRaccolto finora: %s · arriva in magazzino %s" % [", ".join(parti) if not parti.is_empty() else "niente", GameState.quando_consegna()]
 	var prossimo := GameState.prossimo_miglioramento(b)
 	if not prossimo.is_empty():
@@ -1375,7 +1375,7 @@ func _stato_campo(b: Dictionary) -> String:
 func _aggiorna_info() -> void:
 	var righe: Array[String] = []
 	var livelli: Array = GameState.bil.livelli
-	righe.append("Livello: %s" % livelli[GameState.livello].nome)
+	righe.append("Livello: %s · clima: %s" % [livelli[GameState.livello].nome, str(GameState.dati_clima().get("nome", GameState.clima)).to_lower()])
 	if GameState.livello + 1 < livelli.size():
 		var manca := GameState.requisiti_mancanti(GameState.livello + 1)
 		righe.append("Per diventare %s servono: %s" % [livelli[GameState.livello + 1].nome, ", ".join(manca)])
@@ -1559,7 +1559,7 @@ func _testo_effetti(e: Dictionary) -> String:
 	var parti: Array[String] = []
 	var r: Dictionary = e.get("risorse", {})
 	for k in r:
-		parti.append("%+d %s" % [int(r[k]), NOMI_RISORSE.get(k, k).to_lower()])
+		parti.append("%+d %s" % [int(r[k]), GameState.nome_risorsa(k).to_lower()])
 	if e.has("abitanti"):
 		parti.append("%+d abitanti" % int(e.abitanti))
 	if e.has("felicita"):

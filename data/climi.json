@@ -1,0 +1,131 @@
+{
+	"temperato": {
+		"nome": "Temperato",
+		"neve": true,
+		"zone": {"prateria": "prateria", "pineta": "pineta", "palude": "palude", "rupi": "rupi"},
+		"risorse": {},
+		"icone": {},
+		"colture": {},
+		"edifici": {},
+		"suolo": {
+			"erba": ["6fae47", "8db24a", "b39a48", "e6ecef"],
+			"acqua": ["4a90c8", "4a90c8", "4a86b8", "b8d8ea"],
+			"fiume": ["5aa6dc", "5aa6dc", "5a9cd0", "7aaccc"],
+			"roccia": ["9a978d", "9a978d", "968f80", "dfe5e8"],
+			"radura": "8a7a4a",
+			"tinte_zone": ["000000", "3d6a3c", "6f7a3c", "9a9884"]
+		},
+		"alberi": {
+			"primo": "tondo", "secondo": "pino", "tronco": [1.2, 1.0],
+			"colori_primo": ["4a9a3e", "5aa035", "d0782c", "8a7a68"],
+			"colori_secondo": ["2f6b40", "2f6b40", "2f6b40", "c4d6d0"],
+			"quota_secondo": [0.45, 0.92, 0.15, 0.6]
+		}
+	},
+	"savana": {
+		"nome": "Savana",
+		"neve": false,
+		"zone": {"prateria": "savana", "pineta": "boscaglia di acacie", "palude": "pozze", "rupi": "altopiano"},
+		"risorse": {"orzo": "Miglio", "grano": "Sorgo", "rape": "Arachidi",
+			"semi_orzo": "Semi di miglio", "semi_grano": "Semi di sorgo", "semi_rape": "Arachidi da semina", "farina": "Farina di sorgo"},
+		"icone": {"rape": "arachidi", "semi_rape": "arachidi"},
+		"colture": {
+			"orzo": {"nome": "Miglio", "stagioni": ["estate", "autunno"], "colore": "c8a860"},
+			"grano": {"nome": "Sorgo", "stagioni": ["autunno", "inverno"], "colore": "a8503a"},
+			"rape": {"nome": "Arachidi", "stagioni": ["primavera", "estate"], "colore": "b08a5a"}
+		},
+		"edifici": {
+			"falo": "Fuoco del villaggio", "dimora": "Recinto del capo", "piazza": "Piazza dell'albero", "tenda": "Riparo di frasche",
+			"casa": "Capanna", "casa+1": "Capanna grande", "casa+2": "Casa di mattoni crudi",
+			"magazzino": "Granaio su pali", "magazzino+1": "Granaio grande", "magazzino+2": "Granaio di mattoni",
+			"taglialegna": "Tagliatore di acacie", "forestale": "Piantatore di acacie",
+			"raccoglitore": "Raccoglitore di frutti", "raccoglitore+2": "Dispensa della boscaglia",
+			"pescatore": "Pescatore delle pozze", "cacciatore": "Cacciatore di antilopi", "cacciatore+2": "Riserva della savana",
+			"mulino": "Macina", "mulino+1": "Macina a due pietre", "mulino+2": "Grande macina",
+			"forno": "Forno di terra", "taverna": "Casa della birra di sorgo", "mercato": "Mercato all'ombra",
+			"chiesa": "Santuario", "chiesa+1": "Santuario con torre", "chiesa+2": "Grande santuario"
+		},
+		"suolo": {
+			"erba": ["9fb04a", "c9b25a", "b8a050", "aa9c5c"],
+			"acqua": ["4a90b8", "4a8ab0", "4a86a8", "4a8ab0"],
+			"fiume": ["5aa0cc", "5a9cc4", "5a98bc", "5a9cc4"],
+			"roccia": ["a8846a", "b08a6a", "a8846a", "a07e66"],
+			"radura": "a0884e",
+			"tinte_zone": ["000000", "6a7a30", "7a8a50", "a87a5a"]
+		},
+		"alberi": {
+			"primo": "acacia", "secondo": "baobab", "tronco": [2.0, 1.2],
+			"colori_primo": ["6a8a3a", "7a8a3a", "8a8a40", "7a7a48"],
+			"colori_secondo": ["5a7a3a", "6a7a3a", "7a7a40", "7a6a48"],
+			"quota_secondo": [0.2, 0.15, 0.35, 0.3]
+		}
+	},
+	"deserto": {
+		"nome": "Deserto",
+		"neve": false,
+		"zone": {"prateria": "steppa", "pineta": "palmeto", "palude": "oasi", "rupi": "rocce rosse"},
+		"risorse": {"orzo": "Ceci", "grano": "Frumento", "rape": "Datteri",
+			"semi_orzo": "Ceci da semina", "semi_grano": "Semi di frumento", "semi_rape": "Noccioli di dattero"},
+		"icone": {"rape": "datteri", "semi_rape": "datteri", "orzo": "ceci", "semi_orzo": "ceci"},
+		"colture": {
+			"orzo": {"nome": "Ceci", "stagioni": ["inverno", "primavera"], "colore": "d8c088"},
+			"grano": {"nome": "Frumento", "stagioni": ["primavera", "estate"], "colore": "e0b84a"},
+			"rape": {"nome": "Datteri", "stagioni": ["estate", "autunno"], "colore": "8a4a2a"}
+		},
+		"edifici": {
+			"falo": "Fuoco del campo", "dimora": "Casbah del signore", "dimora+1": "Torre della casbah", "piazza": "Piazza del pozzo", "tenda": "Tenda nomade",
+			"casa": "Casa di fango", "casa+1": "Casa a corte", "casa+2": "Casa di pietra bianca",
+			"taglialegna": "Tagliatore di palme", "taglialegna+1": "Segheria di palme", "forestale": "Piantatore di palme",
+			"raccoglitore": "Raccoglitore di datteri", "raccoglitore+2": "Dispensa dell'oasi",
+			"pescatore": "Pescatore dell'oasi", "cacciatore": "Cacciatore di gazzelle", "cacciatore+2": "Riserva del deserto",
+			"mulino": "Macina", "mulino+1": "Macina a due pietre", "mulino+2": "Grande macina",
+			"forno": "Forno di argilla", "taverna": "Caravanserraglio", "taverna+1": "Caravanserraglio con stanze", "taverna+2": "Grande caravanserraglio",
+			"mercato": "Suq", "mercato+1": "Suq coperto", "mercato+2": "Gran bazar",
+			"chiesa": "Santuario", "chiesa+1": "Santuario con torre", "chiesa+2": "Grande santuario"
+		},
+		"suolo": {
+			"erba": ["d8c08a", "e0c890", "d6b884", "cdb894"],
+			"acqua": ["3aa0b0", "3a9cac", "3a98a8", "3a9cac"],
+			"fiume": ["4aa8c8", "4aa4c0", "4aa0b8", "4aa4c0"],
+			"roccia": ["b8784e", "c0804e", "b8784e", "b07450"],
+			"radura": "c0a070",
+			"tinte_zone": ["000000", "9aa860", "6a9a50", "b8704a"]
+		},
+		"alberi": {
+			"primo": "acacia", "secondo": "palma", "tronco": [2.2, 0.8],
+			"colori_primo": ["7a8a4a", "8a8a4a", "8a8a4a", "7a8048"],
+			"colori_secondo": ["4a8a3a", "4a8a3a", "5a8a3a", "4a7a3a"],
+			"quota_secondo": [0.4, 0.95, 0.9, 0.3]
+		}
+	},
+	"tundra": {
+		"nome": "Tundra",
+		"neve": true,
+		"zone": {"prateria": "tundra", "pineta": "taiga", "palude": "torbiera", "rupi": "rocce gelate"},
+		"risorse": {"grano": "Segale", "semi_grano": "Semi di segale", "farina": "Farina di segale"},
+		"icone": {},
+		"colture": {
+			"grano": {"nome": "Segale", "colore": "b8a070"}
+		},
+		"edifici": {
+			"tenda": "Tenda di pelli", "casa": "Casa di tronchi", "casa+1": "Casa di tronchi grande", "casa+2": "Casa in pietra col camino",
+			"raccoglitore": "Raccoglitore di bacche", "raccoglitore+2": "Dispensa della taiga",
+			"pescatore": "Pescatore sul ghiaccio", "cacciatore": "Cacciatore di renne", "cacciatore+2": "Riserva della taiga",
+			"chiesa": "Chiesa di legno", "chiesa+1": "Chiesa di legno col campanile"
+		},
+		"suolo": {
+			"erba": ["7a9a6a", "8aa070", "9a9a70", "eef2f4"],
+			"acqua": ["4a80a8", "4a80a8", "4a7898", "d0e4ee"],
+			"fiume": ["5a90b8", "5a90b8", "5a88b0", "a8c8dc"],
+			"roccia": ["8a9098", "8a9098", "868c94", "e8eef2"],
+			"radura": "7a7a5a",
+			"tinte_zone": ["000000", "2e5a44", "6a7050", "a0a8b0"]
+		},
+		"alberi": {
+			"primo": "betulla", "secondo": "abete", "tronco": [1.4, 0.9],
+			"colori_primo": ["8ab04a", "9ab04a", "e0b030", "9a8a70"],
+			"colori_secondo": ["2a5a40", "2a5a40", "2a5a40", "d0e0e0"],
+			"quota_secondo": [0.6, 0.95, 0.4, 0.7]
+		}
+	}
+}

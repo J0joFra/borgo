@@ -103,7 +103,10 @@ var soldati := 0              # abitanti arruolati (totale): non lavorano, difen
 var truppe: Dictionary = {}   # tipo di soldato (fanti, arcieri, balestrieri, cavalieri) -> quanti
 ## Mercato automatico: risorsa -> {vendi_sopra, compra_sotto} (0 = spento); e l'oro da non spendere.
 var mercato_auto: Dictionary = {}
-var versione_mappa := 2  # 1: partite vecchie (feudo quadrato al centro, regione al centro); 2: forme ondulate
+var versione_mappa := 3  # 1: partite vecchie (feudo quadrato al centro, regione al centro); 2: forme ondulate; 3: climi
+var clima := "temperato"  # il clima della nostra regione: nomi, colture, terreno e alberi (data/climi.json)
+var climi: Dictionary = {}
+var clima_forzato := ""  # se non vuoto, ogni partita nuova ha questo clima (i test usano "temperato")
 var riserva_oro := 0  # oro che il mercato automatico non spende mai
 var regni: Dictionary = {}    # "indice regione" -> {forza, atteggiamento, spiato, alleato, conquistato, vassallo}
 var missioni: Array = []      # {tipo: spia|alleanza|attacco, regione, mancano, soldati}
@@ -124,6 +127,7 @@ func _ready() -> void:
 	bil = (load("res://data/bilanciamento.json") as JSON).data
 	dati_famiglie = (load("res://data/famiglie.json") as JSON).data
 	colture = (load("res://data/colture.json") as JSON).data
+	climi = (load("res://data/climi.json") as JSON).data
 	dati_eventi = (load("res://data/eventi.json") as JSON).data
 	_carica_opzioni()
 	var guida: Dictionary = (load("res://data/tutorial.json") as JSON).data
@@ -298,7 +302,7 @@ func ricomincia() -> void:
 	terreno = null
 
 
-func nuova_partita(seme: int = -1, versione := 2) -> void:
+func nuova_partita(seme: int = -1, versione := 3) -> void:
 	versione_mappa = versione
 	risorse = {}
 	for r in RISORSE:
@@ -345,6 +349,9 @@ func nuova_partita(seme: int = -1, versione := 2) -> void:
 	battaglia = {}
 	regni = {}
 	_prepara_regni()
+	var g_clima := Regioni.genera(seme_mappa)
+	clima = str(g_clima.regioni[g_clima.mia].get("clima", "temperato")) if clima_forzato == "" else clima_forzato
+	_applica_clima()
 	attrattiva = 0.0
 	mercato = Mercato.new(seme_mappa)
 	_scegli_famiglie()
@@ -485,7 +492,7 @@ func stima_produzione(tipo: String, cella: Vector2i, livello_b := 1, coltura := 
 	var parti: Array[String] = []
 	for r in produce:
 		var valore := float(produce[r]) * float(info.resa) * float(d.get("produzione", 1.0)) * bonus_guida(r)
-		parti.append("%d %s" % [roundi(valore), r])
+		parti.append("%d %s" % [roundi(valore), nome_risorsa(r).to_lower()])
 	var quando := "al raccolto d'autunno" if raccolto else "a stagione"
 	var testo := "Resa: %s %s · %s" % [", ".join(parti), quando, info.testo]
 	if d.has("selvatiche"):
@@ -824,7 +831,7 @@ func testo_costo(tipo: String) -> String:
 func _elenco(valori: Dictionary) -> String:
 	var parti: Array[String] = []
 	for r in valori:
-		parti.append("%d %s" % [valori[r], r])
+		parti.append("%d %s" % [valori[r], nome_risorsa(r).to_lower()])
 	return ", ".join(parti)
 
 
@@ -1605,7 +1612,7 @@ func _incursione() -> void:
 			esito.bruciato = _brucia_qualcosa()
 		var parti: Array[String] = []
 		for r in esito.rubato:
-			parti.append("%d %s" % [esito.rubato[r], r])
+			parti.append("%d %s" % [esito.rubato[r], nome_risorsa(r).to_lower()])
 		message.emit("I banditi hanno saccheggiato il villaggio: %s%s" % [", ".join(parti) if not parti.is_empty() else "poco o niente",
 			", e hanno dato fuoco a un edificio" if esito.bruciato >= 0 else ""])
 	banditi = {}
@@ -1815,6 +1822,52 @@ func forza_truppe(t: Dictionary) -> float:
 
 
 # --- Regni vicini: spie, alleanze, guerra --------------------------------------------
+
+# --- Clima ---------------------------------------------------------------------------
+
+func dati_clima() -> Dictionary:
+	return climi.get(clima, climi.get("temperato", {}))
+
+
+## Gli edifici e le colture sono gli stessi in ogni clima, ma con nomi (e per le colture stagioni
+## e colori) adatti: si ripartono dai dati base e si applicano le differenze del clima.
+func _applica_clima() -> void:
+	edifici = (load("res://data/edifici.json") as JSON).data.duplicate(true)
+	colture = (load("res://data/colture.json") as JSON).data.duplicate(true)
+	var c := dati_clima()
+	var nomi: Dictionary = c.get("edifici", {})
+	for chiave in nomi:
+		var parti: PackedStringArray = str(chiave).split("+")
+		if not edifici.has(parti[0]):
+			continue
+		if parti.size() == 1:
+			edifici[parti[0]].nome = nomi[chiave]
+		else:
+			var migl: Array = edifici[parti[0]].get("miglioramenti", [])
+			var i := int(parti[1]) - 1
+			if i >= 0 and i < migl.size():
+				migl[i].nome = nomi[chiave]
+	var diverse: Dictionary = c.get("colture", {})
+	for nome in diverse:
+		if colture.has(nome) and colture[nome] is Dictionary:
+			colture[nome].merge(diverse[nome], true)
+
+
+## Il nome di una risorsa nel nostro clima (es. "rape" nel deserto sono i datteri).
+func nome_risorsa(r: String) -> String:
+	return str(dati_clima().get("risorse", {}).get(r, IconaRisorsa.NOMI.get(r, r)))
+
+
+## Quale disegno usare per l'icona di una risorsa nel nostro clima.
+func icona_di(r: String) -> String:
+	return str(dati_clima().get("icone", {}).get(r, r))
+
+
+## Il nome di una zona del feudo (pineta, palude...) nel nostro clima.
+func nome_zona(bioma: int) -> String:
+	var chiave: String = TerrenoFeudo.NOMI_BIOMI[bioma]
+	return str(dati_clima().get("zone", {}).get(chiave, chiave))
+
 
 ## Lo stato delle altre regioni della mappa, dal seme della partita: forza dell'esercito,
 ## atteggiamento verso di noi (-100 ostile .. 100 amico), cosa sappiamo di loro.
@@ -2443,7 +2496,7 @@ func mercato_automatico() -> void:
 			problemi.append("il magazzino è pieno: %d oro della vendita sono andati persi" % roundi(risorse.oro + oro - cap))
 		risorse.oro = minf(cap, risorse.oro + oro)
 		mercato.saturazione[r] = int(mercato.saturazione.get(r, 0)) - roundi(q / float(mercato.lotto()))
-		fatti.append("venduti %d %s (+%d oro)" % [q, r, oro])
+		fatti.append("venduti %d %s (+%d oro)" % [q, nome_risorsa(r).to_lower(), oro])
 	for r in mercato_auto:
 		var soglia := int(mercato_auto[r].get("compra_sotto", 0))
 		var manca := ceili(soglia - risorse[r])
@@ -2464,7 +2517,7 @@ func mercato_automatico() -> void:
 		risorse.oro -= costo
 		risorse[r] += q
 		mercato.saturazione[r] = int(mercato.saturazione.get(r, 0)) + roundi(q / float(mercato.lotto()))
-		fatti.append("comprati %d %s (-%d oro)" % [q, r, costo])
+		fatti.append("comprati %d %s (-%d oro)" % [q, nome_risorsa(r).to_lower(), costo])
 	if not fatti.is_empty():
 		message.emit("Mercato automatico: " + ", ".join(fatti))
 	for testo in problemi:
@@ -2574,9 +2627,9 @@ func _consegna_raccolti(quando := "della stagione") -> void:
 		var entra := minf(q, maxf(0.0, cap - risorse[r]))
 		risorse[r] += entra
 		if entra >= 1.0:
-			entrati.append("+%d %s" % [int(entra), r])
+			entrati.append("+%d %s" % [int(entra), nome_risorsa(r).to_lower()])
 		if q - entra >= 1.0:
-			persi.append("%d %s" % [int(q - entra), r])
+			persi.append("%d %s" % [int(q - entra), nome_risorsa(r).to_lower()])
 	for b in buildings:
 		b.erase("pronto")
 	if not entrati.is_empty():
@@ -2856,7 +2909,7 @@ func salva() -> void:
 			"pronto": b.get("pronto", {}),
 		})
 	var dati := {
-		"versione": VERSIONE_SALVATAGGIO, "versione_mappa": versione_mappa, "famiglie": famiglie, "capo": capo, "risorse": risorse,
+		"versione": VERSIONE_SALVATAGGIO, "versione_mappa": versione_mappa, "clima": clima, "famiglie": famiglie, "capo": capo, "risorse": risorse,
 		"tagliati": Array(terreno.indici_tagliati) if terreno else [],
 		"terreno": terreno.salva() if terreno else {},
 		"mercato": mercato.salva(), "abitanti": abitanti, "felicita": felicita,
@@ -2884,6 +2937,8 @@ func carica() -> bool:
 	if not dati is Dictionary or int(dati.get("versione", 0)) < VERSIONE_MINIMA:
 		return false
 	nuova_partita(int(dati.seme_mappa), int(dati.get("versione_mappa", 1)))
+	clima = str(dati.get("clima", clima))
+	_applica_clima()
 	famiglie = dati.famiglie
 	for f in famiglie:
 		f.membri = int(f.membri)

@@ -7,20 +7,20 @@ extends Node3D
 const CELLA := 2.0
 const FONDO := -3.0
 
-const ERBA := [Color("6fae47"), Color("8db24a"), Color("b39a48"), Color("e6ecef")]
-const ACQUA := [Color("4a90c8"), Color("4a90c8"), Color("4a86b8"), Color("b8d8ea")]
-const FIUME := [Color("5aa6dc"), Color("5aa6dc"), Color("5a9cd0"), Color("7aaccc")]  # d'inverno non gela
-const RADURA := Color("8a7a4a")  # dove il bosco è stato tagliato
-## La tinta del suolo nei biomi (prateria: nessuna), e quanto pesa (meno d'inverno, con la neve).
-const TINTE_BIOMI := [Color(0, 0, 0, 0), Color("3d6a3c"), Color("6f7a3c"), Color("9a9884")]
-## Quanti alberi sono pini, per bioma.
-const PINI_BIOMI := [0.45, 0.92, 0.15, 0.6]
+## I colori del suolo e degli alberi vengono dal clima (data/climi.json, sezioni "suolo" e "alberi"):
+## per stagione (primavera, estate, autunno, inverno) e, per le zone, prateria/pineta/palude/rupi.
+var _erba: Array[Color] = []
+var _acqua: Array[Color] = []
+var _fiume: Array[Color] = []
+var _roccia_suolo: Array[Color] = []
+var _radura := Color("8a7a4a")  # dove il bosco è stato tagliato
+var _tinte_zone: Array[Color] = []
+var _chioma_tonda: Array[Color] = []  # il primo tipo di albero (tondo, acacia, betulla...)
+var _chioma_pino: Array[Color] = []   # il secondo (pino, baobab, palma, abete...)
+var _quota_secondo: Array = []        # quanti alberi sono del secondo tipo, per zona
 const CANNA := Color("8a8a4a")
 const STRADA := [Color("b09468"), Color("b09468"), Color("a88c64"), Color("d8d0c4")]
 const MASSIMO_PIANTATI := 600
-const ROCCIA_SUOLO := [Color("9a978d"), Color("9a978d"), Color("968f80"), Color("dfe5e8")]
-const CHIOMA_TONDA := [Color("4a9a3e"), Color("5aa035"), Color("d0782c"), Color("8a7a68")]
-const CHIOMA_PINO := [Color("2f6b40"), Color("2f6b40"), Color("2f6b40"), Color("c4d6d0")]
 const TERRA := Color("8a6a45")
 const TERRA_SCURA := Color("6b4f33")
 const SENTIERO := Color("c2a273")
@@ -60,6 +60,7 @@ var _mura: MeshInstance3D    # mura in pietra con le porte
 
 func costruisci(t: TerrenoFeudo) -> void:
 	terreno = t
+	_carica_tavolozza()
 	_suolo = MeshInstance3D.new()
 	add_child(_suolo)
 	_crea_alberi()
@@ -80,11 +81,11 @@ func applica_stagione(stagione: int) -> void:
 	_suolo.mesh = _suoli_pronti[stagione]
 	_crea_strade(stagione)
 	for i in _tondi.multimesh.instance_count:
-		_tondi.multimesh.set_instance_color(i, CHIOMA_TONDA[stagione].lightened(_variazioni_tondi[i]))
+		_tondi.multimesh.set_instance_color(i, _chioma_tonda[stagione].lightened(_variazioni_tondi[i]))
 	for i in _pini.multimesh.instance_count:
-		_pini.multimesh.set_instance_color(i, CHIOMA_PINO[stagione].lightened(_variazioni_pini[i]))
+		_pini.multimesh.set_instance_color(i, _chioma_pino[stagione].lightened(_variazioni_pini[i]))
 	for i in _pool_chiome.multimesh.visible_instance_count:
-		_pool_chiome.multimesh.set_instance_color(i, CHIOMA_TONDA[stagione].lightened(((i % 16) - 8) / 100.0))
+		_pool_chiome.multimesh.set_instance_color(i, _chioma_tonda[stagione].lightened(((i % 16) - 8) / 100.0))
 
 
 # --- Strade, ponti, passerelle, mura ----------------------------------------------------
@@ -119,7 +120,9 @@ func vertice(v: Vector2i) -> Vector3:
 ## Le strade sono strisce di terra battuta lungo i bordi delle celle; fra due celle d'acqua
 ## diventano un ponte (sul fiume, con parapetto e spallette) o una passerella (sul lago).
 func _crea_strade(stagione: int) -> void:
-	_strade.mesh = _mesh_lati(terreno.strade.keys(), STRADA[stagione], true)
+	# senza neve (savana, deserto) le strade d'inverno restano del colore d'autunno
+	var st := stagione if GameState.dati_clima().get("neve", true) or stagione != GameState.INVERNO else GameState.AUTUNNO
+	_strade.mesh = _mesh_lati(terreno.strade.keys(), STRADA[st], true)
 
 
 func _mesh_lati(lati: Array, colore: Color, con_ponti: bool) -> ArrayMesh:
@@ -281,26 +284,26 @@ func _colore_cella(c: Vector2i, stagione: int) -> Color:
 	var base: Color
 	match terreno.tipo_a(c):
 		TerrenoFeudo.Tipo.ACQUA:
-			return ACQUA[stagione]
+			return _acqua[stagione]
 		TerrenoFeudo.Tipo.FIUME:
-			return FIUME[stagione]
+			return _fiume[stagione]
 		TerrenoFeudo.Tipo.ROCCIA:
-			base = ROCCIA_SUOLO[stagione]
+			base = _roccia_suolo[stagione]
 		TerrenoFeudo.Tipo.COLLINA:
-			base = ERBA[stagione].darkened(0.12)
+			base = _erba[stagione].darkened(0.12)
 		TerrenoFeudo.Tipo.BOSCO:
-			base = ERBA[stagione].darkened(0.08)
+			base = _erba[stagione].darkened(0.08)
 		TerrenoFeudo.Tipo.SENTIERO:
 			base = SENTIERO
 		TerrenoFeudo.Tipo.ERBA_FIORI:
-			base = ERBA[stagione].lightened(0.05)
+			base = _erba[stagione].lightened(0.05)
 		_:
-			base = ERBA[stagione]
+			base = _erba[stagione]
 	var bm := terreno.bioma_a(c)
 	if bm != TerrenoFeudo.Bioma.PRATERIA and terreno.tipo_a(c) != TerrenoFeudo.Tipo.SENTIERO:
-		base = base.lerp(TINTE_BIOMI[bm], 0.12 if stagione == GameState.INVERNO else 0.38)
+		base = base.lerp(_tinte_zone[bm], 0.12 if stagione == GameState.INVERNO else 0.38)
 	if _tagliate.has(c.y * TerrenoFeudo.LATO + c.x) and terreno.ceppi.has(c.y * TerrenoFeudo.LATO + c.x):
-		base = base.lerp(RADURA, 0.35 if stagione != GameState.INVERNO else 0.1)
+		base = base.lerp(_radura, 0.35 if stagione != GameState.INVERNO else 0.1)
 	elif stagione != GameState.INVERNO and terreno.tipo_a(c) in TerrenoFeudo.COSTRUIBILE:
 		# la terra fertile è un verde più scuro e ricco: si riconosce a occhio
 		base = base.darkened(0.16 * terreno.fertilita_a(c))
@@ -464,7 +467,7 @@ func _crea_alberi() -> void:
 				var pos := Vector3((x + rng.randf_range(0.2, 0.8)) * CELLA, terreno.altezza(c), (y + rng.randf_range(0.2, 0.8)) * CELLA)
 				var s := rng.randf_range(0.8, 1.25)
 				var tr := LowPoly.t(pos, Vector3.ONE * s, rng.randf() * TAU)
-				var pino: bool = rng.randf() < float(PINI_BIOMI[terreno.bioma_a(c)])
+				var pino: bool = rng.randf() < float(_quota_secondo[terreno.bioma_a(c)])
 				var elenco: Array = _alberi_cella.get(indice, [])
 				if pino:
 					elenco.append([1, pini.size(), -1])
@@ -474,11 +477,12 @@ func _crea_alberi() -> void:
 					tondi.append(tr)
 				_alberi_cella[indice] = elenco
 
-	var tronco := LowPoly.Costruttore.new().forma(LowPoly.cilindro(0.16, 0.12, 1.2, 5), LowPoly.t(Vector3(0, 0.6, 0)), TRONCO).mesh()
-	var chioma_tonda := LowPoly.Costruttore.new().forma(LowPoly.sfera(0.95, 1.7, 7, 4), LowPoly.t(Vector3(0, 1.8, 0)), Color.WHITE).mesh()
-	var chioma_pino := LowPoly.Costruttore.new() \
-		.forma(LowPoly.cilindro(0.95, 0.0, 1.6, 7), LowPoly.t(Vector3(0, 1.5, 0)), Color.WHITE) \
-		.forma(LowPoly.cilindro(0.7, 0.0, 1.3, 7), LowPoly.t(Vector3(0, 2.3, 0)), Color.WHITE).mesh()
+	var alberi: Dictionary = GameState.dati_clima().get("alberi", {})
+	var misure: Array = alberi.get("tronco", [1.2, 1.0])
+	var h := float(misure[0])
+	var tronco := LowPoly.Costruttore.new().forma(LowPoly.cilindro(0.16 * float(misure[1]), 0.12 * float(misure[1]), h, 5), LowPoly.t(Vector3(0, h / 2.0, 0)), TRONCO).mesh()
+	var chioma_tonda := _forma_chioma(str(alberi.get("primo", "tondo")), h)
+	var chioma_pino := _forma_chioma(str(alberi.get("secondo", "pino")), h)
 
 	var tutti: Array[Transform3D] = []
 	tutti.append_array(tondi)
@@ -557,7 +561,7 @@ func _prendi_dalla_scorta(indice: int) -> void:
 	_orig_pool.append(tr)
 	_pool_chiome.multimesh.set_instance_transform(n, tr)
 	_pool_tronchi.multimesh.set_instance_transform(n, tr)
-	_pool_chiome.multimesh.set_instance_color(n, CHIOMA_TONDA[GameState.stagione])
+	_pool_chiome.multimesh.set_instance_color(n, _chioma_tonda[GameState.stagione])
 	_pool_chiome.multimesh.visible_instance_count = n + 1
 	_pool_tronchi.multimesh.visible_instance_count = n + 1
 	_alberi_cella[indice] = [[2, n, n]]
@@ -616,6 +620,63 @@ func _tronchi_di(albero: Array) -> MultiMesh:
 # --- Piante selvatiche ------------------------------------------------------------
 
 ## Ciuffi colorati dove crescono orzo, grano e rape selvatici.
+## I colori del clima (suolo e alberi), da data/climi.json.
+func _carica_tavolozza() -> void:
+	var c := GameState.dati_clima()
+	var suolo: Dictionary = c.get("suolo", {})
+	var alberi: Dictionary = c.get("alberi", {})
+	_erba = _colori(suolo.get("erba", ["6fae47", "8db24a", "b39a48", "e6ecef"]))
+	_acqua = _colori(suolo.get("acqua", ["4a90c8", "4a90c8", "4a86b8", "b8d8ea"]))
+	_fiume = _colori(suolo.get("fiume", ["5aa6dc", "5aa6dc", "5a9cd0", "7aaccc"]))
+	_roccia_suolo = _colori(suolo.get("roccia", ["9a978d", "9a978d", "968f80", "dfe5e8"]))
+	_radura = Color(str(suolo.get("radura", "8a7a4a")))
+	_tinte_zone = _colori(suolo.get("tinte_zone", ["000000", "3d6a3c", "6f7a3c", "9a9884"]))
+	_chioma_tonda = _colori(alberi.get("colori_primo", ["4a9a3e", "5aa035", "d0782c", "8a7a68"]))
+	_chioma_pino = _colori(alberi.get("colori_secondo", ["2f6b40", "2f6b40", "2f6b40", "c4d6d0"]))
+	_quota_secondo = alberi.get("quota_secondo", [0.45, 0.92, 0.15, 0.6])
+
+
+func _colori(esadecimali: Array) -> Array[Color]:
+	var colori: Array[Color] = []
+	for e in esadecimali:
+		colori.append(Color(str(e)))
+	return colori
+
+
+## La chioma di un tipo di albero (bianca: il colore lo dà la stagione), sopra un tronco alto h.
+func _forma_chioma(forma: String, h: float) -> Mesh:
+	var k := LowPoly.Costruttore.new()
+	match forma:
+		"pino":
+			k.forma(LowPoly.cilindro(0.95, 0.0, 1.6, 7), LowPoly.t(Vector3(0, h + 0.3, 0)), Color.WHITE)
+			k.forma(LowPoly.cilindro(0.7, 0.0, 1.3, 7), LowPoly.t(Vector3(0, h + 1.1, 0)), Color.WHITE)
+		"abete":
+			k.forma(LowPoly.cilindro(1.0, 0.0, 1.4, 7), LowPoly.t(Vector3(0, h + 0.2, 0)), Color.WHITE)
+			k.forma(LowPoly.cilindro(0.8, 0.0, 1.2, 7), LowPoly.t(Vector3(0, h + 0.9, 0)), Color.WHITE)
+			k.forma(LowPoly.cilindro(0.55, 0.0, 1.0, 7), LowPoly.t(Vector3(0, h + 1.5, 0)), Color.WHITE)
+		"acacia":
+			# la chioma piatta a ombrello
+			k.forma(LowPoly.cilindro(1.35, 1.1, 0.32, 8), LowPoly.t(Vector3(0, h + 0.2, 0)), Color.WHITE)
+			k.forma(LowPoly.cilindro(0.85, 0.7, 0.26, 7), LowPoly.t(Vector3(0.3, h + 0.45, -0.1)), Color.WHITE)
+		"baobab":
+			k.forma(LowPoly.sfera(0.75, 0.9, 6, 3), LowPoly.t(Vector3(0.4, h + 0.2, 0)), Color.WHITE)
+			k.forma(LowPoly.sfera(0.7, 0.8, 6, 3), LowPoly.t(Vector3(-0.35, h + 0.3, 0.2)), Color.WHITE)
+			k.forma(LowPoly.sfera(0.6, 0.7, 6, 3), LowPoly.t(Vector3(0, h + 0.55, -0.35)), Color.WHITE)
+		"palma":
+			# un ciuffo di foglie lunghe che ricadono tutto attorno
+			for i in 6:
+				var angolo := TAU * i / 6.0
+				var base := Basis(Vector3.UP, angolo) * Basis(Vector3.RIGHT, 0.45)
+				var centro := Vector3(sin(angolo) * 0.55, h + 0.05, cos(angolo) * 0.55)
+				k.forma(LowPoly.cubo(Vector3(0.28, 0.06, 1.3)), Transform3D(base, centro), Color.WHITE)
+			k.forma(LowPoly.sfera(0.22, 0.3, 5, 3), LowPoly.t(Vector3(0, h + 0.1, 0)), Color.WHITE)
+		"betulla":
+			k.forma(LowPoly.sfera(0.6, 1.9, 6, 4), LowPoly.t(Vector3(0, h + 0.7, 0)), Color.WHITE)
+		_:
+			k.forma(LowPoly.sfera(0.95, 1.7, 7, 4), LowPoly.t(Vector3(0, h + 0.6, 0)), Color.WHITE)
+	return k.mesh()
+
+
 func _crea_ciuffi() -> void:
 	var trasformazioni: Array[Transform3D] = []
 	var colori: Array[Color] = []
