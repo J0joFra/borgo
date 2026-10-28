@@ -21,17 +21,24 @@ const PER_NOME := {
 const COSTRUIBILE := [Tipo.ERBA, Tipo.ERBA_FIORI, Tipo.COLLINA, Tipo.SENTIERO]
 const ALTEZZE := {Tipo.ACQUA: -0.35, Tipo.FIUME: -0.35, Tipo.ROCCIA: 0.45, Tipo.COLLINA: 0.6}
 
+# --- fertilità e acqua --------------------------------------------------------
+const FERT_ACQUA_RAGGIO := 3      # raggio d'influenza dell'acqua sulla fertilità
+const FERT_ACQUA_PESO := 0.06     # contributo di una cella d'acqua a distanza 0
+const FERT_ACQUA_TETTO := 0.55    # bonus massimo cumulabile dall'acqua
+const FERT_FIUME_MOLT := 1.35     # il fiume fertiliizza più del lago (limo)
+
 var seme: int
 var celle := PackedByteArray()
 var fertilita := PackedFloat32Array()  # 0..1 per cella: quanto rende un campo
-var tagliati := PackedInt32Array()     # celle di bosco abbattute dai taglialegna (si salvano)
+var indici_tagliati := PackedInt32Array()  # indici (int) delle celle di bosco abbattute
 var ceppi: Dictionary = {}             # indice cella -> stagioni prima che i ceppi siano tolti e ci si possa costruire
 var selvatiche: Dictionary = {}  # indice cella -> coltura che ci cresce da sola (orzo, grano, rape)
 var piantine: Dictionary = {}    # indice cella -> stagioni che mancano perché diventi bosco
 var nuovo_bosco := PackedInt32Array()  # celle di prato diventate bosco grazie al forestale
 var strade: Dictionary = {}      # chiave del lato (vedi lato) -> true: le strade corrono sui bordi delle celle
 var mura: Dictionary = {}        # indice cella -> true: mura in pietra (occupano la cella)
-var _occupato: Dictionary = {}  # Vector2i -> id edificio
+var _occupato: Dictionary = {}   # Vector2i -> id edificio
+var _celle_di: Dictionary = {}   # id edificio -> Array[Vector2i] (mappa inversa per libera() O(1))
 
 
 func _init(s: int) -> void:
@@ -117,28 +124,49 @@ func _traccia_fiume(rng: RandomNumberGenerator) -> void:
 				celle[c.y * LATO + c.x] = Tipo.FIUME
 
 
-## Fertilità: rumore lento, più alta vicino all'acqua (terra di fiume e di lago).
+## Fertilità: rumore lento + contributo cumulativo dell'acqua vicina.
+## Più celle d'acqua (lago o fiume) attorno, più la terra è fertile,
+## con un peso che cala col quadrato della distanza e un tetto per evitare saturazione.
 func _calcola_fertilita() -> void:
 	var rumore := FastNoiseLite.new()
 	rumore.seed = seme + 5
 	rumore.frequency = 0.045
 	fertilita.resize(LATO * LATO)
+
+	# 1) base: rumore lento, indipendente dall'acqua
 	for y in LATO:
 		for x in LATO:
 			fertilita[y * LATO + x] = clampf((rumore.get_noise_2d(x, y) + 0.6) / 1.4, 0.0, 1.0)
-	var bagnate := {}
+
+	# 2) contributo dell'acqua: accumulo pesato (somma, non max).
+	#    Ogni cella d'acqua sparge il suo peso nelle celle entro il raggio,
+	#    con peso 1 al centro e 0 al bordo (curva quadratica: vicino conta molto).
+	var bonus := PackedFloat32Array()
+	bonus.resize(LATO * LATO)
+	var r := FERT_ACQUA_RAGGIO
+	var r2 := float(r * r)
 	for y in LATO:
 		for x in LATO:
-			if celle[y * LATO + x] in [Tipo.ACQUA, Tipo.FIUME]:
-				for dy in range(-3, 4):
-					for dx in range(-3, 4):
-						var c := Vector2i(x + dx, y + dy)
-						if dentro(c):
-							var vicino := 1.0 - Vector2(dx, dy).length() / 4.5
-							bagnate[c] = maxf(bagnate.get(c, 0.0), vicino)
-	for c in bagnate:
-		var i: int = c.y * LATO + c.x
-		fertilita[i] = clampf(fertilita[i] + 0.35 * bagnate[c], 0.0, 1.0)
+			var t := celle[y * LATO + x]
+			if t != Tipo.ACQUA and t != Tipo.FIUME:
+				continue
+			var moltiplicatore := FERT_FIUME_MOLT if t == Tipo.FIUME else 1.0
+			for dy in range(-r, r + 1):
+				for dx in range(-r, r + 1):
+					var nx := x + dx
+					var ny := y + dy
+					if nx < 0 or ny < 0 or nx >= LATO or ny >= LATO:
+						continue
+					var d2 := float(dx * dx + dy * dy)
+					if d2 > r2:
+						continue
+					var peso := 1.0 - d2 / r2
+					peso *= peso  # curva più marcata: l'acqua adiacente pesa molto
+					bonus[ny * LATO + nx] += peso * FERT_ACQUA_PESO * moltiplicatore
+
+	# 3) somma col tetto: più acqua attorno = più fertile, ma senza saturare a 1.0
+	for i in fertilita.size():
+		fertilita[i] = clampf(fertilita[i] + minf(bonus[i], FERT_ACQUA_TETTO), 0.0, 1.0)
 
 
 func _macchia(centro: Vector2, raggio: float, t: int) -> void:
@@ -178,15 +206,19 @@ func edificio_a(c: Vector2i) -> int:
 
 func occupa(b: Dictionary) -> void:
 	var taglia := GameState.taglia_di(b)
+	var celle_ed: Array[Vector2i] = []
 	for y in taglia.y:
 		for x in taglia.x:
-			_occupato[b.cella + Vector2i(x, y)] = b.id
+			var c: Vector2i = b.cella + Vector2i(x, y)
+			_occupato[c] = b.id
+			celle_ed.append(c)
+	_celle_di[b.id] = celle_ed
 
 
 func libera(b: Dictionary) -> void:
-	for c in _occupato.keys():
-		if _occupato[c] == b.id:
-			_occupato.erase(c)
+	for c in _celle_di.get(b.id, []):
+		_occupato.erase(c)
+	_celle_di.erase(b.id)
 
 
 # --- Regole di piazzamento ---------------------------------------------------
@@ -209,11 +241,20 @@ func posizione_valida(tipo: String, cella: Vector2i, rot := 0) -> bool:
 				return false
 			if richiesto < 0 and not t in COSTRUIBILE:
 				return false
-			# i lati interni (fra due celle dell'edificio) non devono avere strade
-			if x > 0 and lato_strada(c, c + Vector2i(0, 1)):
-				return false
-			if y > 0 and lato_strada(c, c + Vector2i(1, 0)):
-				return false
+			# lati interni verticali: fra la cella (x,y) e (x+1,y).
+			# In coordinate vertice, quel lato va da (x+1, y) a (x+1, y+1).
+			if x < taglia.x - 1:
+				var va := cella + Vector2i(x + 1, y)
+				var vb := cella + Vector2i(x + 1, y + 1)
+				if lato_strada(va, vb):
+					return false
+			# lati interni orizzontali: fra la cella (x,y) e (x,y+1).
+			# In coordinate vertice, quel lato va da (x, y+1) a (x+1, y+1).
+			if y < taglia.y - 1:
+				var ha := cella + Vector2i(x, y + 1)
+				var hb := cella + Vector2i(x + 1, y + 1)
+				if lato_strada(ha, hb):
+					return false
 	return true
 
 
@@ -245,7 +286,10 @@ func info_zona(tipo: String, cella: Vector2i, stagione: int) -> Dictionary:
 				for x in taglia.x:
 					somma += fertilita_a(cella + Vector2i(x, y))
 			var media := somma / (taglia.x * taglia.y)
-			return {"resa": minimo + (massimo - minimo) * media, "testo": "terra fertile al %d%%" % int(media * 100)}
+			var testo := "terra fertile al %d%%" % int(media * 100)
+			if media > 0.7:
+				testo += " (vicino all'acqua)"
+			return {"resa": minimo + (massimo - minimo) * media, "testo": testo}
 		"acqua":
 			var lago := conta_attorno(cella, taglia, int(z.raggio), Tipo.ACQUA)
 			var fiume := conta_attorno(cella, taglia, int(z.raggio), Tipo.FIUME)
@@ -298,7 +342,7 @@ func celle_zona(tipo: String, cella: Vector2i) -> Array:
 	var r := int(z.raggio)
 	if z.tipo == "radura":
 		for c in candidati_piantine(cella, taglia, r):
-			risultato.append([c, 1.0 if tagliati.has(c.y * LATO + c.x) else 0.5])
+			risultato.append([c, 1.0 if indici_tagliati.has(c.y * LATO + c.x) else 0.5])
 		return risultato
 	var cercati := [Tipo.ACQUA, Tipo.FIUME] if z.tipo == "acqua" else [PER_NOME[z.tipo]]
 	for y in range(cella.y - r, cella.y + taglia.y + r):
@@ -338,13 +382,14 @@ func taglia_bosco(cella: Vector2i, taglia: Vector2i, raggio: int, n: int) -> Arr
 				candidati.append(c)
 	candidati.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
 		return centro.distance_squared_to(Vector2(a) + Vector2(0.5, 0.5)) < centro.distance_squared_to(Vector2(b) + Vector2(0.5, 0.5)))
-	var tagliate: Array[Vector2i] = []
+	var celle_tagliate: Array[Vector2i] = []
 	for c in candidati.slice(0, n):
-		celle[c.y * LATO + c.x] = Tipo.ERBA
-		tagliati.append(c.y * LATO + c.x)
-		ceppi[c.y * LATO + c.x] = STAGIONI_CEPPI
-		tagliate.append(c)
-	return tagliate
+		var i := c.y * LATO + c.x
+		celle[i] = Tipo.ERBA
+		indici_tagliati.append(i)
+		ceppi[i] = STAGIONI_CEPPI
+		celle_tagliate.append(c)
+	return celle_tagliate
 
 
 # --- Piante selvatiche ----------------------------------------------------------
@@ -397,7 +442,7 @@ func candidati_piantine(cella: Vector2i, taglia: Vector2i, raggio: int) -> Array
 				continue
 			if not tipo_a(c) in [Tipo.ERBA, Tipo.ERBA_FIORI]:
 				continue
-			if tagliati.has(i):
+			if indici_tagliati.has(i):
 				radure.append(c)
 			else:
 				prati.append(c)
@@ -428,9 +473,9 @@ func cresci_piantine() -> Array:
 		if piantine[i] <= 0:
 			piantine.erase(i)
 			celle[i] = Tipo.BOSCO
-			var t := tagliati.find(i)
+			var t := indici_tagliati.find(i)
 			if t >= 0:
-				tagliati.remove_at(t)
+				indici_tagliati.remove_at(t)
 			else:
 				nuovo_bosco.append(i)
 	return cambiate
@@ -479,10 +524,16 @@ static func percorso(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
 	return vertici
 
 
+## I lati fra vertici consecutivi; [] (con errore) se due vertici non sono adiacenti.
 static func lati_di(vertici: Array) -> Array[int]:
 	var lati: Array[int] = []
 	for i in range(1, vertici.size()):
-		lati.append(lato(vertici[i - 1], vertici[i]))
+		var a: Vector2i = vertici[i - 1]
+		var b: Vector2i = vertici[i]
+		if absi(a.x - b.x) + absi(a.y - b.y) != 1:
+			push_error("TerrenoFeudo.lati_di: vertici non adiacenti %s → %s" % [a, b])
+			return []
+		lati.append(lato(a, b))
 	return lati
 
 
@@ -712,8 +763,10 @@ func verifica_mura(celle_m: Array) -> Dictionary:
 			continue
 		if not nel_feudo(c) or _occupato.has(c) or piantine.has(i) or ceppi.has(i):
 			return _no(v, "le mura passano su edifici, alberelli, ceppi o fuori dal feudo")
+		if _acqua(c):
+			return _no(v, "le mura non si possono mettere sull'acqua")
 		if not tipo_a(c) in COSTRUIBILE:
-			return _no(v, "le mura si fanno solo sulla terra libera")
+			return _no(v, "le mura si fanno solo su erba, fiori o collina")
 		v.pietra += COSTO_MURA
 		v.celle += 1
 	return v
@@ -736,7 +789,14 @@ func rimuovi_muro(c: Vector2i) -> bool:
 # --- Salvataggio ---------------------------------------------------------------
 
 func salva() -> Dictionary:
-	return {"strade": strade.keys(), "mura": mura.keys(), "piantine": piantine, "nuovo_bosco": Array(nuovo_bosco), "ceppi": ceppi}
+	return {
+		"strade": strade.keys(),
+		"mura": mura.keys(),
+		"piantine": piantine,
+		"nuovo_bosco": Array(nuovo_bosco),
+		"ceppi": ceppi,
+		"selvatiche": selvatiche,
+	}
 
 
 func applica_salvataggio(d: Dictionary) -> void:
@@ -753,13 +813,16 @@ func applica_salvataggio(d: Dictionary) -> void:
 	var p: Dictionary = d.get("piantine", {})
 	for k in p:
 		piantine[int(k)] = int(p[k])
+	var sv: Dictionary = d.get("selvatiche", {})
+	for k in sv:
+		selvatiche[int(k)] = sv[k]
 
 
 ## Rimette i tagli di un salvataggio.
 func applica_tagli(indici: Array) -> void:
 	for i in indici:
 		celle[int(i)] = Tipo.ERBA
-		tagliati.append(int(i))
+		indici_tagliati.append(int(i))
 
 
 ## Cerca a spirale il posto valido più vicino a una cella.
