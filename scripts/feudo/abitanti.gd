@@ -3,13 +3,15 @@ extends Node3D
 ## Gli abitanti che camminano per il feudo. Sono solo decorativi: ogni persona ha una casa
 ## (tenda o casa) e, se lavora, un edificio dove va e viene; i disoccupati gironzolano
 ## attorno al falò (poi la piazza). Quando ci sono strade vicino a partenza e arrivo,
-## camminano lungo le strade. Al massimo MASSIMO persone visibili, per restare leggeri su telefono.
+## camminano lungo le strade; altrimenti seguono un cammino a piedi che evita l'acqua.
+## Al massimo MASSIMO persone visibili, per restare leggeri su telefono.
 
 const MASSIMO := 40
 const VELOCITA := 1.6  # metri al secondo, a velocità x1
 const TUNICHE := [Color("7a4a3a"), Color("4a6a8a"), Color("6a7a3a"), Color("8a6a3a"), Color("5a4a6a"), Color("9a8a6a")]
 const PELLE := Color("e0b08a")
 const VICINO_STRADA := 3  # celle: entro questa distanza si va a prendere la strada
+const TENTATIVI_PUNTO := 6  # quante volte provare a trovare un punto valido attorno a un edificio
 
 var vista: VistaTerreno
 
@@ -18,9 +20,11 @@ var _firma := ""           # per ricalcolare case e lavori solo quando cambiano
 var _mesh: Array[ArrayMesh] = []
 var _mesh_soldato: ArrayMesh
 var _tempo := 0.0
+var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	_rng.seed = hash(GameState.seme) if "seme" in GameState else 0
 	for tunica in TUNICHE:
 		_mesh.append(_crea_mesh(tunica))
 	_mesh_soldato = _crea_soldato()
@@ -108,7 +112,11 @@ func _process(delta: float) -> void:
 			p.attesa -= dt
 			if p.attesa <= 0.0:
 				p.tappe = _cammino(nodo.position, _prossima_meta(p))
-				p.destinazione = p.tappe.pop_front()
+				# se il cammino è vuoto (partenza = arrivo), aspetta di nuovo un attimo
+				if p.tappe.is_empty():
+					p.attesa = _sosta(p)
+				else:
+					p.destinazione = p.tappe.pop_front()
 			continue
 		var verso: Vector3 = p.destinazione - nodo.position
 		verso.y = 0.0
@@ -137,12 +145,17 @@ func _tutti_si_muovono() -> void:
 
 
 ## Dove va ora: chi lavora fa avanti e indietro tra lavoro e casa, gli altri girano attorno al falò.
-## Con i banditi in arrivo tutti corrono a rifugiarsi attorno alla dimora del signore.
+## Con i banditi in arrivo tutti corrono a rifugiarsi attorno alla dimora del signore (o alla caserma,
+## o al falò se non c'è altro).
 func _prossima_meta(p: Dictionary) -> Vector3:
 	if not GameState.banditi.is_empty():
 		for b in GameState.buildings:
 			if b.tipo == "dimora":
 				return _punto_attorno(b.id)
+		for b in GameState.buildings:
+			if int(GameState.def_di(b).get("formazioni", 0)) > 0:
+				return _punto_attorno(b.id)
+		return _punto_falo()
 	if p.lavoro >= 0 and (p.verso_lavoro or p.casa < 0):
 		p.verso_lavoro = randf() < 0.75  # di solito resta a lavorare, ogni tanto torna a casa
 		return _punto_attorno(p.lavoro)
@@ -160,7 +173,8 @@ func _sosta(p: Dictionary) -> float:
 	return randf_range(2.0, 6.0)
 
 
-## Un punto appena fuori dal bordo di un edificio, su un lato a caso.
+## Un punto appena fuori dal bordo di un edificio, su un lato a caso, che sia percorribile.
+## Se tutti i tentativi cadono su acqua o fuori mappa, torna al centro dell'edificio.
 func _punto_attorno(id: int) -> Vector3:
 	var b := GameState.trova(id)
 	if b.is_empty():
@@ -169,39 +183,84 @@ func _punto_attorno(id: int) -> Vector3:
 	var w := float(t.x) * VistaTerreno.CELLA / 2.0 + 0.6
 	var d := float(t.y) * VistaTerreno.CELLA / 2.0 + 0.6
 	var centro := vista.centro_area(b.cella, t)
-	var lato := randi() % 4
-	var u := randf_range(-1.0, 1.0)
-	var offset: Vector3 = [Vector3(u * w, 0, d), Vector3(u * w, 0, -d), Vector3(w, 0, u * d), Vector3(-w, 0, u * d)][lato]
-	return centro + offset
+	for i in TENTATIVI_PUNTO:
+		var lato := _rng.randi() % 4
+		var u := _rng.randf_range(-1.0, 1.0)
+		var offset: Vector3 = [Vector3(u * w, 0, d), Vector3(u * w, 0, -d), Vector3(w, 0, u * d), Vector3(-w, 0, u * d)][lato]
+		var p := centro + offset
+		if vista.terreno.percorribile(_cella(p)):
+			return p
+	# fallback: centro dell'edificio (sempre su terra, dato che non si costruisce sull'acqua)
+	return centro
 
 
-## Le tappe per arrivare a una meta: se partenza e arrivo sono vicini alla stessa rete di strade
-## si segue la strada (cella per cella), altrimenti si va dritti.
+## Le tappe per arrivare a una meta. Prova prima la strada; se non conviene o non c'è,
+## usa un cammino a piedi che evita l'acqua. In guerra si corre dritti solo se la linea
+## diretta non attraversa acqua.
 func _cammino(da: Vector3, a: Vector3) -> Array:
 	var terreno := vista.terreno
-	if terreno.strade.is_empty() or not GameState.banditi.is_empty():
-		return [a]  # in guerra si corre dritti, strade o no
-	var inizio := _strada_vicina(da)
-	var fine := _strada_vicina(a)
-	if inizio.x < 0 or fine.x < 0 or inizio == fine:
+	if GameState.banditi.is_empty() and not terreno.strade.is_empty():
+		var inizio := _strada_vicina(da)
+		var fine := _strada_vicina(a)
+		if inizio.x >= 0 and fine.x >= 0 and inizio != fine:
+			var vertici := _percorso_strade(inizio, fine)
+			# non vale la pena prendere la strada se allunga troppo il giro
+			var diretto := Vector2(a.x - da.x, a.z - da.z).length() / VistaTerreno.CELLA
+			if not vertici.is_empty() and vertici.size() <= diretto * 2.5 + 6:
+				var tappe := []
+				for v in vertici:
+					tappe.append(vista.vertice(v))
+				tappe.append(a)
+				return tappe
+	# niente strada: cammino a piedi che evita l'acqua
+	return _cammino_terra(da, a)
+
+
+## Cammino a piedi fra due punti che evita l'acqua (usa terreno.cammino, che già controlla
+## percorribile e non taglia gli angoli). Restituisce i punti 3D delle celle.
+## Se la meta non è raggiungibile, si ferma alla cella percorribile più vicina.
+func _cammino_terra(da: Vector3, a: Vector3) -> Array:
+	var terreno := vista.terreno
+	var c_da := _cella(da)
+	var c_a := _cella(a)
+	if c_da == c_a or not terreno.dentro(c_da) or not terreno.dentro(c_a):
 		return [a]
-	var vertici := _percorso_strade(inizio, fine)
-	# non vale la pena prendere la strada se allunga troppo il giro
-	var diretto := Vector2(a.x - da.x, a.z - da.z).length() / VistaTerreno.CELLA
-	if vertici.is_empty() or vertici.size() > diretto * 2.5 + 6:
+	if not terreno.percorribile(c_da):
+		# partenza su acqua o mura: la persona "salta" alla cella percorribile più vicina
+		c_da = _cella_percorribile_vicina(c_da)
+		if c_da.x < 0:
+			return [a]
+	var celle_c := terreno.cammino(c_da, c_a)
+	if celle_c.is_empty():
 		return [a]
 	var tappe := []
-	for v in vertici:
-		tappe.append(vista.vertice(v))
-	tappe.append(a)
+	for i in range(1, celle_c.size()):
+		tappe.append(vista.centro_cella(celle_c[i]))
+	# se il cammino non arriva esattamente alla meta, aggiungi il punto finale esatto
+	if not tappe.is_empty() or celle_c.size() == 1:
+		tappe.append(a)
 	return tappe
+
+
+## La cella percorribile più vicina a una data (spirale). (-1,-1) se non ne trova.
+func _cella_percorribile_vicina(c: Vector2i) -> Vector2i:
+	for raggio in range(0, 8):
+		for y in range(-raggio, raggio + 1):
+			for x in range(-raggio, raggio + 1):
+				if maxi(absi(x), absi(y)) != raggio:
+					continue
+				var v := c + Vector2i(x, y)
+				if vista.terreno.dentro(v) and vista.terreno.percorribile(v):
+					return v
+	return Vector2i(-1, -1)
 
 
 func _cella(p: Vector3) -> Vector2i:
 	return Vector2i(floori(p.x / VistaTerreno.CELLA), floori(p.z / VistaTerreno.CELLA))
 
 
-## Il vertice di strada più vicino a un punto, entro VICINO_STRADA celle (o (-1, -1)).
+## Il vertice di strada più vicino a un punto, entro VICINO_STRADA celle, che sia anche
+## raggiungibile a piedi dal punto (o (-1, -1)).
 func _strada_vicina(p: Vector3) -> Vector2i:
 	var v0 := Vector2i(roundi(p.x / VistaTerreno.CELLA), roundi(p.z / VistaTerreno.CELLA))
 	var migliore := Vector2i(-1, -1)
@@ -209,10 +268,40 @@ func _strada_vicina(p: Vector3) -> Vector2i:
 	for dy in range(-VICINO_STRADA, VICINO_STRADA + 1):
 		for dx in range(-VICINO_STRADA, VICINO_STRADA + 1):
 			var v := v0 + Vector2i(dx, dy)
-			if dx * dx + dy * dy < dist and vista.terreno.vertice_su_strada(v):
-				dist = dx * dx + dy * dy
-				migliore = v
+			if dx * dx + dy * dy >= dist:
+				continue
+			if not vista.terreno.vertice_su_strada(v):
+				continue
+			# il vertice è su strada, ma le celle attorno devono essere raggiungibili a piedi
+			# (es. un ponte sopra l'acqua non basta se non c'è modo di arrivarci)
+			if not _vertice_raggiungibile(v, v0):
+				continue
+			dist = dx * dx + dy * dy
+			migliore = v
 	return migliore
+
+
+## Vero se esiste almeno una cella percorribile adiacente al vertice (o il vertice stesso
+## è su terra) e il vertice è raggiungibile in linea retta senza attraversare acqua.
+func _vertice_raggiungibile(v: Vector2i, da: Vector2i) -> bool:
+	# il vertice tocca 4 celle: se almeno una è percorribile, ci si può arrivare
+	var attorno := [v, v + Vector2i(-1, 0), v + Vector2i(0, -1), v + Vector2i(-1, -1)]
+	var almeno_terra := false
+	for c in attorno:
+		if vista.terreno.dentro(c) and vista.terreno.percorribile(c):
+			almeno_terra = true
+			break
+	if not almeno_terra:
+		return false
+	# e il percorso in linea retta da "da" al vertice non deve attraversare solo acqua
+	var c_da := _cella_percorribile_vicina(da)
+	if c_da.x < 0:
+		return false
+	var celle := vista.terreno.cammino(c_da, v)
+	if celle.is_empty():
+		return false
+	# se il cammino arriva vicino al vertice, ok
+	return Vector2(celle[celle.size() - 1] - v).length() <= 1.5
 
 
 ## Il cammino più corto lungo le strade, di vertice in vertice (ricerca in ampiezza), [] se non
@@ -242,12 +331,18 @@ func _percorso_strade(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
 	return cammino
 
 
+## Un punto attorno al falò (o alla piazza), su una cella percorribile.
 func _punto_falo() -> Vector3:
 	for b in GameState.buildings:
 		if b.tipo == "falo" or b.tipo == "piazza":
-			var c := vista.centro_area(b.cella, Vector2i(2, 2))
-			var a := randf() * TAU
-			return c + Vector3(cos(a), 0, sin(a)) * randf_range(2.0, 5.0)
+			var t := GameState.taglia_di(b)
+			var c := vista.centro_area(b.cella, t)
+			for i in TENTATIVI_PUNTO:
+				var a := _rng.randf() * TAU
+				var p := c + Vector3(cos(a), 0, sin(a)) * _rng.randf_range(2.0, 5.0)
+				if vista.terreno.percorribile(_cella(p)):
+					return p
+			return c
 	var centro := Vector2(TerrenoFeudo.centro_feudo()) * VistaTerreno.CELLA
 	return Vector3(centro.x, 0, centro.y)
 
