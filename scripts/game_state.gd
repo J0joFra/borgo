@@ -103,6 +103,7 @@ var soldati := 0              # abitanti arruolati (totale): non lavorano, difen
 var truppe: Dictionary = {}   # tipo di soldato (fanti, arcieri, balestrieri, cavalieri) -> quanti
 ## Mercato automatico: risorsa -> {vendi_sopra, compra_sotto} (0 = spento); e l'oro da non spendere.
 var mercato_auto: Dictionary = {}
+var versione_mappa := 2  # 1: partite vecchie (feudo quadrato al centro, regione al centro); 2: forme ondulate
 var riserva_oro := 0  # oro che il mercato automatico non spende mai
 var regni: Dictionary = {}    # "indice regione" -> {forza, atteggiamento, spiato, alleato, conquistato, vassallo}
 var missioni: Array = []      # {tipo: spia|alleanza|attacco, regione, mancano, soldati}
@@ -297,7 +298,8 @@ func ricomincia() -> void:
 	terreno = null
 
 
-func nuova_partita(seme: int = -1) -> void:
+func nuova_partita(seme: int = -1, versione := 2) -> void:
+	versione_mappa = versione
 	risorse = {}
 	for r in RISORSE:
 		risorse[r] = float(bil.risorse_iniziali.get(r, 0))
@@ -1428,15 +1430,18 @@ func _avvista_banditi() -> void:
 	var lati := ["nord", "est", "sud", "ovest"]
 	var lato := 0
 	var entrata := Vector2i.ZERO
-	var f := TerrenoFeudo.FEUDO
 	# entrano da un punto del confine sulla terra (non dal lago o dal fiume)
+	var f := TerrenoFeudo.area
 	for prova in 30:
-		lato = _rng.randi_range(0, 3)
-		var lungo := _rng.randi_range(4, f.size.x - 5)
-		entrata = [Vector2i(f.position.x + lungo, f.position.y), Vector2i(f.end.x - 1, f.position.y + lungo),
-			Vector2i(f.position.x + lungo, f.end.y - 1), Vector2i(f.position.x, f.position.y + lungo)][lato]
+		if terreno and not terreno.bordo.is_empty():
+			entrata = terreno.bordo[_rng.randi() % terreno.bordo.size()]
+		else:
+			entrata = Vector2i(f.position.x + _rng.randi_range(4, f.size.x - 5), f.position.y)
 		if terreno == null or terreno.percorribile(entrata):
 			break
+	# da che parte arrivano, rispetto al centro del feudo
+	var verso := entrata - TerrenoFeudo.centro_feudo()
+	lato = (1 if verso.x > 0 else 3) if absi(verso.x) > absi(verso.y) else (2 if verso.y > 0 else 0)
 	banditi = {"forza": forza, "numero": clampi(roundi(forza / 3.0), 4, 14), "entrata": entrata,
 		"mancano": preavviso, "totale": preavviso, "da": lati[lato], "percorso": []}
 	# la strada che faranno, a piedi attorno all'acqua e alle mura
@@ -2363,9 +2368,16 @@ func cinta_chiusa() -> bool:
 
 func _calcola_cinta() -> bool:
 	var centro := _cella_centro()
-	var f := TerrenoFeudo.FEUDO
-	for partenza in [Vector2i(f.position.x, f.position.y + f.size.y / 2), Vector2i(f.end.x - 1, f.position.y + f.size.y / 2),
-			Vector2i(f.position.x + f.size.x / 2, f.position.y), Vector2i(f.position.x + f.size.x / 2, f.end.y - 1)]:
+	# dai quattro punti più esterni del confine (a ovest, est, nord, sud)
+	var estremi: Array[Vector2i] = []
+	if not terreno.bordo.is_empty():
+		estremi = [terreno.bordo[0], terreno.bordo[0], terreno.bordo[0], terreno.bordo[0]]
+		for c in terreno.bordo:
+			if c.x < estremi[0].x: estremi[0] = c
+			if c.x > estremi[1].x: estremi[1] = c
+			if c.y < estremi[2].y: estremi[2] = c
+			if c.y > estremi[3].y: estremi[3] = c
+	for partenza in estremi:
 		if terreno.percorribile(partenza) and not terreno.chiuso_da_mura(partenza, centro):
 			return false
 	return true
@@ -2844,7 +2856,7 @@ func salva() -> void:
 			"pronto": b.get("pronto", {}),
 		})
 	var dati := {
-		"versione": VERSIONE_SALVATAGGIO, "famiglie": famiglie, "capo": capo, "risorse": risorse,
+		"versione": VERSIONE_SALVATAGGIO, "versione_mappa": versione_mappa, "famiglie": famiglie, "capo": capo, "risorse": risorse,
 		"tagliati": Array(terreno.indici_tagliati) if terreno else [],
 		"terreno": terreno.salva() if terreno else {},
 		"mercato": mercato.salva(), "abitanti": abitanti, "felicita": felicita,
@@ -2871,7 +2883,7 @@ func carica() -> bool:
 	# i salvataggi delle versioni precedenti (mappa più piccola, niente famiglie) non si caricano
 	if not dati is Dictionary or int(dati.get("versione", 0)) < VERSIONE_MINIMA:
 		return false
-	nuova_partita(int(dati.seme_mappa))
+	nuova_partita(int(dati.seme_mappa), int(dati.get("versione_mappa", 1)))
 	famiglie = dati.famiglie
 	for f in famiglie:
 		f.membri = int(f.membri)

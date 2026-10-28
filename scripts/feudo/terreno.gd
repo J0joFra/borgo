@@ -13,7 +13,16 @@ extends RefCounted
 enum Tipo { ERBA, ERBA_FIORI, BOSCO, ACQUA, ROCCIA, COLLINA, SENTIERO, FIUME }
 
 const LATO := 112  # lato del mondo, in celle
-const FEUDO := Rect2i(32, 32, 48, 48)  # le celle del giocatore, al centro del mondo
+const FEUDO := Rect2i(32, 32, 48, 48)  # il feudo delle partite vecchie (versione 1): un quadrato al centro del mondo
+## Le zone del feudo: cambiano il terreno, gli alberi, i colori e le rese (bilanciamento.biomi).
+enum Bioma { PRATERIA, PINETA, PALUDE, RUPI }
+const NOMI_BIOMI := ["prateria", "pineta", "palude", "rupi"]
+const RAGGIO_FEUDO := 26.0  # dalla versione 2 il feudo è una forma tondeggiante e ondulata di circa questo raggio
+
+## Il rettangolo che contiene il feudo e il suo centro, per l'ultima mappa generata
+## (nel gioco ce n'è una sola alla volta: li usano telecamera, banditi, accampamento).
+static var area := FEUDO
+static var _centro := FEUDO.get_center()
 const PER_NOME := {
 	"bosco": Tipo.BOSCO, "acqua": Tipo.ACQUA, "fiume": Tipo.FIUME,
 	"roccia": Tipo.ROCCIA, "collina": Tipo.COLLINA,
@@ -39,6 +48,9 @@ var strade: Dictionary = {}      # chiave del lato (vedi lato) -> true: le strad
 var mura: Dictionary = {}        # indice cella -> true: mura in pietra (occupano la cella)
 var _occupato: Dictionary = {}   # Vector2i -> id edificio
 var _celle_di: Dictionary = {}   # id edificio -> Array[Vector2i] (mappa inversa per libera() O(1))
+var maschera := PackedByteArray()  # 1 se la cella è del feudo
+var biomi := PackedByteArray()     # il bioma di ogni cella (vedi Bioma)
+var bordo: Array[Vector2i] = []    # le celle del feudo che toccano l'esterno
 
 
 func _init(s: int) -> void:
@@ -47,6 +59,8 @@ func _init(s: int) -> void:
 
 
 func _genera() -> void:
+	_forma_feudo()
+	_disegna_biomi()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seme
 	var acqua := FastNoiseLite.new()
@@ -55,26 +69,34 @@ func _genera() -> void:
 	var bosco := FastNoiseLite.new()
 	bosco.seed = seme + 1
 	bosco.frequency = 0.1
+	var stagni := FastNoiseLite.new()  # le pozze della palude
+	stagni.seed = seme + 23
+	stagni.frequency = 0.22
+	# soglie per bioma: [acqua, roccia, collina, bosco]
+	var soglie := {Bioma.PRATERIA: [-0.45, 0.5, 0.36, 0.25], Bioma.PINETA: [-0.5, 0.55, 0.42, -0.2],
+		Bioma.PALUDE: [-0.3, 0.6, 0.5, 0.45], Bioma.RUPI: [-0.55, 0.36, 0.14, 0.4]}
 
 	celle.resize(LATO * LATO)
 	for y in LATO:
 		for x in LATO:
 			var a := acqua.get_noise_2d(x, y)
 			var t := Tipo.ERBA
-			if a < -0.45:
+			var bm := biomi[y * LATO + x]
+			var sg: Array = soglie[bm]
+			if a < float(sg[0]) or (bm == Bioma.PALUDE and stagni.get_noise_2d(x, y) > 0.42):
 				t = Tipo.ACQUA
-			elif a > 0.5:
+			elif a > float(sg[1]):
 				t = Tipo.ROCCIA
-			elif a > 0.36:
+			elif a > float(sg[2]):
 				t = Tipo.COLLINA
-			elif bosco.get_noise_2d(x, y) > 0.25:
+			elif bosco.get_noise_2d(x, y) > float(sg[3]):
 				t = Tipo.BOSCO
 			elif rng.randf() < 0.15:
 				t = Tipo.ERBA_FIORI
 			celle[y * LATO + x] = t
 
 	# Garantisce bosco, lago e roccia a pochi passi dal centro del feudo, in direzioni casuali.
-	var centro := Vector2(FEUDO.get_center())
+	var centro := Vector2(_centro)
 	var angolo := rng.randf() * TAU
 	_macchia(centro + Vector2.from_angle(angolo) * 10.0, 5.0, Tipo.BOSCO)
 	_macchia(centro + Vector2.from_angle(angolo + 2.1) * 10.0, 3.5, Tipo.ACQUA)
@@ -89,7 +111,7 @@ func _genera() -> void:
 
 ## Una macchia di piante selvatiche per ogni coltura, a 7-15 celle dall'accampamento.
 func _semina_selvatiche(rng: RandomNumberGenerator) -> void:
-	var centro := Vector2(FEUDO.get_center())
+	var centro := Vector2(_centro)
 	var nomi: Array = GameState.nomi_colture() if GameState.colture.size() > 0 else []
 	var angolo := rng.randf() * TAU
 	for i in nomi.size():
@@ -104,7 +126,7 @@ func _semina_selvatiche(rng: RandomNumberGenerator) -> void:
 ## Un fiume largo due celle che attraversa tutto il mondo e passa nel feudo,
 ## lontano almeno 9 celle dall'accampamento.
 func _traccia_fiume(rng: RandomNumberGenerator) -> void:
-	var centro := FEUDO.get_center()
+	var centro := _centro
 	var verticale := rng.randf() < 0.5
 	var lato := 1 if rng.randf() < 0.5 else -1
 	var pos := float(lato * rng.randi_range(11, 15))  # distanza dal centro, sull'asse trasversale
@@ -183,11 +205,97 @@ func dentro(c: Vector2i) -> bool:
 
 
 func nel_feudo(c: Vector2i) -> bool:
-	return FEUDO.has_point(c)
+	return dentro(c) and maschera[c.y * LATO + c.x] == 1
 
 
 static func centro_feudo() -> Vector2i:
-	return FEUDO.get_center()
+	return _centro
+
+
+func bioma_a(c: Vector2i) -> int:
+	return biomi[c.y * LATO + c.x] if dentro(c) and not biomi.is_empty() else Bioma.PRATERIA
+
+
+## Dalla versione 2: una prateria attorno all'accampamento e, in tre direzioni diverse, una pineta,
+## una palude e delle rupi, con confini irregolari. Le partite vecchie sono tutte prateria.
+func _disegna_biomi() -> void:
+	biomi.resize(LATO * LATO)
+	biomi.fill(Bioma.PRATERIA)
+	if GameState.versione_mappa < 2:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seme + 21
+	var centro := Vector2(_centro)
+	var zone := [Bioma.PINETA, Bioma.PALUDE, Bioma.RUPI]
+	for i in range(zone.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = zone[i]
+		zone[i] = zone[j]
+		zone[j] = tmp
+	var siti: Array = [[centro, Bioma.PRATERIA]]
+	var angolo := rng.randf() * TAU
+	for i in zone.size():
+		var verso := angolo + TAU * i / zone.size() + rng.randf_range(-0.4, 0.4)
+		siti.append([centro + Vector2.from_angle(verso) * rng.randf_range(17.0, 23.0), zone[i]])
+	var torci := FastNoiseLite.new()
+	torci.seed = seme + 22
+	torci.frequency = 0.05
+	for y in LATO:
+		for x in LATO:
+			# il punto si sposta un po' col rumore: così i confini fra le zone ondeggiano
+			var p := Vector2(x, y) + Vector2(torci.get_noise_2d(x, y), torci.get_noise_2d(x + 300, y)) * 9.0
+			var migliore := INF
+			var scelto: int = Bioma.PRATERIA
+			for sito in siti:
+				var d: float = p.distance_to(sito[0]) * (1.25 if sito[1] == Bioma.PRATERIA else 1.0)
+				if d < migliore:
+					migliore = d
+					scelto = sito[1]
+			biomi[y * LATO + x] = scelto
+
+
+## La forma del feudo. Nelle partite vecchie un quadrato al centro; dalla versione 2 una forma
+## tondeggiante con il bordo ondulato, in un punto del mondo che cambia da partita a partita.
+func _forma_feudo() -> void:
+	maschera.resize(LATO * LATO)
+	maschera.fill(0)
+	if GameState.versione_mappa < 2:
+		area = FEUDO
+		_centro = FEUDO.get_center()
+		for y in range(FEUDO.position.y, FEUDO.end.y):
+			for x in range(FEUDO.position.x, FEUDO.end.x):
+				maschera[y * LATO + x] = 1
+	else:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = seme + 7
+		_centro = Vector2i(LATO / 2 + rng.randi_range(-10, 10), LATO / 2 + rng.randi_range(-10, 10))
+		var onde := FastNoiseLite.new()
+		onde.seed = seme + 8
+		onde.frequency = 1.0
+		var minimo := Vector2i(LATO, LATO)
+		var massimo := Vector2i(-1, -1)
+		for y in LATO:
+			for x in LATO:
+				var d := Vector2(x + 0.5 - _centro.x, y + 0.5 - _centro.y)
+				var verso := d.normalized() if d.length() > 0.01 else Vector2.RIGHT
+				# il raggio cambia piano girando attorno al centro: il bordo ondeggia
+				var r := RAGGIO_FEUDO * (1.0 + 0.2 * onde.get_noise_2d(verso.x * 2.2, verso.y * 2.2)
+					+ 0.06 * onde.get_noise_2d(verso.x * 7.0 + 40.0, verso.y * 7.0))
+				if d.length() <= r:
+					maschera[y * LATO + x] = 1
+					minimo = Vector2i(mini(minimo.x, x), mini(minimo.y, y))
+					massimo = Vector2i(maxi(massimo.x, x), maxi(massimo.y, y))
+		area = Rect2i(minimo, massimo - minimo + Vector2i.ONE)
+	bordo = []
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			var c := Vector2i(x, y)
+			if not nel_feudo(c):
+				continue
+			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				if not nel_feudo(c + dir):
+					bordo.append(c)
+					break
 
 
 func tipo_a(c: Vector2i) -> int:
@@ -270,8 +378,28 @@ func resa(tipo: String, cella: Vector2i, stagione: int) -> float:
 	return float(info_zona(tipo, cella, stagione).resa)
 
 
-## Resa e spiegazione per l'interfaccia: {resa, testo}.
+## Quanto il bioma dove sta l'edificio cambia la sua resa (bilanciamento.biomi), e il testo che lo dice.
+func effetto_bioma(tipo: String, cella: Vector2i) -> Array:
+	var d: Dictionary = GameState.edifici[tipo]
+	var centro := cella + Vector2i(int(d.taglia[0]), int(d.taglia[1])) / 2
+	var nome: String = NOMI_BIOMI[bioma_a(centro)]
+	var molt := float(GameState.bil.get("biomi", {}).get(nome, {}).get(tipo, 1.0))
+	if is_equal_approx(molt, 1.0):
+		return [1.0, ""]
+	return [molt, "%s %+d%%" % [nome, roundi((molt - 1.0) * 100.0)]]
+
+
+## Resa e spiegazione per l'interfaccia: {resa, testo}, con l'effetto del bioma.
 func info_zona(tipo: String, cella: Vector2i, stagione: int) -> Dictionary:
+	var info := _info_zona(tipo, cella, stagione)
+	var eb := effetto_bioma(tipo, cella)
+	if eb[1] != "":
+		info.resa = float(info.resa) * float(eb[0])
+		info.testo = eb[1] if str(info.testo) == "" else "%s · %s" % [info.testo, eb[1]]
+	return info
+
+
+func _info_zona(tipo: String, cella: Vector2i, stagione: int) -> Dictionary:
 	var d: Dictionary = GameState.edifici[tipo]
 	if not d.has("zona"):
 		return {"resa": 1.0, "testo": ""}
@@ -550,6 +678,15 @@ func vertice_su_strada(v: Vector2i) -> bool:
 	return false
 
 
+## Vero se una delle otto celle attorno è acqua (lago o fiume).
+func acqua_vicina(c: Vector2i) -> bool:
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			if (dx != 0 or dy != 0) and _acqua(c + Vector2i(dx, dy)):
+				return true
+	return false
+
+
 func _acqua(c: Vector2i) -> bool:
 	return tipo_a(c) in [Tipo.ACQUA, Tipo.FIUME]
 
@@ -690,7 +827,7 @@ func instrada(partenze: Array, arrivi: Array) -> Array[Vector2i]:
 				return cammino
 			for dir in DIREZIONI:
 				var w: Vector2i = v + dir
-				if w.x < FEUDO.position.x or w.y < FEUDO.position.y or w.x > FEUDO.end.x or w.y > FEUDO.end.y:
+				if w.x < area.position.x or w.y < area.position.y or w.x > area.end.x or w.y > area.end.y:
 					continue
 				var peso := peso_lato(lato(v, w))
 				if peso < 0:
@@ -774,7 +911,7 @@ func percorribile(c: Vector2i) -> bool:
 ## entro il feudo e un piccolo margine. Se la meta non si raggiunge, si ferma alla cella
 ## raggiungibile più vicina. [] solo se si parte da una cella non percorribile.
 func cammino(da: Vector2i, a: Vector2i) -> Array[Vector2i]:
-	var limite := FEUDO.grow(4)
+	var limite := area.grow(4)
 	var da_dove := {da: da}
 	var coda: Array[Vector2i] = [da]
 	var i := 0

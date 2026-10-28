@@ -58,6 +58,29 @@ func _via() -> void:
 	f.hud._apri_finestra(f.hud._mercato)
 	await _attendi(0.5)
 	await _scatta("rapida_4_mercato")
+	f.hud._apri_finestra(f.hud._mercato)
+	f.camera.cambia_zoom(-1)
+	f.camera.cambia_zoom(-1)
+	f.camera.position = Vector3(TerrenoFeudo.centro_feudo().x * 2.0, 0, TerrenoFeudo.centro_feudo().y * 2.0)
+	await _attendi(1.0)
+	await _scatta("rapida_6_feudo_dall_alto")
+	# una veduta per bioma, al centro delle sue celle
+	for bm in [1, 2, 3]:
+		var somma := Vector2.ZERO
+		var n := 0
+		for y in range(TerrenoFeudo.area.position.y, TerrenoFeudo.area.end.y):
+			for x in range(TerrenoFeudo.area.position.x, TerrenoFeudo.area.end.x):
+				if t.nel_feudo(Vector2i(x, y)) and t.bioma_a(Vector2i(x, y)) == bm:
+					somma += Vector2(x, y)
+					n += 1
+		if n > 0:
+			var m := somma / n
+			f.camera.position = Vector3(m.x * 2.0, 0, m.y * 2.0)
+			await _attendi(0.8)
+			await _scatta("rapida_bioma_%s" % TerrenoFeudo.NOMI_BIOMI[bm])
+	get_tree().change_scene_to_file("res://scenes/regno.tscn")
+	await _attendi(1.5)
+	await _scatta("rapida_7_regno")
 	get_tree().quit()
 
 

@@ -226,7 +226,7 @@ func _ready() -> void:
 	GameState.demolisci(id_falo)
 	_verifica(not GameState.trova(id_falo).is_empty(), "il falò non si demolisce")
 	var t2 := GameState.terreno
-	var fuori := TerrenoFeudo.FEUDO.position - Vector2i(3, 3)
+	var fuori := TerrenoFeudo.area.position - Vector2i(3, 3)
 	_verifica(not t2.posizione_valida("tenda", fuori), "fuori dal feudo non si costruisce")
 	_verifica(t2.dentro(fuori), "ma il mondo continua oltre il confine")
 
@@ -470,12 +470,12 @@ func _ready() -> void:
 	# Strade sui bordi delle celle: 1 pietra per tratto in piano, 2 in salita.
 	var ts := TerrenoFeudo.new(13)
 	var piano := Vector2i(-1, -1)
-	for y in range(TerrenoFeudo.FEUDO.position.y + 2, TerrenoFeudo.FEUDO.end.y - 2):
-		for x in range(TerrenoFeudo.FEUDO.position.x + 2, TerrenoFeudo.FEUDO.end.x - 3):
+	for y in range(TerrenoFeudo.area.position.y + 2, TerrenoFeudo.area.end.y - 2):
+		for x in range(TerrenoFeudo.area.position.x + 2, TerrenoFeudo.area.end.x - 3):
 			var tutte := true
 			for dy in range(-2, 2):
 				for dx in 3:
-					if ts.tipo_a(Vector2i(x + dx, y + dy)) != TerrenoFeudo.Tipo.ERBA:
+					if ts.tipo_a(Vector2i(x + dx, y + dy)) != TerrenoFeudo.Tipo.ERBA or not ts.nel_feudo(Vector2i(x + dx, y + dy)):
 						tutte = false
 			if tutte and piano.x < 0:
 				piano = Vector2i(x, y)
@@ -521,8 +521,8 @@ func _ready() -> void:
 	_verifica(ts.percorribile(cella_fiume) and ts.tipo_lato(sul_fiume) == "ponte", "col ponte sì")
 	# passerelle sul lago: al massimo 3 tratti di fila
 	var fila := Vector2i(-1, -1)
-	for y in range(TerrenoFeudo.FEUDO.position.y + 1, TerrenoFeudo.FEUDO.end.y):
-		for x in range(TerrenoFeudo.FEUDO.position.x, TerrenoFeudo.FEUDO.end.x - 6):
+	for y in range(TerrenoFeudo.area.position.y + 1, TerrenoFeudo.area.end.y):
+		for x in range(TerrenoFeudo.area.position.x, TerrenoFeudo.area.end.x - 6):
 			var tutte := true
 			for k in 6:
 				if ts.tipo_a(Vector2i(x + k, y)) != TerrenoFeudo.Tipo.ACQUA or ts.tipo_a(Vector2i(x + k, y - 1)) != TerrenoFeudo.Tipo.ACQUA:
@@ -1231,7 +1231,7 @@ func _ready() -> void:
 	_verifica(is_equal_approx(GameState.difesa().forza_arcieri, 18.0), "arcieri armati: x1,5")
 	GameState._avvista_banditi()
 	var bd: Dictionary = GameState.banditi
-	_verifica(not bd.is_empty() and TerrenoFeudo.FEUDO.has_point(bd.entrata) and int(bd.mancano) == int(GameState.bil.banditi.preavviso_con_torre),
+	_verifica(not bd.is_empty() and TerrenoFeudo.area.has_point(bd.entrata) and int(bd.mancano) == int(GameState.bil.banditi.preavviso_con_torre),
 		"la torre avvista i banditi prima (%d giorni)" % int(bd.get("mancano", 0)))
 	var esiti := []
 	GameState.incursione.connect(func(e): esiti.append(e))
@@ -1310,13 +1310,15 @@ func _ready() -> void:
 	var mag_s := GameState.aggiungi_gratis("taglialegna", tz_s.trova_posto("taglialegna", centro_s), 1.0)
 	var da_s: Vector2i = mag_s.cella
 	_verifica(not GameState.riposiziona(mag_s.id, da_s + Vector2i(3, 0), 0) and mag_s.cella == da_s, "non si sposta più di 2 caselle")
+	var casa_spostata := GameState.aggiungi_gratis("casa", tz_s.trova_posto("casa", centro_s + Vector2i(-8, 0)), 1.0)
+	var da_spostata: Vector2i = casa_spostata.cella
 	var spostato := false
-	for passo in [Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2), Vector2i(1, 1), Vector2i(-1, -1)]:
-		if GameState.riposiziona(mag_s.id, da_s + passo, 0):
-			spostato = mag_s.cella == da_s + passo and tz_s.edificio_a(mag_s.cella) == mag_s.id
+	for passo in [Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2), Vector2i(1, 1), Vector2i(-1, -1),
+			Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(2, 2), Vector2i(-2, -2)]:
+		if GameState.riposiziona(casa_spostata.id, da_spostata + passo, 0):
+			spostato = casa_spostata.cella == da_spostata + passo and tz_s.edificio_a(casa_spostata.cella) == casa_spostata.id
 			break
-	_verifica(spostato and tz_s.edificio_a(da_s) != mag_s.id or tz_s.edificio_a(da_s) == mag_s.id and mag_s.cella != da_s,
-		"spostato di qualche casella: occupa il posto nuovo")
+	_verifica(spostato, "spostato di qualche casella: occupa il posto nuovo")
 	var casa_s := GameState.aggiungi_gratis("casa", tz_s.trova_posto("casa", mag_s.cella + Vector2i(0, 4)), 1.0)
 	var vicino_s: Vector2i = casa_s.cella
 	_verifica(not GameState.riposiziona(mag_s.id, vicino_s, 0) or GameState.taglia_di(mag_s) == Vector2i.ZERO, "non si sposta sopra un altro edificio")
@@ -1336,6 +1338,52 @@ func _ready() -> void:
 	GameState.demolisci(mag_s.id)
 	_verifica(int(GameState.risorse.legna) == int(floorf(float(spesi.get("legna", 0)) * 0.5)) and int(GameState.risorse.pietra) == int(floorf(float(spesi.get("pietra", 0)) * 0.5)),
 		"demolendo si riprende metà dei materiali (legna %d)" % GameState.risorse.legna)
+
+	# Forma del feudo e biomi (versione 2), e le partite vecchie che restano com'erano.
+	GameState.versione_mappa = 2
+	var tb := TerrenoFeudo.new(77)
+	var conta_b := [0, 0, 0, 0]
+	var boschi_b := [0, 0, 0, 0]
+	var celle_f := 0
+	for y in range(TerrenoFeudo.area.position.y, TerrenoFeudo.area.end.y):
+		for x in range(TerrenoFeudo.area.position.x, TerrenoFeudo.area.end.x):
+			var cb_ := Vector2i(x, y)
+			if tb.nel_feudo(cb_):
+				celle_f += 1
+				conta_b[tb.bioma_a(cb_)] += 1
+				if tb.tipo_a(cb_) == TerrenoFeudo.Tipo.BOSCO:
+					boschi_b[tb.bioma_a(cb_)] += 1
+	var rett := TerrenoFeudo.area.size.x * TerrenoFeudo.area.size.y
+	_verifica(celle_f > 1500 and celle_f < rett * 0.9 and not tb.bordo.is_empty(), "il feudo è una forma tondeggiante, non un quadrato (%d celle su %d)" % [celle_f, rett])
+	_verifica(conta_b.all(func(n): return n > 80), "nel feudo ci sono prateria, pineta, palude e rupi %s" % str(conta_b))
+	_verifica(tb.bioma_a(TerrenoFeudo.centro_feudo()) == TerrenoFeudo.Bioma.PRATERIA, "attorno all'accampamento c'è la prateria")
+	_verifica(float(boschi_b[1]) / conta_b[1] > float(boschi_b[0]) / conta_b[0], "nella pineta c'è più bosco che nella prateria")
+	var in_pineta := Vector2i(-1, -1)
+	for y in range(TerrenoFeudo.area.position.y, TerrenoFeudo.area.end.y):
+		for x in range(TerrenoFeudo.area.position.x, TerrenoFeudo.area.end.x):
+			if in_pineta.x < 0 and tb.bioma_a(Vector2i(x + 1, y + 1)) == TerrenoFeudo.Bioma.PINETA:
+				in_pineta = Vector2i(x, y)
+	_verifica(is_equal_approx(float(tb.effetto_bioma("taglialegna", in_pineta)[0]), float(GameState.bil.biomi.pineta.taglialegna)), "il taglialegna rende di più nella pineta")
+	GameState.versione_mappa = 1
+	var tv := TerrenoFeudo.new(77)
+	_verifica(TerrenoFeudo.area == TerrenoFeudo.FEUDO and tv.nel_feudo(TerrenoFeudo.FEUDO.position) and tv.bioma_a(TerrenoFeudo.centro_feudo() + Vector2i(15, 15)) == TerrenoFeudo.Bioma.PRATERIA,
+		"nelle partite vecchie il feudo resta il quadrato di sempre, senza biomi")
+	var g1 := Regioni.genera(5, 1)
+	var al_centro := 0
+	for i in g1.siti.size():
+		if g1.siti[i].distance_to(Vector2(0.5, 0.5)) < g1.siti[al_centro].distance_to(Vector2(0.5, 0.5)):
+			al_centro = i
+	_verifica(g1.mia == al_centro, "nelle partite vecchie la nostra regione resta quella al centro")
+	GameState.versione_mappa = 2
+	GameState.ricomincia()
+	GameState.avvia()
+	GameState.scegli_capo(0)
+	GameState.salva()
+	GameState.in_corso = false
+	GameState.versione_mappa = 1
+	GameState.avvia()
+	_verifica(GameState.versione_mappa == 2, "la versione della mappa si salva")
+	GameState.cancella_salvataggio()
 
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])
 	get_tree().quit(1 if _errori > 0 else 0)

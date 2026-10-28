@@ -182,6 +182,9 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Interfaccia** scura e minimale, pensata per il telefono in orizzontale: risorse e tempo in due capsule in alto,
   pulsanti tondi a icona ai lati (tenendoli premuti compare il nome), pannelli semitrasparenti con l'oro come accento.
 - **Ruotare gli edifici**: mentre si piazza, pulsante "Ruota" (o tasto R) per girarlo di 90°.
+  Anche dopo: nel pannello di un edificio, **Gira** lo ruota sul posto e **Sposta** lo sposta fino a 2 caselle in ogni
+  direzione (anteprima verde o rossa, riquadro delle caselle permesse; si può girare mentre lo si sposta).
+- **Demolire** ridà la metà dei materiali spesi per l'edificio, miglioramenti compresi (la conferma dice quanto).
 - **Piazza**: dopo il primo anno il falò diventa la piazza del borgo (un pozzo sul selciato), il centro delle strade.
 - **Tende e senzatetto**: le tende reggono una sola stagione, poi si strappano: bisogna costruire case. Chi resta
   senza un tetto aspetta al massimo mezza stagione, poi se ne va.
@@ -189,6 +192,12 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   al falò (poi in piazza). Se vicino a partenza e arrivo c'è una strada, camminano lungo le strade.
 - **Simboli**: ogni risorsa ha il suo simbolino (legna, pietra, mela, spiga, rapa, lingotto, martello, moneta), così come
   abitanti/posti letto, persone senza lavoro e la felicità (una faccina che sorride o si imbroncia).
+- **Forma del feudo**: dalle partite nuove il feudo non è più un quadrato al centro del mondo, ma una forma
+  tondeggiante con il bordo ondulato, in un punto che cambia da partita a partita.
+- **Biomi**: attorno all'accampamento c'è la prateria; in tre direzioni diverse una **pineta** (bosco fitto di conifere,
+  taglialegna +25%, caccia +15%, campi -15%), una **palude** (stagni e canne, pesca +25%, raccolta +20%, campi -20%) e
+  delle **rupi** (colline e rocce, cava e miniera +30%, campi -25%). I valori sono in `bilanciamento.json` (`biomi`);
+  il pannello dell'edificio dice l'effetto del bioma. Le partite salvate prima restano com'erano (versione della mappa 1).
 - **Zone del territorio**: ogni cella ha una fertilità (più alta vicino all'acqua, la terra fertile è un verde più scuro).
   Taglialegna, cava, cacciatore e raccoglitore rendono di più con tanto bosco o tante rocce attorno; il pescatore rende di
   più sul lago che sul fiume, ma d'inverno il lago gela e la pesca crolla; il campo rende in base alla fertilità.
@@ -202,7 +211,8 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Campi** disponibili da subito: il grano si raccoglie in autunno e sfama quando il cibo finisce (con mulino e forno vale il doppio).
 - **Mondo esteso**: il feudo (48×48 celle) sta al centro di un mondo di 112×112; oltre la linea gialla del confine
   ci sono le terre dei vicini, che si vedono ma dove non si costruisce.
-- **Mappa del regno**: 10 regioni stile carta antica, ognuna con nome, risorsa speciale e proprietario. Zoom animato per entrare nel feudo.
+- **Mappa del regno**: 10 regioni stile carta antica con i confini ondulati, ognuna con nome, risorsa speciale e
+  proprietario; la nostra può stare in un punto qualsiasi della carta. Zoom animato per entrare nel feudo.
 - **Feudo in 3D** con modelli KayKit, telecamera isometrica con zoom e rotazione, stagioni visibili (erba, chiome, neve, luce).
 - **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
 

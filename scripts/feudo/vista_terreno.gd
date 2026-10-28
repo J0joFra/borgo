@@ -11,6 +11,11 @@ const ERBA := [Color("6fae47"), Color("8db24a"), Color("b39a48"), Color("e6ecef"
 const ACQUA := [Color("4a90c8"), Color("4a90c8"), Color("4a86b8"), Color("b8d8ea")]
 const FIUME := [Color("5aa6dc"), Color("5aa6dc"), Color("5a9cd0"), Color("7aaccc")]  # d'inverno non gela
 const RADURA := Color("8a7a4a")  # dove il bosco è stato tagliato
+## La tinta del suolo nei biomi (prateria: nessuna), e quanto pesa (meno d'inverno, con la neve).
+const TINTE_BIOMI := [Color(0, 0, 0, 0), Color("3d6a3c"), Color("6f7a3c"), Color("9a9884")]
+## Quanti alberi sono pini, per bioma.
+const PINI_BIOMI := [0.45, 0.92, 0.15, 0.6]
+const CANNA := Color("8a8a4a")
 const STRADA := [Color("b09468"), Color("b09468"), Color("a88c64"), Color("d8d0c4")]
 const MASSIMO_PIANTATI := 600
 const ROCCIA_SUOLO := [Color("9a978d"), Color("9a978d"), Color("968f80"), Color("dfe5e8")]
@@ -291,6 +296,9 @@ func _colore_cella(c: Vector2i, stagione: int) -> Color:
 			base = ERBA[stagione].lightened(0.05)
 		_:
 			base = ERBA[stagione]
+	var bm := terreno.bioma_a(c)
+	if bm != TerrenoFeudo.Bioma.PRATERIA and terreno.tipo_a(c) != TerrenoFeudo.Tipo.SENTIERO:
+		base = base.lerp(TINTE_BIOMI[bm], 0.12 if stagione == GameState.INVERNO else 0.38)
 	if _tagliate.has(c.y * TerrenoFeudo.LATO + c.x) and terreno.ceppi.has(c.y * TerrenoFeudo.LATO + c.x):
 		base = base.lerp(RADURA, 0.35 if stagione != GameState.INVERNO else 0.1)
 	elif stagione != GameState.INVERNO and terreno.tipo_a(c) in TerrenoFeudo.COSTRUIBILE:
@@ -389,17 +397,24 @@ func _segna(chiave: int) -> void:
 		_chiavi.append(chiave)
 
 
-## Una striscia colorata appena sopra il terreno, lungo i quattro lati del feudo.
+## Una striscia colorata appena sopra il terreno, lungo il confine del feudo (cella per cella,
+## così segue anche il bordo ondulato).
 func _crea_confine() -> void:
 	var k := LowPoly.Costruttore.new()
-	var f := TerrenoFeudo.FEUDO
 	var m := LARGHEZZA_CONFINE / 2.0
-	for x in range(f.position.x, f.end.x):
-		_tratto_confine(k, Vector2i(x, f.position.y), Vector2(x * CELLA, f.position.y * CELLA), Vector2((x + 1) * CELLA, f.position.y * CELLA), m)
-		_tratto_confine(k, Vector2i(x, f.end.y - 1), Vector2(x * CELLA, f.end.y * CELLA), Vector2((x + 1) * CELLA, f.end.y * CELLA), m)
-	for y in range(f.position.y, f.end.y):
-		_tratto_confine(k, Vector2i(f.position.x, y), Vector2(f.position.x * CELLA, y * CELLA), Vector2(f.position.x * CELLA, (y + 1) * CELLA), m)
-		_tratto_confine(k, Vector2i(f.end.x - 1, y), Vector2(f.end.x * CELLA, y * CELLA), Vector2(f.end.x * CELLA, (y + 1) * CELLA), m)
+	for c in terreno.bordo:
+		var x0 := c.x * CELLA
+		var y0 := c.y * CELLA
+		var x1 := (c.x + 1) * CELLA
+		var y1 := (c.y + 1) * CELLA
+		if not terreno.nel_feudo(c + Vector2i(0, -1)):
+			_tratto_confine(k, c, Vector2(x0, y0), Vector2(x1, y0), m)
+		if not terreno.nel_feudo(c + Vector2i(0, 1)):
+			_tratto_confine(k, c, Vector2(x0, y1), Vector2(x1, y1), m)
+		if not terreno.nel_feudo(c + Vector2i(-1, 0)):
+			_tratto_confine(k, c, Vector2(x0, y0), Vector2(x0, y1), m)
+		if not terreno.nel_feudo(c + Vector2i(1, 0)):
+			_tratto_confine(k, c, Vector2(x1, y0), Vector2(x1, y1), m)
 	var nodo := MeshInstance3D.new()
 	nodo.mesh = k.mesh()
 	nodo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -449,7 +464,7 @@ func _crea_alberi() -> void:
 				var pos := Vector3((x + rng.randf_range(0.2, 0.8)) * CELLA, terreno.altezza(c), (y + rng.randf_range(0.2, 0.8)) * CELLA)
 				var s := rng.randf_range(0.8, 1.25)
 				var tr := LowPoly.t(pos, Vector3.ONE * s, rng.randf() * TAU)
-				var pino := rng.randf() < 0.45
+				var pino: bool = rng.randf() < float(PINI_BIOMI[terreno.bioma_a(c)])
 				var elenco: Array = _alberi_cella.get(indice, [])
 				if pino:
 					elenco.append([1, pini.size(), -1])
@@ -719,6 +734,29 @@ func _crea_rocce() -> void:
 				var pos := Vector3((x + rng.randf_range(0.3, 0.7)) * CELLA, terreno.altezza(c) + 0.25, (y + rng.randf_range(0.3, 0.7)) * CELLA)
 				var s := Vector3(rng.randf_range(0.8, 1.4), rng.randf_range(0.6, 1.1), rng.randf_range(0.8, 1.3))
 				k.forma(masso, LowPoly.t(pos, s, rng.randf() * TAU), ROCCIA.lightened(rng.randf_range(-0.1, 0.1)))
+	_dettagli_biomi(k, masso)
 	var nodo := MeshInstance3D.new()
 	nodo.mesh = k.mesh()
 	add_child(nodo)
+
+
+## Piccoli dettagli dei biomi: canne sulle rive della palude, sassi sparsi sulle rupi.
+## Un generatore a parte, così i boschi e le rocce di sempre non cambiano.
+func _dettagli_biomi(k: LowPoly.Costruttore, masso: Mesh) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = terreno.seme + 31
+	var stelo := LowPoly.cilindro(0.04, 0.02, 1.0, 4)
+	for y in TerrenoFeudo.LATO:
+		for x in TerrenoFeudo.LATO:
+			var c := Vector2i(x, y)
+			var bm := terreno.bioma_a(c)
+			if bm == TerrenoFeudo.Bioma.PRATERIA or terreno.tipo_a(c) != TerrenoFeudo.Tipo.ERBA:
+				continue
+			if bm == TerrenoFeudo.Bioma.PALUDE and terreno.acqua_vicina(c) and rng.randf() < 0.55:
+				for i in rng.randi_range(4, 7):
+					var pos := Vector3((x + rng.randf_range(0.1, 0.9)) * CELLA, terreno.altezza(c), (y + rng.randf_range(0.1, 0.9)) * CELLA)
+					var alto := rng.randf_range(0.6, 1.1)
+					k.forma(stelo, LowPoly.t(pos + Vector3(0, alto * 0.5, 0), Vector3(1, alto, 1), rng.randf_range(-0.2, 0.2)), CANNA.lightened(rng.randf_range(-0.1, 0.15)))
+			elif bm == TerrenoFeudo.Bioma.RUPI and rng.randf() < 0.07:
+				var pos := Vector3((x + rng.randf_range(0.3, 0.7)) * CELLA, terreno.altezza(c) + 0.08, (y + rng.randf_range(0.3, 0.7)) * CELLA)
+				k.forma(masso, LowPoly.t(pos, Vector3.ONE * rng.randf_range(0.25, 0.45), rng.randf() * TAU), ROCCIA.lightened(rng.randf_range(-0.05, 0.12)))

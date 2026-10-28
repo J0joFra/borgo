@@ -1,7 +1,7 @@
 extends Control
 ## Mappa del regno a tutto schermo: regioni stile carta antica, ognuna con nome,
 ## risorsa speciale e proprietario. Toccando la propria regione si entra nel feudo.
-## Le regioni sono celle di Voronoi generate dal seme della partita.
+## Le regioni sono celle di Voronoi generate dal seme della partita, con i confini ondulati.
 ## Toccando un'altra regione si apre la sua scheda: dal Borgo in poi si mandano spie,
 ## si propongono alleanze e si attacca (le missioni avanzano mentre il tempo scorre nel feudo).
 
@@ -68,6 +68,8 @@ func _calcola_poligoni() -> void:
 		for j in punti.size():
 			if i != j:
 				poligono = _taglia(poligono, punti[i], punti[j])
+		if GameState.versione_mappa >= 2:
+			poligono = Regioni.ondula(poligono, area, GameState.seme_mappa, 12.0)
 		_regioni[i].poligono = poligono
 		_regioni[i].centro = punti[i]
 	queue_redraw()
@@ -279,7 +281,14 @@ func _draw() -> void:
 		var stato: Dictionary = GameState.regni.get(str(i), {})
 		if stato.get("conquistato", false):
 			colore = Color("b03a2e")
-		draw_colored_polygon(r.poligono, Color(colore, 0.28 if i != _mia else 0.4))
+		var tinta := Color(colore, 0.28 if i != _mia else 0.4)
+		# un bordo ondulato che si incrocia non si riempie: prima lo si ripulisce (via i piccoli nodi)
+		if Geometry2D.triangulate_polygon(r.poligono).is_empty():
+			for pezzo in Geometry2D.offset_polygon(r.poligono, 0.2):
+				if not Geometry2D.triangulate_polygon(pezzo).is_empty():
+					draw_colored_polygon(pezzo, tinta)
+		else:
+			draw_colored_polygon(r.poligono, tinta)
 	for i in _regioni.size():
 		var r: Dictionary = _regioni[i]
 		if not r.has("poligono") or r.poligono.size() < 3:

@@ -58,7 +58,7 @@ func _ready() -> void:
 
 	camera = CameraIso.new()
 	# la visuale resta sopra il feudo, con un margine per vedere un po' oltre il confine
-	var f := TerrenoFeudo.FEUDO
+	var f := TerrenoFeudo.area
 	var margine := 8.0
 	camera.limiti = Rect2(Vector2(f.position) * VistaTerreno.CELLA - Vector2.ONE * margine,
 		Vector2(f.size) * VistaTerreno.CELLA + Vector2.ONE * margine * 2.0)
