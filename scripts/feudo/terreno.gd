@@ -461,16 +461,17 @@ func pianta(cella: Vector2i, taglia: Vector2i, raggio: int, n: int, stagioni: in
 		piantate.append(c)
 	return piantate
 
-
 ## Fa crescere tutte le piantine di una stagione; quelle pronte diventano bosco.
 ## Restituisce tutte le celle cambiate (anche quelle solo cresciute un po').
 func cresci_piantine() -> Array:
 	var cambiate := []
-	for i in piantine.keys():
-		piantine[i] -= 1
+	for chiave in piantine.keys():
+		var i: int = int(chiave)
+		var restanti: int = int(piantine[i]) - 1
+		piantine[i] = restanti
 		var c := Vector2i(i % LATO, i / LATO)
 		cambiate.append(c)
-		if piantine[i] <= 0:
+		if restanti <= 0:
 			piantine.erase(i)
 			celle[i] = Tipo.BOSCO
 			var t := indici_tagliati.find(i)
