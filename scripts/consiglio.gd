@@ -95,8 +95,8 @@ static func attivi() -> Array:
 		lista.append(_c("cibo", 58, "D'inverno il lago gela e i pescatori prenderanno poco: il fiume invece scorre sempre."))
 
 	# Forestale: il legno non deve finire
-	if _esiste(["taglialegna"]) and not _esiste(["forestale"]) and gs.terreno and gs.terreno.tagliati.size() > 15:
-		lista.append(_c("legna", 70, "Abbiamo tagliato %d celle di bosco. Un forestale ripianterebbe gli alberi: in un anno tornano bosco." % gs.terreno.tagliati.size()))
+	if _esiste(["taglialegna"]) and not _esiste(["forestale"]) and gs.terreno and gs.terreno.indici_tagliati.size() > 15:
+		lista.append(_c("legna", 70, "Abbiamo tagliato %d celle di bosco. Un forestale ripianterebbe gli alberi: in un anno tornano bosco." % gs.terreno.indici_tagliati.size()))
 
 	# Semi e colture
 	for b in gs.buildings:

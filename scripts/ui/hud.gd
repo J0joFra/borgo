@@ -985,7 +985,7 @@ func _aggiorna() -> void:
 		if r == "cibo" and GameState.tick_fame > 0:
 			allarme = true
 		_numeri[r].add_theme_color_override("font_color", COLORE_ERRORE if allarme else TESTO)
-		var nome := NOMI_RISORSE.get(r, r)
+		var nome: String = NOMI_RISORSE.get(r, r)
 		_numeri[r].tooltip_text = "%s\nHai: %d\nVariazione: %+.1f a stagione" % [nome, int(valore), delta * tps]
 	_numeri.abitanti.text = "%d/%d" % [GameState.abitanti, GameState.alloggi()]
 	_numeri.abitanti.add_theme_color_override("font_color", COLORE_ERRORE if GameState.senza_casa() > 0 else TESTO)

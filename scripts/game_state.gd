@@ -2694,7 +2694,7 @@ func salva() -> void:
 		})
 	var dati := {
 		"versione": VERSIONE_SALVATAGGIO, "famiglie": famiglie, "capo": capo, "risorse": risorse,
-		"tagliati": Array(terreno.tagliati) if terreno else [],
+		"tagliati": Array(terreno.indici_tagliati) if terreno else [],
 		"terreno": terreno.salva() if terreno else {},
 		"mercato": mercato.salva(), "abitanti": abitanti, "felicita": felicita,
 		"stagione": stagione, "anno": anno, "tick_in_stagione": tick_in_stagione,

@@ -427,7 +427,7 @@ func _crea_alberi() -> void:
 	rng.seed = terreno.seme + 7
 	var tondi: Array[Transform3D] = []
 	var pini: Array[Transform3D] = []
-	for i in terreno.tagliati:
+	for i in terreno.indici_tagliati:
 		_tagliate[i] = true
 	var nati_dopo := {}  # boschi piantati dal forestale: non fanno parte del bosco originale
 	for i in terreno.nuovo_bosco:

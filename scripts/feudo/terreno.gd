@@ -383,7 +383,7 @@ func taglia_bosco(cella: Vector2i, taglia: Vector2i, raggio: int, n: int) -> Arr
 	candidati.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
 		return centro.distance_squared_to(Vector2(a) + Vector2(0.5, 0.5)) < centro.distance_squared_to(Vector2(b) + Vector2(0.5, 0.5)))
 	var celle_tagliate: Array[Vector2i] = []
-	for c in candidati.slice(0, n):
+	for c: Vector2i in candidati.slice(0, n):
 		var i := c.y * LATO + c.x
 		celle[i] = Tipo.ERBA
 		indici_tagliati.append(i)
