@@ -55,6 +55,17 @@ func costo_lotto(r: String, stagione: int, con_mercato: bool) -> int:
 	return maxi(1, ceili(prezzo(r, stagione) * margine * lotto()))
 
 
+## Prezzo di un'unità comprata o venduta (per il mercato automatico, che non va a lotti).
+func costo_unita(r: String, stagione: int, con_mercato: bool) -> float:
+	var margine := float(dati.margine_acquisto_con_mercato if con_mercato else dati.margine_acquisto)
+	return maxf(0.1, prezzo(r, stagione) * margine)
+
+
+func ricavo_unita(r: String, stagione: int, con_mercato: bool) -> float:
+	var margine := float(dati.margine_vendita_con_mercato if con_mercato else dati.margine_vendita)
+	return prezzo(r, stagione) * margine
+
+
 ## Quanto oro si ricava vendendo un lotto.
 func ricavo_lotto(r: String, stagione: int, con_mercato: bool) -> int:
 	var margine := float(dati.margine_vendita_con_mercato if con_mercato else dati.margine_vendita)

@@ -163,7 +163,9 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   incendi, nuove miniere...). D'inverno il cibo rincara. Con un edificio "mercato" si fanno prezzi migliori.
   Con il mercato costruito si apre la scheda **Automatico**: per ogni risorsa si sceglie "vendi oltre" (es. grano oltre
   200: l'eccesso si vende da solo) e "compra sotto" (se scende sotto, si compra), più l'oro da tenere sempre da parte.
-  Il mercato ci pensa ogni 10 giorni, fino a 5 lotti per volta; a fine stagione si legge il riepilogo.
+  Lo fa **a ogni cambio di stagione**, ai prezzi nuovi: prima vende tutto l'eccesso, poi compra quel che manca (senza
+  toccare la riserva d'oro, che parte da 0). Un messaggio dice cosa ha fatto e, se non ha potuto comprare, perché
+  (oro insufficiente o magazzino pieno).
 - **Forestale**: ripianta gli alberi nelle radure lasciate dai taglialegna (poi sui prati); in un anno tornano bosco.
 - **Strade** (pulsante "Strade"): non occupano celle, corrono **lungo i bordi fra una cella e l'altra**: così gli
   edifici si possono accostare e la strada passa loro accanto. Si tocca un angolo da cui parte e uno dove finisce
@@ -184,6 +186,10 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   Taglialegna, cava, cacciatore e raccoglitore rendono di più con tanto bosco o tante rocce attorno; il pescatore rende di
   più sul lago che sul fiume, ma d'inverno il lago gela e la pesca crolla; il campo rende in base alla fertilità.
   Mentre scegli dove costruire, le celle che contano si colorano e il pannello mostra la resa stimata.
+- **Raccolto di stagione**: taglialegna, cava, miniera, raccoglitore, cacciatore e pescatore mettono da parte durante
+  la stagione (il pannello dell'edificio dice quanto hanno raccolto finora) e portano tutto in magazzino **al cambio di
+  stagione**; quello che non ci sta va perso. Mulino, forno, fabbro e armeria invece lavorano giorno per giorno.
+  Si parte con 80 cibo, abbastanza per arrivare al primo raccolto.
 - **Disboscamento**: il taglialegna abbatte il bosco attorno; un bosco grande rende tanto ma sparisce in 3 anni.
   Dove ha tagliato restano i ceppi per una stagione; poi la cella è libera e ci si può costruire.
 - **Campi** disponibili da subito: il grano si raccoglie in autunno e sfama quando il cibo finisce (con mulino e forno vale il doppio).

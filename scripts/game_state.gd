@@ -102,8 +102,7 @@ var soldati := 0              # abitanti arruolati (totale): non lavorano, difen
 var truppe: Dictionary = {}   # tipo di soldato (fanti, arcieri, balestrieri, cavalieri) -> quanti
 ## Mercato automatico: risorsa -> {vendi_sopra, compra_sotto} (0 = spento); e l'oro da non spendere.
 var mercato_auto: Dictionary = {}
-var riserva_oro := 50
-var _auto_conti: Dictionary = {}  # quanto ha comprato/venduto da solo in questa stagione
+var riserva_oro := 0  # oro che il mercato automatico non spende mai
 var regni: Dictionary = {}    # "indice regione" -> {forza, atteggiamento, spiato, alleato, conquistato, vassallo}
 var missioni: Array = []      # {tipo: spia|alleanza|attacco, regione, mancano, soldati}
 var battaglia: Dictionary = {}  # la battaglia in corso (vedi _battaglia), {} se nessuna
@@ -337,8 +336,7 @@ func nuova_partita(seme: int = -1) -> void:
 	soldati = 0
 	truppe = {}
 	mercato_auto = {}
-	riserva_oro = 50
-	_auto_conti = {}
+	riserva_oro = 0
 	missioni = []
 	battaglia = {}
 	regni = {}
@@ -798,15 +796,16 @@ func _tick() -> void:
 			risorse[r] = maxf(0.0, risorse[r] - consuma[r] / tps * molt)
 		var produce: Dictionary = d.get("produce", {})
 		var selvatica := selvatica_di_stagione(b)
+		var stagionale: bool = d.get("a_fine_stagione", false)
 		for r in produce:
 			var quanto: float = produce[r] / tps * molt
 			if selvatica != "" and r == "cibo":
 				# vicino alle piante selvatiche nella loro stagione: su 3 raccolti, 2 sono di quella pianta
 				var quota := float(d.selvatiche.quota)
 				var c_r: String = colture[selvatica].risorsa
-				risorse[c_r] = minf(cap, risorse[c_r] + quanto * quota * bonus_guida(c_r))
+				_produci(b, c_r, quanto * quota * bonus_guida(c_r), cap, stagionale)
 				quanto *= 1.0 - quota
-			risorse[r] = minf(cap, risorse[r] + quanto * bonus_guida(r))
+			_produci(b, r, quanto * bonus_guida(r), cap, stagionale)
 		if b.tipo == "raccoglitore":
 			_raccogli_semi(b, molt, cap, tps)
 		if d.get("pane", false):
@@ -879,8 +878,6 @@ func _tick() -> void:
 	if tick_in_stagione % mese == 0:
 		_paga_soldati()
 	_avanza_missioni()
-	if tick_in_stagione % int(bil.mercato_automatico.ogni) == 0:
-		mercato_automatico()
 	if tick_in_stagione == _tick_banditi:
 		_avvista_banditi()
 	elif not banditi.is_empty():
@@ -2333,47 +2330,53 @@ func imposta_auto(r: String, chiave: String, valore: int) -> void:
 	changed.emit()
 
 
-## Ogni tanto il mercato lavora da solo: vende l'eccesso e compra quello che manca, a lotti,
-## senza mai scendere sotto la riserva d'oro. Alla fine della stagione dice cosa ha fatto.
+## A ogni cambio di stagione (con i prezzi nuovi) il mercato fa da solo: vende tutto quello
+## che supera "vendi oltre" e compra fino a "compra sotto", senza spendere la riserva d'oro.
+## Prima vende, così l'oro incassato serve per comprare. Dice sempre cosa ha fatto e cosa no.
 func mercato_automatico() -> void:
 	if not ha_mercato() or mercato_auto.is_empty():
 		return
-	var lotti := int(bil.mercato_automatico.lotti_per_volta)
-	var lotto := mercato.lotto()
+	var cap := capacita()
+	var fatti: Array[String] = []
+	var problemi: Array[String] = []
 	for r in mercato_auto:
-		var a: Dictionary = mercato_auto[r]
-		var n := 0
-		while int(a.vendi_sopra) > 0 and risorse[r] - lotto >= float(a.vendi_sopra) and n < lotti:
-			var ricavo := ricavo_lotto(r)
-			if not vendi(r):
-				break
-			_conta_auto(r, -lotto, ricavo)
-			n += 1
-		n = 0
-		while int(a.compra_sotto) > 0 and risorse[r] < float(a.compra_sotto) and n < lotti:
-			var costo := costo_lotto(r)
-			if risorse.oro - costo < riserva_oro or not compra(r):
-				break
-			_conta_auto(r, lotto, -costo)
-			n += 1
-
-
-func _conta_auto(r: String, quanto: int, oro: int) -> void:
-	var c: Dictionary = _auto_conti.get(r, {"quanto": 0, "oro": 0})
-	c.quanto = int(c.quanto) + quanto
-	c.oro = int(c.oro) + oro
-	_auto_conti[r] = c
-
-
-func _riepilogo_auto() -> void:
-	if _auto_conti.is_empty():
-		return
-	var parti: Array[String] = []
-	for r in _auto_conti:
-		var c: Dictionary = _auto_conti[r]
-		parti.append("%s %d %s (%+d oro)" % ["venduti" if int(c.quanto) < 0 else "comprati", absi(int(c.quanto)), r, int(c.oro)])
-	message.emit("Mercato automatico: " + ", ".join(parti))
-	_auto_conti = {}
+		var soglia := int(mercato_auto[r].get("vendi_sopra", 0))
+		var q := floori(risorse[r] - soglia)
+		if soglia <= 0 or q <= 0:
+			continue
+		var oro := floori(q * mercato.ricavo_unita(r, stagione, true))
+		risorse[r] -= q
+		if risorse.oro + oro > cap:
+			problemi.append("il magazzino è pieno: %d oro della vendita sono andati persi" % roundi(risorse.oro + oro - cap))
+		risorse.oro = minf(cap, risorse.oro + oro)
+		mercato.saturazione[r] = int(mercato.saturazione.get(r, 0)) - roundi(q / float(mercato.lotto()))
+		fatti.append("venduti %d %s (+%d oro)" % [q, r, oro])
+	for r in mercato_auto:
+		var soglia := int(mercato_auto[r].get("compra_sotto", 0))
+		var manca := ceili(soglia - risorse[r])
+		if soglia <= 0 or manca <= 0:
+			continue
+		var posto := floori(cap - risorse[r])
+		var prezzo := mercato.costo_unita(r, stagione, true)
+		var q := mini(mini(manca, posto), floori((risorse.oro - riserva_oro) / prezzo))
+		if q < manca:
+			if q == posto:
+				problemi.append("non c'è posto in magazzino per tutto il %s" % r)
+			else:
+				problemi.append("non c'è abbastanza oro per comprare %d %s (servono %d oro%s)" % [manca, r,
+					ceili(manca * prezzo), "" if riserva_oro <= 0 else ", e %d sono di riserva" % riserva_oro])
+		if q <= 0:
+			continue
+		var costo := ceili(q * prezzo)
+		risorse.oro -= costo
+		risorse[r] += q
+		mercato.saturazione[r] = int(mercato.saturazione.get(r, 0)) + roundi(q / float(mercato.lotto()))
+		fatti.append("comprati %d %s (-%d oro)" % [q, r, costo])
+	if not fatti.is_empty():
+		message.emit("Mercato automatico: " + ", ".join(fatti))
+	for testo in problemi:
+		message.emit("Mercato automatico: " + testo)
+	changed.emit()
 
 
 func compra(r: String) -> bool:
@@ -2421,7 +2424,59 @@ func _raccogli_semi(b: Dictionary, molt: float, cap: float, tps: float) -> void:
 	var conteggio := terreno.selvatiche_attorno(b.cella, taglia_di(b), int(d.zona.raggio))
 	for nome in conteggio:
 		var semi: String = colture[nome].semi
-		risorse[semi] = minf(cap, risorse[semi] + conteggio[nome] * float(colture.semi_raccolti_per_cella) / tps * molt)
+		_produci(b, semi, conteggio[nome] * float(colture.semi_raccolti_per_cella) / tps * molt, cap, d.get("a_fine_stagione", false))
+
+
+## Gli edifici di raccolta (taglialegna, cava, miniera, raccoglitore, cacciatore, pescatore)
+## mettono da parte durante la stagione e consegnano tutto a fine stagione; gli altri subito.
+func _produci(b: Dictionary, r: String, quanto: float, cap: float, stagionale: bool) -> void:
+	if stagionale:
+		var pronto: Dictionary = b.get("pronto", {})
+		pronto[r] = float(pronto.get(r, 0.0)) + quanto
+		b.pronto = pronto
+	else:
+		risorse[r] = minf(cap, risorse[r] + quanto)
+
+
+## Quanto hanno messo da parte gli edifici di raccolta (risorsa -> quanto), che arriva a fine stagione.
+func in_arrivo() -> Dictionary:
+	var totale := {}
+	for b in buildings:
+		var pronto: Dictionary = b.get("pronto", {})
+		for r in pronto:
+			totale[r] = float(totale.get(r, 0.0)) + float(pronto[r])
+	return totale
+
+
+## Quanto porteranno a fine stagione gli edifici di raccolta, se continuano così.
+func previsione_raccolti() -> Dictionary:
+	var fatti := in_arrivo()
+	var k := float(bil.tick_per_stagione) / maxf(1.0, float(tick_in_stagione))
+	for r in fatti:
+		fatti[r] = float(fatti[r]) * k
+	return fatti
+
+
+## A fine stagione il raccolto degli edifici di raccolta entra in magazzino (fin dove c'è posto).
+func _consegna_raccolti() -> void:
+	var cap := capacita()
+	var entrati: Array[String] = []
+	var persi: Array[String] = []
+	var totale := in_arrivo()
+	for r in totale:
+		var q: float = totale[r]
+		var entra := minf(q, maxf(0.0, cap - risorse[r]))
+		risorse[r] += entra
+		if entra >= 1.0:
+			entrati.append("+%d %s" % [int(entra), r])
+		if q - entra >= 1.0:
+			persi.append("%d %s" % [int(q - entra), r])
+	for b in buildings:
+		b.erase("pronto")
+	if not entrati.is_empty():
+		message.emit("Raccolto della stagione: " + ", ".join(entrati))
+	if not persi.is_empty():
+		message.emit("Il magazzino è pieno: persi %s. Serve un magazzino in più." % ", ".join(persi))
 
 
 ## Ogni tanto i consiglieri guardano il villaggio; se uno ha un consiglio nuovo, lo dice.
@@ -2456,6 +2511,7 @@ func _disbosca() -> void:
 
 
 func _fine_stagione() -> void:
+	_consegna_raccolti()
 	if terreno:
 		var libere := terreno.togli_ceppi()
 		if not libere.is_empty():
@@ -2468,7 +2524,6 @@ func _fine_stagione() -> void:
 	_scadono_modificatori()
 	_riscuoti_tasse()
 	_riscuoti_tributi()
-	_riepilogo_auto()
 	if finita:
 		return
 	if abitanti <= 0:
@@ -2482,6 +2537,7 @@ func _fine_stagione() -> void:
 		if anno == 1 + int(bil.piazza.dopo_anni):
 			_falo_diventa_piazza()
 	mercato.nuova_stagione(seme_mappa, anno, stagione)
+	mercato_automatico()
 	_programma_evento()
 	_programma_banditi()
 	_il_re_si_fa_sentire()
@@ -2691,6 +2747,7 @@ func salva() -> void:
 			"bosco_iniziale": b.get("bosco_iniziale", 0),
 			"coltura": b.get("coltura", ""), "seminato": b.get("seminato", false),
 			"eta": b.get("eta", 0), "rot": b.get("rot", 0), "arcieri": b.get("arcieri", 0),
+			"pronto": b.get("pronto", {}),
 		})
 	var dati := {
 		"versione": VERSIONE_SALVATAGGIO, "famiglie": famiglie, "capo": capo, "risorse": risorse,
@@ -2758,6 +2815,11 @@ func carica() -> bool:
 			b.eta = int(x.get("eta", 0))
 		if int(x.get("rot", 0)) != 0:
 			b.rot = int(x.rot)
+		var pronto: Dictionary = x.get("pronto", {})
+		if not pronto.is_empty():
+			b.pronto = {}
+			for r in pronto:
+				b.pronto[r] = float(pronto[r])
 		if edifici[b.tipo].has("arcieri"):
 			b.arcieri = int(x.get("arcieri", 0))
 		buildings.append(b)
@@ -2776,7 +2838,7 @@ func carica() -> bool:
 	var ma: Dictionary = dati.get("mercato_auto", {})
 	for r in ma:
 		mercato_auto[r] = {"vendi_sopra": int(ma[r].get("vendi_sopra", 0)), "compra_sotto": int(ma[r].get("compra_sotto", 0))}
-	riserva_oro = int(dati.get("riserva_oro", 50))
+	riserva_oro = int(dati.get("riserva_oro", 0))
 	aiuto_inverno_dato = bool(dati.get("aiuto_inverno_dato", anno > 1))
 	tutorial_passo = int(dati.get("tutorial_passo", -1))
 	re_atteggiamento = int(dati.get("re_atteggiamento", -40 if livello >= 1 else 0))

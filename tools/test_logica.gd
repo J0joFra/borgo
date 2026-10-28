@@ -9,6 +9,7 @@ func _ready() -> void:
 	GameState.cancella_salvataggio()
 	GameState.nuova_partita(42)
 	GameState.abitanti = 10
+	GameState.risorse.cibo = 40.0
 	for i in 3:
 		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
 	_verifica(GameState.alloggi() == 12, "3 case = 12 alloggi")
@@ -43,9 +44,12 @@ func _ready() -> void:
 	r.lavoratori = 2
 	GameState.abitanti = 0
 	GameState.risorse.cibo = 0.0
-	for i in 60:
+	for i in 59:
 		GameState._tick()
-	_verifica(absf(GameState.risorse.cibo - 40.0) < 0.1, "raccoglitore: +40 cibo (%.1f)" % GameState.risorse.cibo)
+	_verifica(GameState.risorse.cibo == 0.0 and GameState.in_arrivo().get("cibo", 0.0) > 38.0, "il raccoglitore mette da parte durante la stagione")
+	GameState._tick()
+	GameState._consegna_raccolti()
+	_verifica(absf(GameState.risorse.cibo - 40.0) < 0.1 and GameState.in_arrivo().is_empty(), "raccoglitore: +40 cibo a fine stagione (%.1f)" % GameState.risorse.cibo)
 
 	# Catena grano -> farina -> pane con ingredienti limitati.
 	GameState.nuova_partita(42)
@@ -312,6 +316,7 @@ func _ready() -> void:
 	GameState.risorse.cibo = 0.0
 	for i in 60:
 		GameState._tick()
+	GameState._consegna_raccolti()
 	# migliorato: 3 posti di lavoro e +30%; con 2 lavoratori su 3 rende 40 × 1,3 × 2/3
 	_verifica(absf(GameState.risorse.cibo - 40.0 * 1.3 * 2.0 / 3.0) < 0.2, "raccoglitore migliorato: più posti e più efficienza (%.1f)" % GameState.risorse.cibo)
 
@@ -594,10 +599,19 @@ func _ready() -> void:
 	GameState.aggiungi_gratis("mercato", Vector2i(14, 8), 1.0)
 	GameState.riserva_oro = 60
 	GameState.mercato_automatico()
-	_verifica(GameState.risorse.legna == 107.0, "l'eccesso di legna oltre 100 si vende")
+	_verifica(GameState.risorse.legna == 100.0, "tutto l'eccesso di legna oltre 100 si vende")
 	_verifica(GameState.risorse.pietra > 0.0 and GameState.risorse.pietra < 50.0 and GameState.risorse.oro >= 60.0, "si compra pietra senza scendere sotto la riserva d'oro")
 	GameState.imposta_auto("legna", "compra_sotto", 200)
 	_verifica(int(GameState.mercato_auto.legna.vendi_sopra) == 0, "comprare sopra la soglia di vendita la spegne")
+	GameState.imposta_auto("legna", "compra_sotto", 0)
+	GameState.imposta_auto("legna", "vendi_sopra", 50)
+	GameState.riserva_oro = 0
+	GameState.risorse.legna = 90.0
+	GameState.risorse.oro = 10.0
+	var stagione_m := GameState.stagione
+	GameState._fine_stagione()
+	_verifica(GameState.stagione != stagione_m and GameState.risorse.legna >= 50.0 and GameState.risorse.legna < 51.0,
+		"al cambio di stagione il mercato vende da solo (legna %.1f)" % GameState.risorse.legna)
 
 	# Regni vicini: spie, alleanze, guerra (dal Borgo).
 	GameState.livello = 0
@@ -896,10 +910,16 @@ func _ready() -> void:
 	GameState.regni[prima_k].spiato = true
 	GameState.risorse.oro = 100.0
 	GameState.manda_spia(GameState.regni.keys()[1])
+	var rac_s := GameState.aggiungi_gratis("raccoglitore", GameState.terreno.trova_posto("raccoglitore", TerrenoFeudo.centro_feudo()), 1.0)
+	rac_s.pronto = {"cibo": 12.5}
 	GameState.salva()
 	GameState.in_corso = false
 	GameState.avvia()
 	_verifica(GameState.soldati == 5 and GameState.regni[prima_k].spiato and GameState.missioni.size() == 1, "esercito, regni e missioni si salvano")
+	_verifica(is_equal_approx(float(GameState.in_arrivo().get("cibo", 0.0)), 12.5), "il raccolto della stagione si salva")
+	GameState.risorse.cibo = GameState.capacita() - 5.0
+	GameState._consegna_raccolti()
+	_verifica(GameState.risorse.cibo == GameState.capacita() and GameState.in_arrivo().is_empty(), "col magazzino pieno il raccolto in più si perde")
 	GameState.cancella_salvataggio()
 
 	# Salvataggio della versione 4: strade, piantine, colture, mercato.
@@ -1130,11 +1150,10 @@ func _ready() -> void:
 		GameState.stagione = GameState.CHIAVI_STAGIONI.find(col.stagioni[0])
 		_verifica(GameState.selvatica_di_stagione(rac) == pianta, "nella stagione di %s il raccoglitore lo raccoglie" % pianta)
 		var risorsa_p: String = col.risorsa
-		var cibo_p: float = GameState.risorse.cibo
-		var pianta_p: float = GameState.risorse[risorsa_p]
+		rac.erase("pronto")
 		GameState._tick()
-		var d_cibo: float = GameState.risorse.cibo - cibo_p + GameState.abitanti * float(GameState.bil.cibo_per_abitante_tick)
-		var d_pianta: float = GameState.risorse[risorsa_p] - pianta_p
+		var d_cibo: float = GameState.in_arrivo().get("cibo", 0.0)
+		var d_pianta: float = GameState.in_arrivo().get(risorsa_p, 0.0)
 		_verifica(d_cibo > 0.0 and absf(d_pianta / d_cibo - 2.0) < 0.15, "%s e cibo 2 a 1 (%.2f / %.2f)" % [pianta, d_pianta, d_cibo])
 		var fuori_st := -1
 		for st in 4:

@@ -92,6 +92,7 @@
 		"costo": {"legna": 8},
 		"lavoratori": 2,
 		"produce": {"legna": 30},
+		"a_fine_stagione": true,
 		"disbosca": true,
 		"colore": "5d7a3a",
 		"zona": {"tipo": "bosco", "raggio": 5, "per_cella": 0.05, "minimo": 0.0, "massimo": 2.0},
@@ -108,6 +109,7 @@
 		"costo": {"legna": 10},
 		"lavoratori": 3,
 		"produce": {"pietra": 20},
+		"a_fine_stagione": true,
 		"colore": "6e6e6e",
 		"zona": {"tipo": "roccia", "raggio": 5, "per_cella": 0.12, "minimo": 0.0, "massimo": 2.0},
 		"miglioramenti": [
@@ -139,6 +141,7 @@
 		"costo": {"legna": 10, "pietra": 15},
 		"lavoratori": 3,
 		"produce": {"ferro": 15},
+		"a_fine_stagione": true,
 		"su": "collina",
 		"colore": "4a4a5a",
 		"miglioramenti": [
@@ -169,6 +172,7 @@
 		"costo": {"legna": 6},
 		"lavoratori": 2,
 		"produce": {"cibo": 40},
+		"a_fine_stagione": true,
 		"stagioni": {"inverno": 0},
 		"colore": "8c6d3f",
 		"zona": {"tipo": "bosco", "raggio": 4, "per_cella": 0.04, "minimo": 0.6, "massimo": 1.4},
@@ -186,6 +190,7 @@
 		"costo": {"legna": 8, "pietra": 2},
 		"lavoratori": 2,
 		"produce": {"cibo": 35},
+		"a_fine_stagione": true,
 		"colore": "3f6f9f",
 		"zona": {"tipo": "acqua", "raggio": 3, "lago": 0.09, "fiume": 0.06, "massimo": 2.0, "inverno": {"lago": 0.1, "fiume": 0.6}},
 		"miglioramenti": [
@@ -201,6 +206,7 @@
 		"costo": {"legna": 8, "pietra": 2},
 		"lavoratori": 2,
 		"produce": {"cibo": 30},
+		"a_fine_stagione": true,
 		"colore": "6b3e26",
 		"zona": {"tipo": "bosco", "raggio": 6, "per_cella": 0.035, "minimo": 0.0, "massimo": 1.6},
 		"miglioramenti": [

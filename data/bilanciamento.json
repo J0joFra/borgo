@@ -2,7 +2,7 @@
 	"tick_secondi": 2.0,
 	"tick_per_stagione": 60,
 	"partenza": {"falo": "falo", "tenda": "tenda", "distanza_tende": 4},
-	"risorse_iniziali": {"legna": 30, "pietra": 10, "cibo": 40, "oro": 20},
+	"risorse_iniziali": {"legna": 30, "pietra": 10, "cibo": 80, "oro": 20},
 	"capacita_base": 100,
 	"cibo_per_abitante_tick": 0.1,
 	"felicita_base": 50,
@@ -89,5 +89,5 @@
 		"eserciti": {"signore": ["cavalieri", "balestrieri", "cavalieri"], "banditi": ["predoni"], "libera": ["contadini"]}
 	},
 	"tributo_case": [[4, 1], [6, 2], [8, 3]],
-	"mercato_automatico": {"ogni": 10, "lotti_per_volta": 5, "soglie": [0, 20, 50, 100, 150, 200, 300, 500]}
+	"mercato_automatico": {"soglie": [0, 20, 50, 100, 150, 200, 300, 500]}
 }
