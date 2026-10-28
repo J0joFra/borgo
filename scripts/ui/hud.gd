@@ -2,8 +2,8 @@ class_name Hud
 extends CanvasLayer
 ## Interfaccia: barra delle risorse, menu di costruzione ai lati,
 ## pannello contestuale in basso, finestra Info e fine partita.
-## Costruita in codice per ora; quando ci sarà la grafica vera si può rifare nell'editor.
-## Le misure sono in pixel di una base 480×270, scalata sullo schermo vero.
+## Costruita in codice; le misure sono in pixel di una base 480×270, scalata sullo schermo vero.
+## Layout a container ancorati (niente offset fissi), così si adatta a risoluzioni diverse.
 
 signal costruisci(tipo: String)
 signal conferma_piazzamento
@@ -35,16 +35,21 @@ const NOMI_RISORSE := {
 }
 
 # --- Palette semantica ---------------------------------------------------------
-const COLORE_OK := Color("9fd18b")           # verde: va bene, guadagno
-const COLORE_ATTENZIONE := Color("f2d24b")   # giallo: attenzione, soglia
-const COLORE_ERRORE := Color("ff6b5b")       # rosso: pericolo, perdita
-const COLORE_INFO := Color("a0c0e0")         # azzurro: informazione neutra
+const COLORE_OK := Color("9fd18b")
+const COLORE_ATTENZIONE := Color("f2d24b")
+const COLORE_ERRORE := Color("ff6b5b")
+const COLORE_INFO := Color("a0c0e0")
 const TESTO := Color("f3e3c3")
-const TESTO_ALLARME := COLORE_ERRORE          # alias storico, per compatibilità
+const TESTO_ALLARME := COLORE_ERRORE  # alias storico
+
+# --- Margini uniformi (in pixel base 480×270) -----------------------------------
+const MARGINE := 4
+const MARGINE_BARRA := 2
+const SEPARAZIONE := 2
 
 var _radice: Control
-var _numeri: Dictionary = {}  # chiave -> Label nella barra in alto
-var _icone: Dictionary = {}   # chiave -> icona nella barra in alto
+var _numeri: Dictionary = {}
+var _icone: Dictionary = {}
 var _mercato: PanelContainer
 var _esercito: PanelContainer
 var _esercito_testo: Label
@@ -52,24 +57,24 @@ var _conferma_coltura: PanelContainer
 var _conferma_testo: Label
 var _conferma_si: Button
 var _conferma_no: Button
-var _conferma_azione: Callable = Callable()  # cosa fare se si conferma
+var _conferma_azione: Callable = Callable()
 var _coltura_scelta := ""
-var _truppe_righe: Dictionary = {}  # tipo -> [numero, arruola, congeda]
+var _truppe_righe: Dictionary = {}
 var _mercato_notizia: Label
-var _mercato_righe: Dictionary = {}  # risorsa -> [scorta, tendenza, compra, vendi]
+var _mercato_righe: Dictionary = {}
 var _mercato_nota: Label
 var _mercato_manuale: GridContainer
 var _mercato_auto: VBoxContainer
-var _mercato_auto_righe: Dictionary = {}  # risorsa -> [scorta, vendi_sopra, compra_sotto]
+var _mercato_auto_righe: Dictionary = {}
 var _riserva: Label
 var _btn_auto: Button
-var _btn_colture: Dictionary = {}  # coltura -> Button
-var _strada := ""  # "nuova" mentre si traccia una strada, "esistente" se ne è toccata una
+var _btn_colture: Dictionary = {}
+var _strada := ""
 var _strada_testo := ""
 var _strada_valida := false
-var _strada_titolo := "Strada"  # anche le mura usano questo pannello
+var _strada_titolo := "Strada"
 var _btn_ruota: Button
-var _pulsanti: Dictionary = {}  # testo -> Button dei lati (il tutorial li fa lampeggiare)
+var _pulsanti: Dictionary = {}
 var _tutorial: PanelContainer
 var _tutorial_titolo: Label
 var _tutorial_testo: Label
@@ -97,7 +102,7 @@ var _consiglio: PanelContainer
 var _consiglio_testo: Label
 var _tasse: Array[Button] = []
 var _avviso: Label
-var _allarme: Label  # banditi in arrivo
+var _allarme: Label
 var _tempo_avviso := 0.0
 var _fine: PanelContainer
 var _fine_titolo: Label
@@ -108,8 +113,8 @@ var _carta_titolo: Label
 var _carta_testo: Label
 var _carta_scelte: VBoxContainer
 
-var _edificio := -1          # id mostrato nel pannello, -1 = nessuno
-var _piazzamento := ""       # tipo in piazzamento, "" = nessuno
+var _edificio := -1
+var _piazzamento := ""
 var _piazzamento_valido := false
 var _stima_piazzamento := ""
 
@@ -122,8 +127,7 @@ func _ready() -> void:
 	add_child(_radice)
 	_crea_barra()
 	_crea_lati()
-	_crea_avviso()  # prima dei pannelli, così gli avvisi stanno sotto di loro
-	_crea_allarme()
+	_crea_avvisi()  # un solo contenitore per avviso + allarme, così non si sovrappongono
 	_crea_menu()
 	_crea_pannello()
 	_crea_info()
@@ -205,7 +209,6 @@ func mostra_piazzamento(tipo: String, valido: bool, stima := "") -> void:
 	_aggiorna_pannello()
 
 
-## Mentre si traccia una strada: quante celle, quanta pietra, se si può.
 func mostra_strada(testo: String, valido: bool, titolo := "Strada") -> void:
 	_strada = "nuova"
 	_strada_titolo = titolo
@@ -216,7 +219,6 @@ func mostra_strada(testo: String, valido: bool, titolo := "Strada") -> void:
 	_aggiorna_pannello()
 
 
-## Una strada già fatta: si può togliere.
 func mostra_strada_esistente(titolo := "Strada") -> void:
 	_strada = "esistente"
 	_strada_titolo = titolo
@@ -239,9 +241,8 @@ func mostra_avviso(testo: String, durata := 3.5) -> void:
 	_avviso.modulate.a = 1.0
 
 
-# --- Costruzione dell'interfaccia --------------------------------------------
+# --- Tema ------------------------------------------------------------------------
 
-## Il tema in legno e pergamena di tutta l'interfaccia (usato anche dal prologo).
 static func crea_tema() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 8
@@ -256,8 +257,8 @@ static func crea_tema() -> Theme:
 		t.set_color(nome, "Button", TESTO)
 	t.set_color("font_disabled_color", "Button", Color("8a8070"))
 	t.set_color("font_color", "Label", TESTO)
-	t.set_constant("separation", "VBoxContainer", 2)
-	t.set_constant("separation", "HBoxContainer", 3)
+	t.set_constant("separation", "VBoxContainer", SEPARAZIONE)
+	t.set_constant("separation", "HBoxContainer", SEPARAZIONE)
 	return t
 
 
@@ -287,17 +288,39 @@ func _icona(chiave: String, lato := 10.0) -> Control:
 	return c
 
 
+## Un pannello centrale che si chiude con un bottone "Chiudi": struttura comune a info,
+## consiglio, mercato, esercito. Ritorna il VBox in cui aggiungere il contenuto.
+func _pannello_centrale(titolo: String) -> Array:
+	var centro := CenterContainer.new()
+	centro.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centro.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(centro)
+	var pannello := PanelContainer.new()
+	pannello.custom_minimum_size = Vector2(320, 0)
+	pannello.visible = false
+	centro.add_child(pannello)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	pannello.add_child(col)
+	if titolo != "":
+		var t := Label.new()
+		t.text = titolo
+		t.add_theme_font_size_override("font_size", 10)
+		col.add_child(t)
+	return [pannello, col]
+
+
+# --- Barra risorse ----------------------------------------------------------------
+
 func _crea_barra() -> void:
 	var barra := PanelContainer.new()
 	barra.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	# la barra ha tante voci: font 8 (leggibile) e icone leggermente più piccole (8px)
-	# così tutto ci sta senza ridurre il testo sotto la soglia di leggibilità.
-	var tema_barra := crea_tema()
-	tema_barra.default_font_size = 8
-	barra.theme = tema_barra
+	# margini interni: 2px come da base 480×270
+	var sb := _riquadro(Color("3b2a1e"), Color("6b4a2e"), MARGINE_BARRA)
+	barra.add_theme_stylebox_override("panel", sb)
 	_radice.add_child(barra)
 	var riga := HBoxContainer.new()
-	riga.add_theme_constant_override("separation", 2)
+	riga.add_theme_constant_override("separation", SEPARAZIONE)
 	barra.add_child(riga)
 	for chiave in GameState.RISORSE_VISIBILI + ["re", "abitanti", "disponibili", "felicita"]:
 		var icona := _icona(chiave, 8.0)
@@ -325,10 +348,20 @@ func _crea_barra() -> void:
 		_velocita.append(b)
 
 
+# --- Lati -------------------------------------------------------------------------
+
 func _crea_lati() -> void:
+	# Sinistra: ancorata in alto a sinistra, margine uniforme, contenuto in alto
+	var mc_s := MarginContainer.new()
+	mc_s.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	mc_s.add_theme_constant_override("margin_left", MARGINE)
+	mc_s.add_theme_constant_override("margin_top", MARGINE + 20)  # sotto la barra
+	mc_s.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(mc_s)
 	var sinistra := VBoxContainer.new()
-	sinistra.position = Vector2(4, 24)
-	_radice.add_child(sinistra)
+	sinistra.add_theme_constant_override("separation", SEPARAZIONE)
+	sinistra.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	mc_s.add_child(sinistra)
 	for c in CATEGORIE:
 		var b := _bottone(c[0], 46, 30, "Costruisci: %s" % c[0].to_lower())
 		b.pressed.connect(_apri_categoria.bind(c[1]))
@@ -339,12 +372,18 @@ func _crea_lati() -> void:
 	strada.pressed.connect(func(): _chiudi_menu(); strade.emit())
 	sinistra.add_child(strada)
 
+	# Destra: ancorata in alto a destra, margine uniforme
+	var mc_d := MarginContainer.new()
+	mc_d.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	mc_d.add_theme_constant_override("margin_right", MARGINE)
+	mc_d.add_theme_constant_override("margin_top", MARGINE + 20)
+	mc_d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(mc_d)
 	var destra := VBoxContainer.new()
-	destra.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	destra.offset_left = -50
-	destra.offset_right = -4
-	destra.offset_top = 24
-	_radice.add_child(destra)
+	destra.add_theme_constant_override("separation", SEPARAZIONE)
+	destra.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	destra.size_flags_horizontal = Control.SIZE_SHRINK_END
+	mc_d.add_child(destra)
 	var regno := _bottone("Regno", 46, 30, "Mappa del regno: spie, alleanze, attacchi")
 	_pulsanti["Regno"] = regno
 	regno.pressed.connect(func(): vai_al_regno.emit())
@@ -366,7 +405,7 @@ func _crea_lati() -> void:
 	esercito.pressed.connect(func(): _apri_finestra(_esercito))
 	destra.add_child(esercito)
 	var giro := HBoxContainer.new()
-	giro.add_theme_constant_override("separation", 2)
+	giro.add_theme_constant_override("separation", SEPARAZIONE)
 	destra.add_child(giro)
 	for verso in [-1, 1]:
 		var b := _bottone("<" if verso < 0 else ">", 22, 30,
@@ -375,7 +414,8 @@ func _crea_lati() -> void:
 		giro.add_child(b)
 
 
-## Apre una delle finestre centrali (chiudendo le altre), o la chiude se era già aperta.
+# --- Finestre centrali ------------------------------------------------------------
+
 func _apri_finestra(finestra: PanelContainer) -> void:
 	var era := finestra.visible
 	for f in [_info, _consiglio, _mercato, _esercito]:
@@ -384,17 +424,19 @@ func _apri_finestra(finestra: PanelContainer) -> void:
 	_aggiorna()
 
 
-# --- Conferma generica ---------------------------------------------------------
+# --- Conferma generica ------------------------------------------------------------
 
-## Pannello di conferma riusabile: serve sia per cambiare coltura sia per demolire.
 func _crea_conferma_coltura() -> void:
+	var centro := CenterContainer.new()
+	centro.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centro.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(centro)
 	_conferma_coltura = PanelContainer.new()
-	_conferma_coltura.set_anchors_preset(Control.PRESET_CENTER)
-	_conferma_coltura.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_conferma_coltura.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_conferma_coltura.custom_minimum_size = Vector2(220, 0)
 	_conferma_coltura.visible = false
-	_radice.add_child(_conferma_coltura)
+	centro.add_child(_conferma_coltura)
 	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
 	_conferma_coltura.add_child(col)
 	_conferma_testo = Label.new()
 	_conferma_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -411,8 +453,6 @@ func _crea_conferma_coltura() -> void:
 	riga.add_child(_conferma_no)
 
 
-## Mostra una conferma generica: testo + cosa fare se si conferma.
-## Usata per cambiare coltura e per demolire. Se l'azione è nulla, mostra solo un avviso.
 func _chiedi_conferma(testo: String, azione: Callable, etichetta_si := "Sì") -> void:
 	_conferma_testo.text = testo
 	_conferma_si.text = etichetta_si
@@ -435,7 +475,6 @@ func _chiudi_conferma() -> void:
 	_aggiorna()
 
 
-## Cambiare coltura a un campo va confermato: si riparte dalla semina.
 func _chiedi_coltura(nome: String) -> void:
 	var b := GameState.trova(_edificio)
 	if b.is_empty():
@@ -453,7 +492,6 @@ func _chiedi_coltura(nome: String) -> void:
 	_chiedi_conferma(testo, func(): coltura.emit(_edificio, nome), "Sì, cambia")
 
 
-## Chiede conferma prima di demolire un edificio (o rimuovere una strada/muro).
 func _chiedi_demolizione() -> void:
 	if _strada == "esistente":
 		_chiedi_conferma("Rimuovere %s?" % _strada_titolo.to_lower(),
@@ -467,22 +505,16 @@ func _chiedi_demolizione() -> void:
 		func(): demolisci.emit(_edificio), "Sì, demolisci")
 
 
-# --- Esercito ------------------------------------------------------------------
+# --- Esercito ----------------------------------------------------------------------
 
 func _crea_esercito() -> void:
-	_esercito = PanelContainer.new()
-	_esercito.set_anchors_preset(Control.PRESET_CENTER)
-	_esercito.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_esercito.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_esercito.visible = false
-	_radice.add_child(_esercito)
-	var col := VBoxContainer.new()
-	_esercito.add_child(col)
+	var r := _pannello_centrale("Esercito")
+	_esercito = r[0]
+	var col: VBoxContainer = r[1]
 	_esercito_testo = Label.new()
 	_esercito_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_esercito_testo.custom_minimum_size.x = 300
 	col.add_child(_esercito_testo)
-	# Una riga per tipo di soldato: quali si possono arruolare dipende dall'armeria.
 	var griglia := GridContainer.new()
 	griglia.columns = 4
 	griglia.add_theme_constant_override("h_separation", 4)
@@ -548,27 +580,43 @@ func _aggiorna_esercito() -> void:
 		celle[2].tooltip_text = "" if not celle[2].disabled else "Nessun soldato di questo tipo da congedare"
 
 
+# --- Menu costruzione --------------------------------------------------------------
+
 func _crea_menu() -> void:
+	# Ancorato sotto la colonna sinistra, ma con un margine a sinistra per non coprirla
+	var mc := MarginContainer.new()
+	mc.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	mc.add_theme_constant_override("margin_left", 54)
+	mc.add_theme_constant_override("margin_top", MARGINE + 20)
+	mc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(mc)
 	_menu = PanelContainer.new()
-	_menu.position = Vector2(54, 24)
 	_menu.visible = false
-	_radice.add_child(_menu)
+	_menu.custom_minimum_size.x = 150
+	mc.add_child(_menu)
 	_menu_lista = VBoxContainer.new()
 	_menu.add_child(_menu_lista)
 
 
+# --- Pannello contestuale (in basso) -----------------------------------------------
+
 func _crea_pannello() -> void:
+	# Ancorato in basso al centro: larghezza flessibile, contenuto che va a capo
+	var mc := MarginContainer.new()
+	mc.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	mc.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	mc.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	mc.add_theme_constant_override("margin_bottom", MARGINE)
+	mc.add_theme_constant_override("margin_left", MARGINE)
+	mc.add_theme_constant_override("margin_right", MARGINE)
+	mc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(mc)
 	_pannello = PanelContainer.new()
-	_pannello.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_pannello.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_pannello.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_pannello.offset_left = -160
-	_pannello.offset_right = 160
-	_pannello.offset_top = -56
-	_pannello.offset_bottom = -4
+	_pannello.custom_minimum_size = Vector2(320, 0)
 	_pannello.visible = false
-	_radice.add_child(_pannello)
+	mc.add_child(_pannello)
 	var colonna := VBoxContainer.new()
+	colonna.add_theme_constant_override("separation", 2)
 	_pannello.add_child(colonna)
 	var sopra := HBoxContainer.new()
 	colonna.add_child(sopra)
@@ -614,15 +662,12 @@ func _crea_pannello() -> void:
 		riga.add_child(b)
 
 
+# --- Info -------------------------------------------------------------------------
+
 func _crea_info() -> void:
-	_info = PanelContainer.new()
-	_info.set_anchors_preset(Control.PRESET_CENTER)
-	_info.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_info.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_info.visible = false
-	_radice.add_child(_info)
-	var col := VBoxContainer.new()
-	_info.add_child(col)
+	var r := _pannello_centrale("Info")
+	_info = r[0]
+	var col: VBoxContainer = r[1]
 	_info_testo = Label.new()
 	_info_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_info_testo.custom_minimum_size.x = 420
@@ -634,8 +679,8 @@ func _crea_info() -> void:
 	l.text = "Tasse:"
 	riga.add_child(l)
 	for livello in ["basse", "normali", "alte"]:
-		var b := _bottone(livello.capitalize(), 40,
-			"", "Tasse %s: più oro, ma la felicità scende" % livello if livello != "normali" else "Tasse normali: equilibrio")
+		var b := _bottone(livello.capitalize(), 40, 16,
+			"Tasse %s: più oro, ma la felicità scende" % livello if livello != "normali" else "Tasse normali: equilibrio")
 		b.toggle_mode = true
 		b.pressed.connect(func(): GameState.tasse = livello; _aggiorna())
 		riga.add_child(b)
@@ -671,14 +716,9 @@ func _crea_info() -> void:
 
 
 func _crea_consiglio() -> void:
-	_consiglio = PanelContainer.new()
-	_consiglio.set_anchors_preset(Control.PRESET_CENTER)
-	_consiglio.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_consiglio.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_consiglio.visible = false
-	_radice.add_child(_consiglio)
-	var col := VBoxContainer.new()
-	_consiglio.add_child(col)
+	var r := _pannello_centrale("Consiglio")
+	_consiglio = r[0]
+	var col: VBoxContainer = r[1]
 	_consiglio_testo = Label.new()
 	_consiglio_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_consiglio_testo.custom_minimum_size.x = 320
@@ -708,15 +748,12 @@ func _aggiorna_consiglio() -> void:
 	_consiglio_testo.text = "\n".join(righe)
 
 
+# --- Mercato ----------------------------------------------------------------------
+
 func _crea_mercato() -> void:
-	_mercato = PanelContainer.new()
-	_mercato.set_anchors_preset(Control.PRESET_CENTER)
-	_mercato.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_mercato.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_mercato.visible = false
-	_radice.add_child(_mercato)
-	var col := VBoxContainer.new()
-	_mercato.add_child(col)
+	var r := _pannello_centrale("Mercato")
+	_mercato = r[0]
+	var col: VBoxContainer = r[1]
 	_mercato_notizia = Label.new()
 	_mercato_notizia.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_mercato_notizia.custom_minimum_size.x = 330
@@ -733,10 +770,10 @@ func _crea_mercato() -> void:
 	col.add_child(griglia)
 	_mercato_manuale = griglia
 	_crea_mercato_auto(col)
-	for r in GameState.mercato.risorse() if GameState.mercato else []:
-		griglia.add_child(_icona(r, 9.0))
+	for r2 in GameState.mercato.risorse() if GameState.mercato else []:
+		griglia.add_child(_icona(r2, 9.0))
 		var nome := Label.new()
-		nome.text = NOMI_RISORSE.get(r, r)
+		nome.text = NOMI_RISORSE.get(r2, r2)
 		nome.custom_minimum_size.x = 64
 		griglia.add_child(nome)
 		var scorta := Label.new()
@@ -748,12 +785,12 @@ func _crea_mercato() -> void:
 		tendenza.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		griglia.add_child(tendenza)
 		var compra := _bottone("", 100, 14)
-		compra.pressed.connect(func(): Audio.effetto("moneta" if GameState.compra(r) else "errore"))
+		compra.pressed.connect(func(): Audio.effetto("moneta" if GameState.compra(r2) else "errore"))
 		griglia.add_child(compra)
 		var vendi := _bottone("", 100, 14)
-		vendi.pressed.connect(func(): Audio.effetto("moneta" if GameState.vendi(r) else "errore"))
+		vendi.pressed.connect(func(): Audio.effetto("moneta" if GameState.vendi(r2) else "errore"))
 		griglia.add_child(vendi)
-		_mercato_righe[r] = [scorta, tendenza, compra, vendi]
+		_mercato_righe[r2] = [scorta, tendenza, compra, vendi]
 	_mercato_nota = Label.new()
 	_mercato_nota.modulate = Color(1, 1, 1, 0.75)
 	col.add_child(_mercato_nota)
@@ -762,8 +799,6 @@ func _crea_mercato() -> void:
 	col.add_child(chiudi)
 
 
-## Il mercato automatico: per ogni risorsa "vendi oltre" (l'eccesso si vende da solo) e
-## "compra sotto" (se scende sotto, si compra), più l'oro da tenere sempre da parte.
 func _crea_mercato_auto(col: VBoxContainer) -> void:
 	_mercato_auto = VBoxContainer.new()
 	_mercato_auto.visible = false
@@ -778,10 +813,10 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 		l.text = testo
 		l.add_theme_font_size_override("font_size", 7)
 		griglia.add_child(l)
-	for r in GameState.mercato.risorse() if GameState.mercato else []:
-		griglia.add_child(_icona(r, 9.0))
+	for r2 in GameState.mercato.risorse() if GameState.mercato else []:
+		griglia.add_child(_icona(r2, 9.0))
 		var nome := Label.new()
-		nome.text = NOMI_RISORSE.get(r, r)
+		nome.text = NOMI_RISORSE.get(r2, r2)
 		nome.custom_minimum_size.x = 60
 		griglia.add_child(nome)
 		var scorta := Label.new()
@@ -794,7 +829,7 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 		var celle := [scorta]
 		for chiave in ["vendi_sopra", "compra_sotto"]:
 			var meno := _bottone("−", 16, 13, "Soglia più bassa")
-			meno.pressed.connect(_soglia.bind(r, chiave, -1))
+			meno.pressed.connect(_soglia.bind(r2, chiave, -1))
 			griglia.add_child(meno)
 			var valore := Label.new()
 			valore.custom_minimum_size.x = 30
@@ -802,9 +837,9 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 			griglia.add_child(valore)
 			celle.append(valore)
 			var piu := _bottone("+", 16, 13, "Soglia più alta")
-			piu.pressed.connect(_soglia.bind(r, chiave, 1))
+			piu.pressed.connect(_soglia.bind(r2, chiave, 1))
 			griglia.add_child(piu)
-		_mercato_auto_righe[r] = celle
+		_mercato_auto_righe[r2] = celle
 	var riga := HBoxContainer.new()
 	_mercato_auto.add_child(riga)
 	var l2 := Label.new()
@@ -822,7 +857,6 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 	riga.add_child(piu_r)
 
 
-## Passa alla soglia successiva o precedente (spento, 20, 50, 100...).
 func _soglia(r: String, chiave: String, verso: int) -> void:
 	var soglie: Array = GameState.bil.mercato_automatico.soglie
 	var adesso := int(GameState.mercato_auto.get(r, {}).get(chiave, 0))
@@ -854,7 +888,6 @@ func _aggiorna_mercato() -> void:
 	for r in _mercato_righe:
 		var riga: Array = _mercato_righe[r]
 		riga[0].text = str(int(GameState.risorse.get(r, 0.0)))
-		# frecce ▲▼ con colore semantico (rosso = sale, verde = scende)
 		var t := m.tendenza(r, GameState.stagione)
 		riga[1].text = "▲" if t > 0 else ("▼" if t < 0 else "—")
 		riga[1].add_theme_color_override("font_color", COLORE_ERRORE if t > 0 else (COLORE_OK if t < 0 else Color(1, 1, 1, 0.4)))
@@ -877,59 +910,67 @@ func _nuovo_consiglio(famiglia: int, testo: String) -> void:
 	mostra_avviso("%s: %s" % [GameState.famiglie[famiglia].capo, testo], 7.0)
 
 
-func _crea_avviso() -> void:
+# --- Avvisi (in alto, in colonna) ---------------------------------------------------
+
+func _crea_avvisi() -> void:
+	# Un solo contenitore al centro in alto: avviso sopra, allarme sotto.
+	# Così non si sovrappongono mai, e il tutorial (ancorato a destra) non li copre.
+	var mc := MarginContainer.new()
+	mc.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	mc.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	mc.add_theme_constant_override("margin_top", MARGINE + 18)  # sotto la barra
+	mc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(mc)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 1)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mc.add_child(col)
 	_avviso = Label.new()
-	_avviso.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_avviso.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_avviso.offset_top = 22
-	_avviso.offset_left = -170
-	_avviso.offset_right = 170
 	_avviso.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_avviso.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_avviso.add_theme_color_override("font_outline_color", Color.BLACK)
 	_avviso.add_theme_constant_override("outline_size", 3)
 	_avviso.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_avviso.modulate.a = 0.0
-	_radice.add_child(_avviso)
-
-
-func _crea_allarme() -> void:
+	col.add_child(_avviso)
 	_allarme = Label.new()
-	_allarme.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_allarme.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_allarme.offset_top = 46
-	_allarme.offset_left = -170
-	_allarme.offset_right = 170
 	_allarme.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_allarme.add_theme_color_override("font_color", COLORE_ERRORE.lightened(0.25))
 	_allarme.add_theme_color_override("font_outline_color", Color("3a0a08"))
 	_allarme.add_theme_constant_override("outline_size", 3)
 	_allarme.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_allarme.visible = false
-	_radice.add_child(_allarme)
+	col.add_child(_allarme)
 
+
+# --- Fine partita ------------------------------------------------------------------
 
 func _crea_fine() -> void:
+	var centro := CenterContainer.new()
+	centro.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centro.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(centro)
 	_fine = PanelContainer.new()
-	_fine.set_anchors_preset(Control.PRESET_CENTER)
-	_fine.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_fine.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_fine.custom_minimum_size = Vector2(280, 0)
 	_fine.visible = false
-	_radice.add_child(_fine)
+	centro.add_child(_fine)
 	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
 	_fine.add_child(col)
 	_fine_titolo = Label.new()
 	_fine_titolo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fine_titolo.add_theme_font_size_override("font_size", 12)
 	col.add_child(_fine_titolo)
 	_fine_testo = Label.new()
 	_fine_testo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fine_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_fine_testo)
 	var b := _bottone("Nuova partita", 0, 20, "Ricomincia da capo")
 	b.pressed.connect(func(): nuova_partita.emit())
 	col.add_child(b)
 
 
-# --- Aggiornamenti -----------------------------------------------------------
+# --- Aggiornamenti ----------------------------------------------------------------
 
 func _aggiorna() -> void:
 	var tps: float = GameState.bil.tick_per_stagione
@@ -940,12 +981,10 @@ func _aggiorna() -> void:
 		var valore: float = GameState.risorse.get(r, 0.0)
 		var delta: float = GameState.ultimo_delta.get(r, 0.0)
 		_numeri[r].text = str(int(valore))
-		# Rosso se al ritmo attuale la risorsa finisce entro 2 stagioni.
 		var allarme := delta < 0.0 and valore / -delta < 2.0 * tps
 		if r == "cibo" and GameState.tick_fame > 0:
 			allarme = true
 		_numeri[r].add_theme_color_override("font_color", COLORE_ERRORE if allarme else TESTO)
-		# tooltip ricco, aggiornato a ogni refresh
 		var nome := NOMI_RISORSE.get(r, r)
 		_numeri[r].tooltip_text = "%s\nHai: %d\nVariazione: %+.1f a stagione" % [nome, int(valore), delta * tps]
 	_numeri.abitanti.text = "%d/%d" % [GameState.abitanti, GameState.alloggi()]
@@ -953,7 +992,6 @@ func _aggiorna() -> void:
 	_numeri.abitanti.tooltip_text = "Abitanti: %d\nPosti letto: %d\nSenza casa: %d" % [GameState.abitanti, GameState.alloggi(), GameState.senza_casa()]
 	_numeri.disponibili.text = str(GameState.disoccupati())
 	_numeri.disponibili.tooltip_text = "Persone senza lavoro: %d\nServono case e posti di lavoro" % GameState.disoccupati()
-	# il re: quanto vuole in autunno, oppure (da indipendenti) cosa pensa di noi
 	if GameState.indipendente():
 		var cosa := GameState.testo_atteggiamento(GameState.re_atteggiamento)
 		_numeri.re.text = {"amichevole": "amico", "tranquillo": "calmo", "diffidente": "diffida", "ostile": "ostile"}.get(cosa, cosa)
@@ -979,7 +1017,6 @@ func _aggiorna() -> void:
 		_velocita[i].set_pressed_no_signal(i == GameState.velocita)
 	if GameState.evento_attivo.is_empty():
 		_carta.visible = false
-	# il tutorial si fa da parte mentre c'è una carta da leggere
 	_tutorial.visible = GameState.tutorial_passo >= 0 and not _carta.visible
 	if _pannello.visible:
 		_aggiorna_pannello()
@@ -995,14 +1032,11 @@ func _aggiorna() -> void:
 		_aggiorna_esercito()
 
 
-## Nella barra in alto solo ciò che conta adesso: le risorse di base sempre,
-## i raccolti se ne hai o li coltivi, ferro e attrezzi dal Borgo in poi.
 func _da_mostrare(r: String) -> bool:
 	if r in ["legna", "pietra", "cibo", "oro"]:
 		return true
 	if GameState.risorse.get(r, 0.0) >= 1.0:
 		return true
-	# ferro, utensili, armi e raccolti: solo se c'è chi li produce o li usa
 	for b in GameState.buildings:
 		var d: Dictionary = GameState.edifici[b.tipo]
 		if GameState.coltura_di(b).get("risorsa", "") == r or d.get("produce", {}).has(r) or d.get("consuma", {}).has(r):
@@ -1015,7 +1049,7 @@ func _da_mostrare(r: String) -> bool:
 func _imposta_velocita(v: int) -> void:
 	if not GameState.evento_attivo.is_empty() or not GameState.battaglia.is_empty():
 		_aggiorna()
-		return  # finché la carta è aperta il tempo resta fermo
+		return
 	GameState.velocita = v
 	_aggiorna()
 
@@ -1035,13 +1069,12 @@ func _chiudi_menu() -> void:
 
 
 func _riempi_menu() -> void:
-	# Aggiorna i bottoni esistenti invece di ricrearli, così un tocco in corso non si perde.
 	var tipi: Array[String] = []
 	for tipo in GameState.edifici:
 		if GameState.edifici[tipo].categoria == _categoria_aperta:
 			tipi.append(tipo)
 	if _categoria_aperta == "difese":
-		tipi.append(MURA)  # le mura si tracciano come le strade
+		tipi.append(MURA)
 	while _menu_lista.get_child_count() < tipi.size():
 		var b := _bottone("", 150, 16)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -1086,7 +1119,6 @@ func _scegli_dal_menu(b: Button) -> void:
 func _aggiorna_pannello() -> void:
 	for x in [_btn_meno, _btn_piu, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla, _btn_chiudi] + _btn_colture.values():
 		x.visible = false
-	# la X (chiudi) è sempre visibile quando c'è un pannello: piazzamento, strada o edificio
 	_btn_chiudi.visible = true
 	if _strada != "":
 		_pannello.visible = true
@@ -1230,16 +1262,19 @@ func _aggiorna_info() -> void:
 
 # --- Tutorial -------------------------------------------------------------------
 
-## Il riquadro del tutorial, in alto a destra: un passo alla volta. Il pulsante da usare lampeggia.
 func _crea_tutorial() -> void:
+	# Ancorato in alto a destra, con margine destro (niente più offset_right = -54)
+	var mc := MarginContainer.new()
+	mc.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	mc.add_theme_constant_override("margin_right", MARGINE + 50)  # lascia spazio ai bottoni di destra
+	mc.add_theme_constant_override("margin_top", MARGINE + 26)
+	mc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(mc)
 	_tutorial = PanelContainer.new()
 	_tutorial.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e"), 4))
-	_tutorial.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_tutorial.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_tutorial.offset_right = -54
-	_tutorial.offset_top = 58
+	_tutorial.custom_minimum_size.x = 130
 	_tutorial.visible = false
-	_radice.add_child(_tutorial)
+	mc.add_child(_tutorial)
 	var col := VBoxContainer.new()
 	col.custom_minimum_size.x = 130
 	col.add_theme_constant_override("separation", 1)
@@ -1247,13 +1282,13 @@ func _crea_tutorial() -> void:
 	var inchiostro := Color("3b2a1e")
 	_tutorial_titolo = Label.new()
 	_tutorial_titolo.add_theme_color_override("font_color", Color("7a4a2a"))
+	_tutorial_titolo.add_theme_font_size_override("font_size", 7)
 	col.add_child(_tutorial_titolo)
 	_tutorial_testo = Label.new()
 	_tutorial_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_tutorial_testo.custom_minimum_size.x = 130
 	_tutorial_testo.add_theme_color_override("font_color", inchiostro)
 	_tutorial_testo.add_theme_font_size_override("font_size", 6)
-	_tutorial_titolo.add_theme_font_size_override("font_size", 7)
 	col.add_child(_tutorial_testo)
 	var riga := HBoxContainer.new()
 	riga.alignment = BoxContainer.ALIGNMENT_END
@@ -1289,19 +1324,20 @@ func _mostra_tutorial(passo: int) -> void:
 		_lampeggia.tween_property(b, "modulate", Color.WHITE, 0.45)
 
 
-# --- Carte evento --------------------------------------------------------------
+# --- Carte evento ----------------------------------------------------------------
 
 func _crea_carta() -> void:
+	var centro := CenterContainer.new()
+	centro.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centro.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radice.add_child(centro)
 	_carta = PanelContainer.new()
-	_carta.set_anchors_preset(Control.PRESET_CENTER)
-	_carta.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_carta.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_carta.add_theme_stylebox_override("panel", _riquadro(Color("e9dcbc"), Color("6b4a2e"), 6))
+	_carta.custom_minimum_size.x = 260
 	_carta.visible = false
-	_radice.add_child(_carta)
+	centro.add_child(_carta)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 3)
-	col.custom_minimum_size.x = 260
 	_carta.add_child(col)
 	var inchiostro := Color("3b2a1e")
 	_carta_chi = Label.new()
@@ -1319,7 +1355,6 @@ func _crea_carta() -> void:
 	col.add_child(_carta_scelte)
 
 
-## Una carta evento: la racconta un consigliere, il tempo è fermo finché non si sceglie.
 func _mostra_carta(carta: Dictionary) -> void:
 	nascondi_pannello()
 	_chiudi_menu()
@@ -1353,7 +1388,6 @@ func _mostra_carta(carta: Dictionary) -> void:
 			GameState.scegli_evento(i))
 		_carta_scelte.add_child(b)
 	if GameState.evento_senza_scelta():
-		# mai bloccati: se non possiamo permetterci niente, si lascia perdere
 		var niente := _bottone("Non possiamo fare niente: lasciamo perdere", 0, 20)
 		niente.pressed.connect(func():
 			_carta.visible = false
