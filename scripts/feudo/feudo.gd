@@ -2,7 +2,7 @@ extends Node3D
 ## Scena del feudo: crea luce, terreno, edifici, telecamera e interfaccia,
 ## e gestisce i gesti (trascinare, pizzicare, toccare) con il dito o con il mouse.
 
-enum Modo { NORMALE, PIAZZA, STRADA, MURA }
+enum Modo { NORMALE, PIAZZA, STRADA, MURA, SPOSTA }
 
 const SOGLIA_TOCCO := 6.0  # oltre questa distanza un tocco diventa trascinamento
 const COLORI_LUCE := [Color("fff6e8"), Color("fff0d0"), Color("ffd6a8"), Color("dfe8ff")]
@@ -26,6 +26,8 @@ var _strada_vertici: Array[Vector2i] = []
 var _mura_celle: Array[Vector2i] = []
 var _lato_toccato := -1  # lato di strada esistente selezionato
 var _muro_toccato := Vector2i(-1, -1)
+var _sposta_id := -1          # l'edificio che si sta spostando
+var _sposta_da := Vector2i.ZERO  # da dove parte (si va al massimo 2 celle più in là)
 
 var _dita: Dictionary = {}  # indice -> posizione
 var _inizio := Vector2.ZERO
@@ -85,6 +87,8 @@ func _ready() -> void:
 	hud.coltura.connect(GameState.cambia_coltura)
 	hud.strade.connect(_inizia_strada)
 	hud.collega.connect(_collega)
+	hud.gira.connect(_gira)
+	hud.sposta.connect(_inizia_spostamento)
 	hud.mura.connect(_inizia_mura)
 	hud.ruota_edificio.connect(_ruota_piazzamento)
 	hud.rimuovi_strada.connect(_rimuovi_strada)
@@ -95,6 +99,7 @@ func _ready() -> void:
 
 	GameState.building_added.connect(_crea_edificio)
 	GameState.building_removed.connect(_rimuovi_edificio)
+	GameState.building_moved.connect(_edificio_spostato)
 	GameState.season_changed.connect(_cambia_stagione)
 	GameState.changed.connect(_aggiorna_edifici)
 	GameState.game_ended.connect(_partita_finita)
@@ -184,6 +189,60 @@ func _rimuovi_edificio(id: int) -> void:
 		_seleziona(-1)
 
 
+## Spostato o girato: si rifà il modello 3D al posto nuovo (e resta selezionato).
+func _edificio_spostato(b: Dictionary) -> void:
+	var era_selezionato: bool = b.id == _selezionato
+	if _edifici.has(b.id):
+		_edifici[b.id].queue_free()
+		_edifici.erase(b.id)
+	_crea_edificio(b)
+	vista.aggiorna_ciuffi()
+	if era_selezionato:
+		_seleziona(b.id)
+
+
+func _gira(id: int) -> void:
+	if not GameState.gira(id):
+		hud.mostra_avviso("Non c'è posto per girarlo qui: prova a spostarlo prima.")
+
+
+## Modalità sposta: l'edificio si toglie dal suo posto (solo per l'anteprima) e si sceglie dove
+## metterlo, al massimo 2 celle più in là; si può anche girare.
+func _inizia_spostamento(id: int) -> void:
+	var b := GameState.trova(id)
+	if b.is_empty():
+		return
+	_termina_piazzamento()
+	_seleziona(-1)
+	modo = Modo.SPOSTA
+	_sposta_id = id
+	_sposta_da = b.cella
+	_tipo = b.tipo
+	_rot = int(b.get("rot", 0))
+	GameState.terreno.libera(b)
+	if _edifici.has(id):
+		_edifici[id].visible = false
+	segni.nascosto = id
+	_aggiorna_spostamento(b.cella + _taglia(_tipo) / 2)
+
+
+func _aggiorna_spostamento(centro: Vector2i) -> void:
+	var taglia := _taglia(_tipo)
+	var m := GameState.SPOSTAMENTO_MASSIMO
+	var cella := centro - taglia / 2
+	_cella = Vector2i(clampi(cella.x, _sposta_da.x - m, _sposta_da.x + m), clampi(cella.y, _sposta_da.y - m, _sposta_da.y + m))
+	var valida := GameState.terreno.posizione_valida(_tipo, _cella, _rot)
+	_mostra_box(taglia, valida)
+	# la zona in cui si può spostare
+	var zona: Array[Vector2i] = []
+	for y in range(_sposta_da.y - m, _sposta_da.y + taglia.y + m):
+		for x in range(_sposta_da.x - m, _sposta_da.x + taglia.x + m):
+			zona.append(Vector2i(x, y))
+	vista.mostra_celle(zona, Color(1.0, 0.85, 0.4, 0.35))
+	hud.mostra_strada("Tocca dove metterlo: al massimo %d caselle più in là (riquadro chiaro). Puoi anche girarlo." % m
+		if valida else "Qui non ci sta: tocca un altro punto nel riquadro chiaro.", valida, "Sposta")
+
+
 func _aggiorna_edifici() -> void:
 	for e in _edifici.values():
 		e.aggiorna()
@@ -206,17 +265,30 @@ func _inizia_piazzamento(tipo: String) -> void:
 
 ## Gira di 90° l'edificio da piazzare (tasto R o pulsante Ruota).
 func _ruota_piazzamento() -> void:
-	if modo != Modo.PIAZZA:
+	if modo != Modo.PIAZZA and modo != Modo.SPOSTA:
 		return
 	var centro := _cella + _taglia(_tipo) / 2
 	_rot = (_rot + 1) % 4
-	_sposta_anteprima(centro)
+	if modo == Modo.SPOSTA:
+		_aggiorna_spostamento(centro)
+	else:
+		_sposta_anteprima(centro)
 
 
 func _sposta_anteprima(centro: Vector2i) -> void:
 	var taglia := _taglia(_tipo)
 	_cella = centro - taglia / 2
 	var valida := GameState.terreno.posizione_valida(_tipo, _cella, _rot)
+	var dentro := GameState.terreno.dentro(_cella)
+	_mostra_box(taglia, valida, _cella if dentro else centro)
+	# le celle che contano per la resa (bosco, rocce, acqua, fertilità) si colorano
+	vista.mostra_zona(_tipo, _cella if dentro else centro)
+	var stima := GameState.stima_produzione(_tipo, _cella) if dentro else ""
+	hud.mostra_piazzamento(_tipo, valida, stima)
+
+
+## Il riquadro verde (o rosso) dove andrà l'edificio.
+func _mostra_box(taglia: Vector2i, valida: bool, dove := Vector2i(-1, -1)) -> void:
 	var box := BoxMesh.new()
 	box.size = Vector3(taglia.x * VistaTerreno.CELLA, 0.3, taglia.y * VistaTerreno.CELLA)
 	var mat := StandardMaterial3D.new()
@@ -225,15 +297,10 @@ func _sposta_anteprima(centro: Vector2i) -> void:
 	mat.albedo_color = Color(0.3, 0.9, 0.3, 0.5) if valida else Color(0.95, 0.25, 0.2, 0.5)
 	box.material = mat
 	_anteprima.mesh = box
-	var dentro := GameState.terreno.dentro(_cella)
-	_anteprima.position = vista.centro_area(_cella if dentro else centro, taglia) + Vector3(0, 0.15, 0)
+	_anteprima.position = vista.centro_area(_cella if dove.x < 0 else dove, taglia) + Vector3(0, 0.15, 0)
 	# una freccia sul lato del davanti, per vedere come è girato
 	_anteprima.rotation.y = -_rot * PI / 2.0 if taglia.x == taglia.y else 0.0
 	_anteprima.visible = true
-	# le celle che contano per la resa (bosco, rocce, acqua, fertilità) si colorano
-	vista.mostra_zona(_tipo, _cella if dentro else centro)
-	var stima := GameState.stima_produzione(_tipo, _cella) if dentro else ""
-	hud.mostra_piazzamento(_tipo, valida, stima)
 
 
 # --- Strade ---------------------------------------------------------------------
@@ -346,6 +413,13 @@ func _conferma_piazzamento() -> void:
 	if modo == Modo.MURA:
 		_costruisci_mura()
 		return
+	if modo == Modo.SPOSTA:
+		var id := _sposta_id
+		if GameState.riposiziona(id, _cella, _rot):
+			_sposta_id = -1  # già al posto nuovo: _termina_piazzamento non deve rimetterlo
+			_termina_piazzamento()
+			_seleziona(id)
+		return
 	if modo != Modo.PIAZZA or not GameState.terreno.posizione_valida(_tipo, _cella, _rot):
 		return
 	var b := GameState.piazza(_tipo, _cella, 1.0, _rot)
@@ -355,6 +429,15 @@ func _conferma_piazzamento() -> void:
 
 
 func _termina_piazzamento() -> void:
+	if modo == Modo.SPOSTA and _sposta_id >= 0:
+		# annullato: l'edificio torna com'era
+		var b := GameState.trova(_sposta_id)
+		if not b.is_empty():
+			GameState.terreno.occupa(b)
+		if _edifici.has(_sposta_id):
+			_edifici[_sposta_id].visible = true
+	_sposta_id = -1
+	segni.nascosto = -1
 	modo = Modo.NORMALE
 	_tipo = ""
 	_anteprima.visible = false
@@ -431,6 +514,8 @@ func _tocco(posizione: Vector2) -> void:
 		_tocco_strada(vista.vertice_da_raggio(r[0], r[1]), GameState.terreno.edificio_a(cella))
 	elif modo == Modo.MURA:
 		_tocco_mura(cella)
+	elif modo == Modo.SPOSTA:
+		_aggiorna_spostamento(cella)
 	else:
 		var segno := segni.segno_a(posizione)
 		if segno.get("azione", "") == "collega":

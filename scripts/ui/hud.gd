@@ -12,6 +12,8 @@ signal cambia_lavoratori(id: int, delta: int)
 signal demolisci(id: int)
 signal migliora(id: int)
 signal collega(id: int)
+signal gira(id: int)
+signal sposta(id: int)
 signal coltura(id: int, nome: String)
 signal strade
 signal mura
@@ -103,6 +105,8 @@ var _btn_piu: Button
 var _btn_demolisci: Button
 var _btn_migliora: Button
 var _btn_collega: Button
+var _btn_gira: Button
+var _btn_sposta: Button
 var _btn_ok: Button
 var _btn_annulla: Button
 var _btn_chiudi: Button
@@ -607,7 +611,9 @@ func _chiedi_demolizione() -> void:
 	if b.is_empty():
 		return
 	var nome: String = GameState.def_di(b).nome
-	_chiedi_conferma("Demolire %s?\nNon si può annullare." % nome.to_lower(),
+	var rimborso := GameState.rimborso_demolizione(b)
+	var torna := "Riavrai %s (metà dei materiali)." % GameState._elenco(rimborso) if not rimborso.is_empty() else "Non si riprende nulla."
+	_chiedi_conferma("Demolire %s?\n%s Non si può annullare." % [nome.to_lower(), torna],
 		func(): demolisci.emit(_edificio), "Sì, demolisci")
 
 
@@ -749,6 +755,10 @@ func _crea_pannello() -> void:
 	_btn_migliora.pressed.connect(func(): migliora.emit(_edificio))
 	_btn_collega = _bottone("Collega", 0, 18, "Mostra la strada che lo collega alla piazza")
 	_btn_collega.pressed.connect(func(): collega.emit(_edificio))
+	_btn_gira = _bottone_icona("destra", "Gira", "ruota l'edificio di 90°", 18)
+	_btn_gira.pressed.connect(func(): gira.emit(_edificio))
+	_btn_sposta = _bottone_icona("sposta", "Sposta", "fino a 2 caselle", 18)
+	_btn_sposta.pressed.connect(func(): sposta.emit(_edificio))
 	_btn_ruota = _bottone("Ruota", 0, 18, "Ruota l'edificio di 90°")
 	_btn_ruota.pressed.connect(func(): ruota_edificio.emit())
 	_btn_ok = _bottone("Costruisci", 0, 18, "Conferma il piazzamento")
@@ -765,7 +775,7 @@ func _crea_pannello() -> void:
 		bc.pressed.connect(_chiedi_coltura.bind(nome))
 		_btn_colture[nome] = bc
 		riga.add_child(bc)
-	for b in [_btn_meno, _btn_piu, _btn_collega, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla]:
+	for b in [_btn_meno, _btn_piu, _btn_collega, _btn_gira, _btn_sposta, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla]:
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		riga.add_child(b)
 
@@ -1251,7 +1261,7 @@ func _scegli_dal_menu(b: Button) -> void:
 
 
 func _aggiorna_pannello() -> void:
-	for x in [_btn_meno, _btn_piu, _btn_collega, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla, _btn_chiudi] + _btn_colture.values():
+	for x in [_btn_meno, _btn_piu, _btn_collega, _btn_gira, _btn_sposta, _btn_migliora, _btn_demolisci, _btn_ruota, _btn_ok, _btn_annulla, _btn_chiudi] + _btn_colture.values():
 		x.visible = false
 	_btn_chiudi.visible = true
 	if _strada != "":
@@ -1267,6 +1277,8 @@ func _aggiorna_pannello() -> void:
 			_btn_demolisci.visible = true
 		else:
 			_dettagli.text = _strada_testo
+			_btn_ok.text = "Sposta qui" if _strada_titolo == "Sposta" else "Costruisci"
+			_btn_ruota.visible = _strada_titolo == "Sposta"
 			_btn_ok.visible = true
 			_btn_ok.disabled = not _strada_valida
 			_btn_ok.tooltip_text = "" if _strada_valida else "Percorso non valido: controlla il messaggio sotto"
@@ -1279,6 +1291,7 @@ func _aggiorna_pannello() -> void:
 		_dettagli.text = GameState.testo_effetto(_piazzamento) if _piazzamento_valido else "Posizione non valida: tocca un'altra zona"
 		if _piazzamento_valido and _stima_piazzamento != "":
 			_dettagli.text = _stima_piazzamento
+		_btn_ok.text = "Costruisci"
 		_btn_ok.visible = true
 		var puo := _piazzamento_valido and GameState.puo_permettersi(_piazzamento)
 		_btn_ok.disabled = not puo
@@ -1294,6 +1307,8 @@ func _aggiorna_pannello() -> void:
 	var d := GameState.def_di(b)
 	_pannello.visible = true
 	_btn_demolisci.visible = not d.get("fisso", false)
+	_btn_gira.visible = not d.get("fisso", false)
+	_btn_sposta.visible = not d.get("fisso", false)
 	if b.progresso < 1.0:
 		_titolo.text = "%s  ·  in costruzione %d%%" % [d.nome, int(b.progresso * 100)]
 		_dettagli.text = GameState.testo_effetto(b.tipo)

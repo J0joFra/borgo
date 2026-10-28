@@ -1018,7 +1018,13 @@ func _ready() -> void:
 	var muro_case := tz_r.trova_posto("casa", piazza_b.cella + Vector2i(8, -6))
 	if muro_case.x >= 0:
 		var casa_r := GameState.aggiungi_gratis("casa", muro_case, 1.0)
-		var attorno := GameState.strada_verso([muro_case + GameState.taglia_di(casa_r) + Vector2i(1, 1)])
+		var attorno: Array[Vector2i] = []
+		var tc_r := GameState.taglia_di(casa_r)
+		for arrivo in [muro_case + tc_r + Vector2i(1, 1), muro_case + Vector2i(-1, -1), muro_case + Vector2i(tc_r.x + 1, -1),
+				muro_case + Vector2i(-1, tc_r.y + 1), muro_case + tc_r + Vector2i(2, 0), muro_case + Vector2i(-2, 0)]:
+			attorno = GameState.strada_verso([arrivo])
+			if attorno.size() >= 2:
+				break
 		var dentro := false
 		for k in TerrenoFeudo.lati_di(attorno):
 			var cc: Array[Vector2i] = TerrenoFeudo.celle_del_lato(k)
@@ -1294,6 +1300,42 @@ func _ready() -> void:
 	GameState.avvia()
 	_verifica(not GameState.banditi.is_empty() and GameState.banditi.entrata == entrata_b, "i banditi in arrivo si salvano")
 	GameState.cancella_salvataggio()
+
+	# Girare e spostare gli edifici già fatti; demolendo si riprende metà del speso.
+	GameState.ricomincia()
+	GameState.avvia()
+	GameState.scegli_capo(0)
+	var tz_s := GameState.terreno
+	var centro_s := TerrenoFeudo.centro_feudo() + Vector2i(6, 6)
+	var mag_s := GameState.aggiungi_gratis("taglialegna", tz_s.trova_posto("taglialegna", centro_s), 1.0)
+	var da_s: Vector2i = mag_s.cella
+	_verifica(not GameState.riposiziona(mag_s.id, da_s + Vector2i(3, 0), 0) and mag_s.cella == da_s, "non si sposta più di 2 caselle")
+	var spostato := false
+	for passo in [Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2), Vector2i(1, 1), Vector2i(-1, -1)]:
+		if GameState.riposiziona(mag_s.id, da_s + passo, 0):
+			spostato = mag_s.cella == da_s + passo and tz_s.edificio_a(mag_s.cella) == mag_s.id
+			break
+	_verifica(spostato and tz_s.edificio_a(da_s) != mag_s.id or tz_s.edificio_a(da_s) == mag_s.id and mag_s.cella != da_s,
+		"spostato di qualche casella: occupa il posto nuovo")
+	var casa_s := GameState.aggiungi_gratis("casa", tz_s.trova_posto("casa", mag_s.cella + Vector2i(0, 4)), 1.0)
+	var vicino_s: Vector2i = casa_s.cella
+	_verifica(not GameState.riposiziona(mag_s.id, vicino_s, 0) or GameState.taglia_di(mag_s) == Vector2i.ZERO, "non si sposta sopra un altro edificio")
+	var giri := 0
+	for i in 4:
+		if GameState.gira(mag_s.id):
+			giri += 1
+	_verifica(giri > 0 and tz_s.edificio_a(mag_s.cella) == mag_s.id, "un edificio fatto si può girare (%d giri)" % giri)
+	var tl_s := GameState.trova(mag_s.id)
+	tl_s.livello = 2
+	var spesi := GameState.materiali_spesi(tl_s)
+	var base_s: Dictionary = GameState.edifici.taglialegna.costo
+	var migl_s: Dictionary = GameState.edifici.taglialegna.miglioramenti[0].costo
+	_verifica(int(spesi.get("legna", 0)) == int(base_s.get("legna", 0)) + int(migl_s.get("legna", 0)), "si conta anche quanto speso per migliorare")
+	GameState.risorse.legna = 0.0
+	GameState.risorse.pietra = 0.0
+	GameState.demolisci(mag_s.id)
+	_verifica(int(GameState.risorse.legna) == int(floorf(float(spesi.get("legna", 0)) * 0.5)) and int(GameState.risorse.pietra) == int(floorf(float(spesi.get("pietra", 0)) * 0.5)),
+		"demolendo si riprende metà dei materiali (legna %d)" % GameState.risorse.legna)
 
 	print("TEST: %s (%d errori)" % ["OK" if _errori == 0 else "FALLITI", _errori])
 	get_tree().quit(1 if _errori > 0 else 0)

@@ -6,6 +6,7 @@ signal changed
 signal season_changed(stagione: int, anno: int)
 signal building_added(b: Dictionary)
 signal building_removed(id: int)
+signal building_moved(b: Dictionary)  # spostato o girato: il modello 3D va rifatto
 signal building_finished(id: int)
 signal message(testo: String)
 signal game_ended(vittoria: bool, motivo: String)
@@ -132,6 +133,7 @@ func _ready() -> void:
 	terreno_cambiato.connect(func(_c): _rete_valida = false; _cinta = -1)
 	building_added.connect(func(_b): _cinta = -1)
 	building_removed.connect(func(_id): _cinta = -1)
+	building_moved.connect(func(_b): _rete_valida = false; _cinta = -1)
 
 
 # --- Partita -----------------------------------------------------------------
@@ -537,13 +539,75 @@ func piazza(tipo: String, cella: Vector2i, bonus: float, rot := 0) -> Dictionary
 	return b
 
 
+## Fin dove si può spostare un edificio già costruito, in celle per lato.
+const SPOSTAMENTO_MASSIMO := 2
+
+
+## Sposta e/o gira un edificio già fatto (al massimo SPOSTAMENTO_MASSIMO celle per lato). Vero se si può.
+func riposiziona(id: int, cella: Vector2i, rot: int) -> bool:
+	var b := trova(id)
+	if b.is_empty() or terreno == null or edifici[b.tipo].get("fisso", false):
+		return false
+	if absi(cella.x - b.cella.x) > SPOSTAMENTO_MASSIMO or absi(cella.y - b.cella.y) > SPOSTAMENTO_MASSIMO:
+		return false
+	terreno.libera(b)
+	if not terreno.posizione_valida(b.tipo, cella, rot):
+		terreno.occupa(b)
+		return false
+	b.cella = cella
+	if posmod(rot, 4) == 0:
+		b.erase("rot")
+	else:
+		b.rot = posmod(rot, 4)
+	terreno.occupa(b)
+	building_moved.emit(b)
+	changed.emit()
+	return true
+
+
+## Gira di 90° un edificio già fatto, tenendolo dov'è (attorno al suo centro, o dallo stesso angolo).
+func gira(id: int) -> bool:
+	var b := trova(id)
+	if b.is_empty():
+		return false
+	var rot := (int(b.get("rot", 0)) + 1) % 4
+	var prima := taglia_di(b)
+	var dopo := taglia_tipo(b.tipo, rot)
+	for cella in [b.cella + prima / 2 - dopo / 2, b.cella]:
+		if riposiziona(id, cella, rot):
+			return true
+	return false
+
+
+## I materiali spesi per un edificio: la costruzione più i miglioramenti fatti finora.
+func materiali_spesi(b: Dictionary) -> Dictionary:
+	var spesi: Dictionary = edifici[b.tipo].get("costo", {}).duplicate()
+	var miglioramenti: Array = edifici[b.tipo].get("miglioramenti", [])
+	for i in mini(int(b.get("livello", 1)) - 1, miglioramenti.size()):
+		var c: Dictionary = miglioramenti[i].get("costo", {})
+		for r in c:
+			spesi[r] = float(spesi.get(r, 0)) + float(c[r])
+	return spesi
+
+
+## Demolendo si riprende la metà (bilanciamento.rimborso_demolizione) dei materiali spesi.
+func rimborso_demolizione(b: Dictionary) -> Dictionary:
+	var rimborso := {}
+	var spesi := materiali_spesi(b)
+	for r in spesi:
+		var q := floorf(float(spesi[r]) * float(bil.rimborso_demolizione))
+		if q > 0.0:
+			rimborso[r] = q
+	return rimborso
+
+
 func demolisci(id: int) -> void:
 	var b := trova(id)
 	if b.is_empty() or edifici[b.tipo].get("fisso", false):
 		return
-	var costo: Dictionary = edifici[b.tipo].get("costo", {})
-	for r in costo:
-		risorse[r] = minf(capacita(), risorse[r] + floorf(costo[r] * bil.rimborso_demolizione))
+	var rimborso := rimborso_demolizione(b)
+	for r in rimborso:
+		risorse[r] = minf(capacita(), risorse[r] + rimborso[r])
 	if terreno:
 		terreno.libera(b)
 	buildings.erase(b)

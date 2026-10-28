@@ -15,6 +15,7 @@ const ROSSO := Color("e0503c")
 
 var camera: Camera3D
 var vista: VistaTerreno
+var nascosto := -1             # l'edificio che si sta spostando: niente segni
 var _icone: Dictionary = {}    # id edificio -> IconaRisorsa dentro l'anello
 var _tocchi: Array = []        # [centro, raggio, "migliora"|"collega", id] dell'ultimo disegno
 
@@ -44,6 +45,8 @@ func _draw() -> void:
 		return
 	var schermo := get_viewport_rect().size
 	for b in GameState.buildings:
+		if b.id == nascosto:
+			continue
 		var d := GameState.def_di(b)
 		var taglia := GameState.taglia_di(b)
 		var sopra := vista.centro_area(b.cella, taglia) + Vector3(0, VistaTerreno.CELLA * (1.2 + 0.25 * maxi(taglia.x, taglia.y)), 0)

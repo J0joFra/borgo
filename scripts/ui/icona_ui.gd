@@ -103,6 +103,14 @@ func _draw() -> void:
 			_pieno([Vector2(0.6, 3.0), Vector2(3.4, 5), Vector2(0.6, 7.0)])
 			_pieno([Vector2(3.6, 3.0), Vector2(6.4, 5), Vector2(3.6, 7.0)])
 			_pieno([Vector2(6.6, 3.0), Vector2(9.4, 5), Vector2(6.6, 7.0)])
+		"sposta":
+			# quattro frecce: si sposta in ogni direzione
+			_linea(Vector2(5, 1.6), Vector2(5, 8.4))
+			_linea(Vector2(1.6, 5), Vector2(8.4, 5))
+			_pieno([Vector2(5, 0.6), Vector2(6.4, 2.2), Vector2(3.6, 2.2)])
+			_pieno([Vector2(5, 9.4), Vector2(6.4, 7.8), Vector2(3.6, 7.8)])
+			_pieno([Vector2(0.6, 5), Vector2(2.2, 3.6), Vector2(2.2, 6.4)])
+			_pieno([Vector2(9.4, 5), Vector2(7.8, 3.6), Vector2(7.8, 6.4)])
 		"chiudi":
 			_linea(Vector2(2.6, 2.6), Vector2(7.4, 7.4))
 			_linea(Vector2(7.4, 2.6), Vector2(2.6, 7.4))
