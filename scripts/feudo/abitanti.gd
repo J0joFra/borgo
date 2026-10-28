@@ -235,7 +235,7 @@ func _cammino_terra(da: Vector3, a: Vector3) -> Array:
 		return [a]
 	var tappe := []
 	for i in range(1, celle_c.size()):
-		tappe.append(vista.centro_cella(celle_c[i]))
+		tappe.append(vista.centro_area(celle_c[i], Vector2i.ONE))
 	# se il cammino non arriva esattamente alla meta, aggiungi il punto finale esatto
 	if not tappe.is_empty() or celle_c.size() == 1:
 		tappe.append(a)

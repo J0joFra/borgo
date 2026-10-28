@@ -375,6 +375,7 @@ func _crea_lati() -> void:
 	# Destra: ancorata in alto a destra, margine uniforme
 	var mc_d := MarginContainer.new()
 	mc_d.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	mc_d.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	mc_d.add_theme_constant_override("margin_right", MARGINE)
 	mc_d.add_theme_constant_override("margin_top", MARGINE + 20)
 	mc_d.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -878,7 +879,7 @@ func _aggiorna_mercato() -> void:
 	_riserva.text = str(GameState.riserva_oro)
 	var ha := GameState.ha_mercato()
 	_btn_auto.disabled = not ha
-	_btn_auto.text = "Automatico" if ha else "Automatico 🔒"
+	_btn_auto.text = "Automatico" if ha else "Automatico (serve un mercato)"
 	_btn_auto.tooltip_text = "Compra e vendi da solo secondo le soglie che imposti" if ha \
 		else "Serve un edificio mercato per attivare il commercio automatico"
 	if not ha and _btn_auto.button_pressed:
@@ -926,6 +927,7 @@ func _crea_avvisi() -> void:
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mc.add_child(col)
 	_avviso = Label.new()
+	_avviso.custom_minimum_size.x = 340  # con l'a capo automatico serve una larghezza
 	_avviso.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_avviso.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_avviso.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -1266,6 +1268,7 @@ func _crea_tutorial() -> void:
 	# Ancorato in alto a destra, con margine destro (niente più offset_right = -54)
 	var mc := MarginContainer.new()
 	mc.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	mc.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	mc.add_theme_constant_override("margin_right", MARGINE + 50)  # lascia spazio ai bottoni di destra
 	mc.add_theme_constant_override("margin_top", MARGINE + 26)
 	mc.mouse_filter = Control.MOUSE_FILTER_IGNORE
