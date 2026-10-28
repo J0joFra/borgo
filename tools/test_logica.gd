@@ -332,7 +332,7 @@ func _ready() -> void:
 	var t_tenda: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "tenda")[0]
 	t_tenda.livello = 3
 	GameState.terreno.taglia_bosco(TerrenoFeudo.centro_feudo(), Vector2i.ONE, 15, 5)
-	var tagli := GameState.terreno.tagliati.size()
+	var tagli: int = GameState.terreno.indici_tagliati.size()
 	GameState.salva()
 	GameState.in_corso = false
 	GameState.avvia()
