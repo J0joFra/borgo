@@ -286,7 +286,7 @@ func _ready() -> void:
 		GameState._disbosca()
 	var resta := tz.conta_attorno(bosco_vicino, Vector2i(2, 2), 5, TerrenoFeudo.Tipo.BOSCO)
 	_verifica(resta == 0 and tagliate_tot[0] == max_bosco, "dopo 12 stagioni il bosco è finito (%d -> %d)" % [max_bosco, resta])
-	_verifica(tz.tagliati.size() == max_bosco, "i tagli sono ricordati per il salvataggio")
+	_verifica(tz.indici_tagliati.size() == max_bosco, "i tagli sono ricordati per il salvataggio")
 	GameState.terreno = null
 
 	# Le tende non si migliorano: durano una stagione e poi vanno sostituite da case.
@@ -338,7 +338,7 @@ func _ready() -> void:
 	GameState.avvia()
 	var ricaricata: Dictionary = GameState.buildings.filter(func(b): return b.tipo == "tenda")[0]
 	_verifica(int(ricaricata.livello) == 3, "il livello degli edifici si salva")
-	_verifica(GameState.terreno.tagliati.size() == tagli and tagli == 5, "i tagli del bosco si salvano")
+	_verifica(GameState.terreno.indici_tagliati.size() == tagli and tagli == 5, "i tagli del bosco si salvano")
 	GameState.cancella_salvataggio()
 
 	# Dimora del signore: la tenda della guida diventa una torre attaccata al falò.
@@ -388,7 +388,7 @@ func _ready() -> void:
 	_verifica(tf.tipo_a(piantate[0]) != TerrenoFeudo.Tipo.BOSCO, "dopo 3 stagioni non è ancora bosco")
 	tf.cresci_piantine()
 	_verifica(piantate.all(func(c): return tf.tipo_a(c) == TerrenoFeudo.Tipo.BOSCO), "dopo un anno le piantine sono bosco")
-	_verifica(tf.tagliati.size() == 2, "le radure ripiantate non sono più radure")
+	_verifica(tf.indici_tagliati.size() == 2, "le radure ripiantate non sono più radure")
 
 	# Colture: semi, stagioni, zona selvatica.
 	GameState.nuova_partita(9)
