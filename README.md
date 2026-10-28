@@ -186,8 +186,8 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   Taglialegna, cava, cacciatore e raccoglitore rendono di più con tanto bosco o tante rocce attorno; il pescatore rende di
   più sul lago che sul fiume, ma d'inverno il lago gela e la pesca crolla; il campo rende in base alla fertilità.
   Mentre scegli dove costruire, le celle che contano si colorano e il pannello mostra la resa stimata.
-- **Raccolto di stagione**: taglialegna, cava, miniera, raccoglitore, cacciatore e pescatore mettono da parte durante
-  la stagione (il pannello dell'edificio dice quanto hanno raccolto finora) e portano tutto in magazzino **al cambio di
+- **Raccolto di stagione**: taglialegna, cava, miniera, raccoglitore, cacciatore e pescatore mettono da parte
+  (il pannello dell'edificio dice quanto hanno raccolto finora) e portano tutto in magazzino **a metà e a fine
   stagione**; quello che non ci sta va perso. Mulino, forno, fabbro e armeria invece lavorano giorno per giorno.
   Si parte con 80 cibo, abbastanza per arrivare al primo raccolto.
 - **Disboscamento**: il taglialegna abbatte il bosco attorno; un bosco grande rende tanto ma sparisce in 3 anni.

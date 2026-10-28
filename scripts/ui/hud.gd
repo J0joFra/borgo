@@ -986,7 +986,7 @@ func _crea_fine() -> void:
 
 func _aggiorna() -> void:
 	var tps: float = GameState.bil.tick_per_stagione
-	var rimasti := maxf(1.0, tps - GameState.tick_in_stagione)
+	var rimasti := maxf(1.0, GameState.prossima_consegna() - GameState.tick_in_stagione)
 	var arrivo := GameState.previsione_raccolti()
 	for r in GameState.RISORSE_VISIBILI:
 		var mostra := _da_mostrare(r)
@@ -995,16 +995,16 @@ func _aggiorna() -> void:
 		var valore: float = GameState.risorse.get(r, 0.0)
 		var delta: float = GameState.ultimo_delta.get(r, 0.0)
 		_numeri[r].text = str(int(valore))
-		# rosso se finisce prima che arrivi il raccolto, o se anche col raccolto non basta per la stagione dopo
+		# rosso se finisce prima che arrivi il raccolto, o se anche col raccolto non basta fino a quello dopo
 		var a_fine: float = valore + delta * rimasti + float(arrivo.get(r, 0.0))
-		var allarme := delta < 0.0 and (valore + delta * rimasti < 0.0 or a_fine + delta * tps < 0.0)
+		var allarme := delta < 0.0 and (valore + delta * rimasti < 0.0 or a_fine + delta * tps / 2.0 < 0.0)
 		if r == "cibo" and GameState.tick_fame > 0:
 			allarme = true
 		_numeri[r].add_theme_color_override("font_color", COLORE_ERRORE if allarme else TESTO)
 		var nome: String = NOMI_RISORSE.get(r, r)
 		_numeri[r].tooltip_text = "%s\nHai: %d\nVariazione: %+.1f a stagione" % [nome, int(valore), delta * tps]
 		if float(arrivo.get(r, 0.0)) >= 1.0:
-			_numeri[r].tooltip_text += "\nIn arrivo a fine stagione: circa %d" % int(arrivo[r])
+			_numeri[r].tooltip_text += "\nIn arrivo %s: circa %d" % [GameState.quando_consegna(), int(arrivo[r])]
 	_numeri.abitanti.text = "%d/%d" % [GameState.abitanti, GameState.alloggi()]
 	_numeri.abitanti.add_theme_color_override("font_color", COLORE_ERRORE if GameState.senza_casa() > 0 else TESTO)
 	_numeri.abitanti.tooltip_text = "Abitanti: %d\nPosti letto: %d\nSenza casa: %d" % [GameState.abitanti, GameState.alloggi(), GameState.senza_casa()]
@@ -1198,7 +1198,7 @@ func _aggiorna_pannello() -> void:
 		for r in pronto:
 			if float(pronto[r]) >= 1.0:
 				parti.append("%d %s" % [int(pronto[r]), NOMI_RISORSE.get(r, r).to_lower()])
-		testo += "\nRaccolto finora: %s · arriva in magazzino a fine stagione" % (", ".join(parti) if not parti.is_empty() else "niente")
+		testo += "\nRaccolto finora: %s · arriva in magazzino %s" % [", ".join(parti) if not parti.is_empty() else "niente", GameState.quando_consegna()]
 	var prossimo := GameState.prossimo_miglioramento(b)
 	if not prossimo.is_empty():
 		_btn_migliora.visible = true

@@ -50,6 +50,20 @@ func _ready() -> void:
 	GameState._tick()
 	GameState._consegna_raccolti()
 	_verifica(absf(GameState.risorse.cibo - 40.0) < 0.1 and GameState.in_arrivo().is_empty(), "raccoglitore: +40 cibo a fine stagione (%.1f)" % GameState.risorse.cibo)
+	GameState.nuova_partita(42)
+	GameState.abitanti = 10
+	for i in 3:
+		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 6), 1.0)
+	var r_meta := GameState.aggiungi_gratis("raccoglitore", Vector2i(0, 0), 1.0)
+	r_meta.lavoratori = 2
+	GameState.risorse.cibo = 50.0  # c'è posto in magazzino
+	for i in int(GameState.bil.tick_per_stagione) / 2 - 1:
+		GameState._tick()
+	var cibo_meta: float = GameState.risorse.cibo
+	var pronto_meta: float = GameState.in_arrivo().get("cibo", 0.0)
+	GameState._tick()
+	_verifica(pronto_meta > 15.0 and GameState.in_arrivo().is_empty() and GameState.risorse.cibo > cibo_meta + pronto_meta - 2.0,
+		"a metà stagione arriva la prima metà del raccolto (%.1f)" % pronto_meta)
 
 	# Catena grano -> farina -> pane con ingredienti limitati.
 	GameState.nuova_partita(42)
@@ -128,7 +142,8 @@ func _ready() -> void:
 	_verifica(GameState.carica(), "carica() trova il salvataggio")
 	_verifica(GameState.seme_mappa == 7 and GameState.anno == 3 and GameState.buildings.size() == 2, "stato ricaricato")
 	_verifica(GameState.buildings[1].cella == Vector2i(10, 10) and absf(GameState.buildings[1].progresso - 0.4) < 0.001, "edificio ricaricato")
-	_verifica(int(GameState.risorse.legna) == 22, "costo del taglialegna salvato (legna %d)" % GameState.risorse.legna)
+	var legna_attesa := int(GameState.bil.risorse_iniziali.legna) - int(GameState.edifici.taglialegna.costo.get("legna", 0))
+	_verifica(int(GameState.risorse.legna) == legna_attesa, "costo del taglialegna salvato (legna %d, attesa %d)" % [GameState.risorse.legna, legna_attesa])
 	GameState.cancella_salvataggio()
 
 	# Terreno del feudo: piazzamento e sovrapposizioni.

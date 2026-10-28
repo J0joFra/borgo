@@ -40,12 +40,12 @@ static func attivi() -> Array:
 	if not _esiste(["raccoglitore", "pescatore", "cacciatore", "forno", "campo"]):
 		lista.append(_c("cibo", 100, "Nessuno procura cibo. Un raccoglitore vicino al falò ci darebbe 40 cibo a stagione."))
 	var d_cibo: float = gs.ultimo_delta.get("cibo", 0.0)
-	var rimasti := maxf(1.0, tps - gs.tick_in_stagione)
+	var rimasti := maxf(1.0, gs.prossima_consegna() - gs.tick_in_stagione)
 	var a_fine: float = gs.risorse.cibo + d_cibo * rimasti + float(gs.previsione_raccolti().get("cibo", 0.0))
 	if d_cibo < 0.0 and gs.risorse.cibo + d_cibo * rimasti < 0.0:
-		lista.append(_c("cibo", 95, "Il cibo finisce prima della fine della stagione, quando arriva il raccolto. Compralo al mercato o costruisci un forno."))
-	elif d_cibo < 0.0 and a_fine + d_cibo * tps < 0.0:
-		lista.append(_c("cibo", 90, "Anche con il raccolto di fine stagione il cibo non basterà per la prossima. Serve un altro edificio del cibo."))
+		lista.append(_c("cibo", 95, "Il cibo finisce prima che arrivi il raccolto %s. Compralo al mercato o costruisci un forno." % gs.quando_consegna()))
+	elif d_cibo < 0.0 and a_fine + d_cibo * tps / 2.0 < 0.0:
+		lista.append(_c("cibo", 90, "Anche con il prossimo raccolto il cibo non basterà fino a quello dopo. Serve un altro edificio del cibo."))
 
 	# Legna e inverno
 	if not _esiste(["taglialegna"]):

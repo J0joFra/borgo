@@ -872,6 +872,8 @@ func _tick() -> void:
 		ultimo_delta[r] = risorse[r] - prima[r]
 
 	tick_in_stagione += 1
+	if tick_in_stagione == int(tps) / 2:
+		_consegna_raccolti("di metà stagione")
 	if tick_in_stagione == _tick_evento:
 		_pesca_evento()
 	var mese := int(bil.tick_per_stagione) / int(bil.esercito.mesi_per_stagione)
@@ -2428,7 +2430,7 @@ func _raccogli_semi(b: Dictionary, molt: float, cap: float, tps: float) -> void:
 
 
 ## Gli edifici di raccolta (taglialegna, cava, miniera, raccoglitore, cacciatore, pescatore)
-## mettono da parte durante la stagione e consegnano tutto a fine stagione; gli altri subito.
+## mettono da parte e consegnano a metà e a fine stagione; gli altri subito.
 func _produci(b: Dictionary, r: String, quanto: float, cap: float, stagionale: bool) -> void:
 	if stagionale:
 		var pronto: Dictionary = b.get("pronto", {})
@@ -2448,17 +2450,30 @@ func in_arrivo() -> Dictionary:
 	return totale
 
 
-## Quanto porteranno a fine stagione gli edifici di raccolta, se continuano così.
+## Il raccolto si consegna a metà e a fine stagione: il tick della prossima consegna.
+func prossima_consegna() -> int:
+	var meta := int(bil.tick_per_stagione) / 2
+	return meta if tick_in_stagione < meta else int(bil.tick_per_stagione)
+
+
+## "a metà stagione" o "a fine stagione", secondo la prossima consegna.
+func quando_consegna() -> String:
+	return "a fine stagione" if prossima_consegna() == int(bil.tick_per_stagione) else "a metà stagione"
+
+
+## Quanto porteranno alla prossima consegna gli edifici di raccolta, se continuano così.
 func previsione_raccolti() -> Dictionary:
 	var fatti := in_arrivo()
-	var k := float(bil.tick_per_stagione) / maxf(1.0, float(tick_in_stagione))
+	var meta := int(bil.tick_per_stagione) / 2
+	var inizio := 0 if tick_in_stagione < meta else meta
+	var k := float(prossima_consegna() - inizio) / maxf(1.0, float(tick_in_stagione - inizio))
 	for r in fatti:
 		fatti[r] = float(fatti[r]) * k
 	return fatti
 
 
-## A fine stagione il raccolto degli edifici di raccolta entra in magazzino (fin dove c'è posto).
-func _consegna_raccolti() -> void:
+## A metà e a fine stagione il raccolto degli edifici di raccolta entra in magazzino (fin dove c'è posto).
+func _consegna_raccolti(quando := "della stagione") -> void:
 	var cap := capacita()
 	var entrati: Array[String] = []
 	var persi: Array[String] = []
@@ -2474,7 +2489,7 @@ func _consegna_raccolti() -> void:
 	for b in buildings:
 		b.erase("pronto")
 	if not entrati.is_empty():
-		message.emit("Raccolto della stagione: " + ", ".join(entrati))
+		message.emit("Raccolto %s: %s" % [quando, ", ".join(entrati)])
 	if not persi.is_empty():
 		message.emit("Il magazzino è pieno: persi %s. Serve un magazzino in più." % ", ".join(persi))
 
@@ -2511,7 +2526,7 @@ func _disbosca() -> void:
 
 
 func _fine_stagione() -> void:
-	_consegna_raccolti()
+	_consegna_raccolti("di fine stagione")
 	if terreno:
 		var libere := terreno.togli_ceppi()
 		if not libere.is_empty():
