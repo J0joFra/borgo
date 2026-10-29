@@ -26,7 +26,7 @@ const TUNICHE := {"fanti": Color("a8322a"), "arcieri": Color("3f6b3a"), "vassall
 ## Le nostre unità sono sempre nei toni del rosso, quelle nemiche nei colori del loro esercito.
 const TUNICHE_NOSTRE := {"fanti": Color("a8322a"), "spadaccini": Color("962a2a"), "arcieri": Color("8a3a2a"), "balestrieri": Color("7a2a22"),
 	"cavalieri": Color("c0402e"), "vassalli": Color("d0802c")}
-const FIGURE_MASSIME := 5
+const FIGURE_MASSIME := 4
 const COLORI_LUCE := [Color("fff6e8"), Color("fff0d0"), Color("ffd6a8"), Color("dfe8ff")]  # come nel feudo, per stagione
 
 var camera: CameraIso
@@ -426,13 +426,16 @@ func _crea_nuvole() -> void:
 	rng.seed = 5
 	var largo := CELLA * LogicaBattaglia.LARGHEZZA
 	for i in 4:
-		var nuvola := _modello("cloud_big" if i % 2 == 0 else "cloud_small", Vector3(rng.randf_range(0, largo), rng.randf_range(9.0, 12.0), rng.randf_range(-2.0, CELLA * LogicaBattaglia.ALTEZZA)), rng.randf_range(4.0, 6.5), rng.randf() * TAU, 0.0, self)
+		# attorno al campo, dietro: non coprono mai i soldati
+		var dove := Vector3(rng.randf_range(0, largo), rng.randf_range(4.0, 7.0), -9.0 - rng.randf() * 4.0) if i % 2 == 0 \
+			else Vector3(-9.0 - rng.randf() * 4.0, rng.randf_range(4.0, 7.0), rng.randf_range(0, CELLA * LogicaBattaglia.ALTEZZA))
+		var nuvola := _modello("cloud_big" if i % 2 == 0 else "cloud_small", dove, rng.randf_range(4.0, 6.5), rng.randf() * TAU, 0.0, self)
 		if nuvola == null:
 			return
 		nuvola.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var tw := create_tween().set_loops()
 		var x := nuvola.position.x
-		tw.tween_property(nuvola, "position:x", x + 14.0, 40.0 + i * 8.0).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(nuvola, "position:x", x + 6.0, 40.0 + i * 8.0).set_trans(Tween.TRANS_SINE)
 		tw.tween_property(nuvola, "position:x", x, 40.0 + i * 8.0).set_trans(Tween.TRANS_SINE)
 
 
@@ -453,6 +456,43 @@ func _crea_bandiera() -> void:
 
 
 # --- Unità --------------------------------------------------------------------------
+
+## Il cavallo sotto i cavalieri (con i soldati 3D sopra).
+func _cavallo() -> ArrayMesh:
+	if _mesh_figure.has("cavallo"):
+		return _mesh_figure.cavallo
+	var k := LowPoly.Costruttore.new()
+	k.forma(LowPoly.cubo(Vector3(0.38, 0.42, 1.05)), LowPoly.t(Vector3(0, 0.55, 0)), Color("6b4a2e"))
+	k.forma(LowPoly.cubo(Vector3(0.22, 0.45, 0.25)), Transform3D(Basis(Vector3.RIGHT, -0.5), Vector3(0, 0.88, 0.55)), Color("6b4a2e"))
+	k.forma(LowPoly.cubo(Vector3(0.2, 0.2, 0.4)), LowPoly.t(Vector3(0, 1.08, 0.72)), Color("5a3a22"))
+	k.forma(LowPoly.cubo(Vector3(0.06, 0.3, 0.3)), LowPoly.t(Vector3(0, 0.95, 0.42)), Color("2e2018"))
+	k.forma(LowPoly.cubo(Vector3(0.4, 0.06, 0.5)), LowPoly.t(Vector3(0, 0.78, -0.02)), Color("8a2a20"))
+	for x in [-0.13, 0.13]:
+		for z in [-0.38, 0.38]:
+			k.forma(LowPoly.cubo(Vector3(0.1, 0.4, 0.1)), LowPoly.t(Vector3(x, 0.2, z)), Color("4a3020"))
+	k.forma(LowPoly.cubo(Vector3(0.06, 0.35, 0.06)), Transform3D(Basis(Vector3.RIGHT, 0.6), Vector3(0, 0.55, -0.6)), Color("2e2018"))
+	_mesh_figure.cavallo = k.mesh()
+	return _mesh_figure.cavallo
+
+
+## Una figura dell'unità: il soldato 3D (KayKit) col mantello della sua parte, o la figura in codice.
+func _figura(u: Dictionary) -> Node3D:
+	var mantello: Color = COLORI_LATO.noi if u.lato == "noi" else COLORI_NEMICI.get(GameState.battaglia.tipo_nemico, COLORI_LATO.loro)
+	var s := Soldato.crea(u.tipo, mantello, _cavallo() if u.tipo == "cavalieri" else null)
+	if s:
+		return s
+	var m := MeshInstance3D.new()
+	m.mesh = _mesh_di(u.tipo, u.lato)
+	return m
+
+
+## I soldati 3D di un'unità (per le animazioni).
+func _soldati(id: int) -> Array:
+	var nodo: Node3D = _nodi.get(id)
+	if nodo == null or not nodo.has_node("Figure"):
+		return []
+	return nodo.get_node("Figure").get_children().filter(func(f): return f is Soldato)
+
 
 func _mesh_di(tipo: String, lato := "loro") -> ArrayMesh:
 	var chiave := tipo + "|" + lato
@@ -625,13 +665,17 @@ func _aggiorna_unita(u: Dictionary) -> void:
 	var figure: Node3D = nodo.get_node("Figure")
 	var quante := mini(FIGURE_MASSIME, int(u.uomini))
 	while figure.get_child_count() > quante:
-		var f := figure.get_child(figure.get_child_count() - 1)
+		var f: Node3D = figure.get_child(figure.get_child_count() - 1)
 		figure.remove_child(f)
-		f.queue_free()
-	var posti := [Vector3(0, 0, 0), Vector3(0.6, 0, 0.45), Vector3(-0.6, 0, 0.45), Vector3(0.6, 0, -0.45), Vector3(-0.6, 0, -0.45)]
+		if f is Soldato:
+			# chi cade resta un momento a terra
+			nodo.add_child(f)
+			(f as Soldato).muori()
+		else:
+			f.queue_free()
+	var posti := [Vector3(0, 0, 0.1), Vector3(0.62, 0, 0.5), Vector3(-0.62, 0, 0.5), Vector3(0.1, 0, -0.6), Vector3(-0.6, 0, -0.45)]
 	while figure.get_child_count() < quante:
-		var m := MeshInstance3D.new()
-		m.mesh = _mesh_di(u.tipo, u.lato)
+		var m := _figura(u)
 		m.position = posti[figure.get_child_count()]
 		figure.add_child(m)
 	var etichetta: Label3D = nodo.get_node("Numero")
@@ -647,7 +691,9 @@ func _aggiorna_unita(u: Dictionary) -> void:
 		nodo.get_node("Attrezzi/Legna").visible = bool(u.get("legna", false))
 		nodo.get_node("Attrezzi/Scala").visible = bool(u.get("scale", false))
 	if int(u.uomini) <= 0:
+		# lo stendardo cade dopo gli ultimi soldati
 		var tw := create_tween()
+		tw.tween_interval(1.7)
 		tw.tween_property(nodo, "scale", Vector3(1.35, 0.05, 1.35), 0.4)
 		tw.tween_callback(nodo.queue_free)
 		_nodi.erase(int(u.id))
@@ -765,6 +811,8 @@ func _anima_cammino(id: int, percorso: Array) -> void:
 	var nodo: Node3D = _nodi.get(id)
 	if nodo == null:
 		return
+	for f in _soldati(id):
+		f.cammina()
 	var tw := create_tween()
 	var prima := nodo.position
 	for c in percorso:
@@ -772,8 +820,10 @@ func _anima_cammino(id: int, percorso: Array) -> void:
 		var verso := p - prima
 		prima = p
 		tw.tween_callback(_gira.bind(nodo, atan2(verso.x, verso.z)))
-		tw.tween_property(nodo, "position", p, 0.22)
+		tw.tween_property(nodo, "position", p, 0.32)
 	await tw.finished
+	for f in _soldati(id):
+		f.riposo()
 
 
 func _gira(nodo: Node3D, angolo: float) -> void:
@@ -799,9 +849,12 @@ func _anima_attacco(e: Dictionary) -> void:
 		var verso := d.position - a.position
 		a.rotation.y = atan2(verso.x, verso.z)
 		var partenza := a.position
+		for f in _soldati(int(e.da)):
+			f.attacca()
 		var tw := create_tween()
 		if e.da_lontano:
 			Audio.effetto("freccia")
+			_frecce(a.position, d.position)
 			tw.tween_property(a, "position", partenza + verso.normalized() * 0.3, 0.12)
 			tw.tween_property(a, "position", partenza, 0.2)
 		else:
@@ -809,6 +862,8 @@ func _anima_attacco(e: Dictionary) -> void:
 			tw.tween_callback(func(): Audio.effetto("scontro"))
 			tw.tween_property(a, "position", partenza, 0.25)
 		await tw.finished
+		for f in _soldati(int(e.a)):
+			f.colpito()
 		if int(e.morti_difensore) > 0:
 			_numero_volante(d.position, "-%d" % int(e.morti_difensore), Color("ffdf6b"))
 		if int(e.morti_attaccante) > 0:
@@ -841,6 +896,28 @@ func _azione_ponte() -> void:
 		Audio.effetto("click")
 		_ricrea_campo()
 	_scegli(_scelta)
+
+
+## Le frecce che volano ad arco da chi tira al bersaglio.
+func _frecce(da: Vector3, a: Vector3) -> void:
+	var scena := load(Soldato.CARTELLA + "arrow.gltf") as PackedScene if ResourceLoader.exists(Soldato.CARTELLA + "arrow.gltf") else null
+	if scena == null:
+		return
+	for n in 4:
+		var freccia := scena.instantiate() as Node3D
+		add_child(freccia)
+		var inizio := da + Vector3(randf_range(-0.5, 0.5), 1.4, randf_range(-0.5, 0.5))
+		var fine := a + Vector3(randf_range(-0.7, 0.7), 0.6, randf_range(-0.7, 0.7))
+		var durata := 0.55
+		var volo := func(t: float) -> void:
+			var p := inizio.lerp(fine, t) + Vector3(0, sin(t * PI) * 2.5, 0)
+			var avanti := inizio.lerp(fine, t + 0.02) + Vector3(0, sin((t + 0.02) * PI) * 2.5, 0) - p
+			if avanti.length() > 0.001:
+				freccia.global_transform = Transform3D(Basis.looking_at(avanti.normalized()) * Basis(Vector3.RIGHT, -PI / 2.0), p).scaled_local(Vector3.ONE * 0.8)
+		var tw := create_tween()
+		tw.tween_interval(n * 0.07)
+		tw.tween_method(volo, 0.0, 1.0, durata)
+		tw.tween_callback(freccia.queue_free)
 
 
 func _fine_turno() -> void:

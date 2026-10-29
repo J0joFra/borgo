@@ -7,6 +7,7 @@ Il design completo è nel documento "Borgo — Game Design Document".
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
 ![La battaglia: campo irregolare, fiume con il ponte di pietra, palizzata](docs/battaglia.png)
 ![L'assedio di una città: mura, torri, case, e un fante salito con le scale](docs/assedio.png)
+![I soldati da vicino](docs/soldati.png)
 ![Vittoria: l'esercito nemico è distrutto](docs/battaglia_fine.png)
 ![Il tutorial dopo il prologo](docs/tutorial.png)
 ![Il primo inverno senza cibo: il castello apre le porte](docs/primo_inverno.png)
@@ -308,6 +309,7 @@ Gli edifici usano il **KayKit Medieval Hexagon Pack** (CC0, di Kay Lousberg) in 
 | `props` | casse, barili, tende, bandiere |
 | `nature` | alberi, rocce, colline, montagne |
 | `info` | licenza, guida e immagini del pacchetto (Godot la ignora) |
+| `personaggi` | i soldati della battaglia: **KayKit Adventurers Character Pack** (CC0, di Kay Lousberg), cavaliere, barbaro, ladro e ladro col cappuccio con le animazioni, più la freccia |
 
 Il gioco cerca i modelli da solo: `data/modelli.json` dice, per ogni edificio, quale parola cercare nel nome del file
 (es. la chiesa cerca `building_church`). Si possono cambiare liberamente:
@@ -321,6 +323,12 @@ Il gioco cerca i modelli da solo: `data/modelli.json` dice, per ogni edificio, q
 Gli OBJ di KayKit sono divisi in pezzi (es. mulino: base, tetto, pale): il gioco li unisce e fa girare pale e ruote.
 Se per un edificio non trova nulla usa la forma provvisoria in codice. Alberi e rocce del terreno restano quelli
 generati in codice, perché cambiano colore con le stagioni; anche il campo di grano KayKit resta dorato tutto l'anno.
+
+In battaglia ogni tipo di unità ha il suo personaggio e le sue armi (`scripts/battaglia/soldato.gd`): lancieri
+(cavaliere con scudo e lancia), spadaccini (spada e scudo), cavalieri (a cavallo), arcieri e balestrieri (balestra),
+uomini dei vassalli e contadini (barbaro con l'ascia), predoni (ladro col cappuccio e i pugnali). Il mantello ha il
+colore della propria parte; camminano, attaccano, tirano frecce, vengono colpiti e cadono. Senza i modelli si torna
+alle figure in codice.
 
 ## Test
 

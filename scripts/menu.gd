@@ -209,7 +209,7 @@ func _crea_interfaccia() -> void:
 	chiudi_o.pressed.connect(func(): _mostra(null))
 	col.add_child(chiudi_o)
 
-	_crediti = _finestra(radice, "Borgo, un city builder medievale per telefono e browser.\n\nModelli 3D degli edifici: KayKit Medieval Hexagon Pack di Kay Lousberg (CC0).\nTerreno, alberi, abitanti e interfaccia: disegnati in codice.\nFatto con Godot 4.")
+	_crediti = _finestra(radice, "Borgo, un city builder medievale per telefono e browser.\n\nModelli 3D degli edifici: KayKit Medieval Hexagon Pack di Kay Lousberg (CC0).\nSoldati: KayKit Adventurers Character Pack di Kay Lousberg (CC0).\nTerreno, alberi, abitanti e interfaccia: disegnati in codice.\nFatto con Godot 4.")
 	var chiudi_c := _bottone("Chiudi", 60)
 	chiudi_c.pressed.connect(func(): _mostra(null))
 	_crediti.get_child(0).add_child(chiudi_c)

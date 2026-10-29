@@ -47,6 +47,18 @@ func _via() -> void:
 		campo_p._scegli(int(fante.id))
 		await _attendi(0.5)
 		await _scatta("0d_assedio_palizzata" if livello == 0 else "0e_assedio_citta")
+		if livello == 2:
+			# da vicino: i soldati 3D, il nostro esercito e i difensori sulle mura
+			var nostri_v := LogicaBattaglia.vive(GameState.battaglia, "noi")
+			campo_p.camera.position = campo_p.posizione(LogicaBattaglia.cella(nostri_v[nostri_v.size() / 2]))
+			campo_p.camera.camera.size = 11.0
+			await _attendi(0.6)
+			await _scatta("0f_soldati_vicino")
+			var porta_v: Array = GameState.battaglia.unita.filter(func(u): return u.tipo == LogicaBattaglia.PORTA)
+			campo_p.camera.position = campo_p.posizione(LogicaBattaglia.cella(porta_v[0])) + Vector3(3, 0, 0)
+			campo_p.camera.camera.size = 13.0
+			await _attendi(0.6)
+			await _scatta("0g_castello_vicino")
 		GameState.battaglia_ritirata()
 		GameState.chiudi_battaglia()
 	var inizio := Time.get_ticks_msec()
