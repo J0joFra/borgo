@@ -8,24 +8,29 @@ extends RefCounted
 ## bersaglio), il supporto (i compagni accanto aiutano a difendersi) e le lance contro i cavalli.
 ## Si vince distruggendo l'esercito nemico o tenendo la loro bandiera per un turno intero; si perde
 ## se cadono tutti i nostri o con la ritirata.
-## Assedio: contro un signore la bandiera sta in un castello con le mura. Sulle mura salgono solo i
-## difensori (più difesa, dall'alto, e gli arcieri tirano più lontano); per entrare si sfonda la porta
-## corpo a corpo (la porta è un'"unità" che non combatte, con dei punti al posto degli uomini).
+## Assedio: contro un signore la bandiera sta dentro le sue difese, che dipendono da quanto è cresciuto
+## il suo feudo: palizzata di legno (villaggio), mura di pietra (borgo), castello grande con torri e
+## case (città). Sulle mura stanno i difensori a piedi (più difesa, dall'alto, chi tira arriva più
+## lontano, dalle torri ancora di più); i nostri fanti ci salgono solo con le scale: prima abbattono
+## un albero, poi costruiscono le scale. Oppure si sfonda la porta corpo a corpo (la porta è
+## un'"unità" che non combatte, con dei punti al posto degli uomini). I cavalli sulle mura non salgono.
 ## Tutto lo stato sta in un dizionario (GameState.battaglia), così si salva com'è.
 ## Le celle sono (colonna, riga) di una griglia quadrata.
 
-enum Terreno { PIANURA, BOSCO, COLLINA, ACQUA, MURA }
+enum Terreno { PIANURA, BOSCO, COLLINA, ACQUA, MURA, CASA }
 
 const LARGHEZZA := 16
 const ALTEZZA := 10
 const PORTA := "porta"
+const FANTERIA := ["fanti", "spadaccini"]  # chi può abbattere alberi, fare le scale e salire sulle mura
 
 
 ## Una battaglia nuova: terreno dal seme, le nostre unità (soldati per tipo, uomini dei vassalli)
 ## e quelle del regno nemico, con la sua bandiera.
 ## truppe: tipo di soldato (fanti, spadaccini, arcieri, balestrieri, cavalieri) -> quanti.
 ## armi: non più usato (le armi non ci sono più), resta per non cambiare chi la chiama.
-static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi: int, aiuti: int, nemici: int, seme: int, cfg: Dictionary) -> Dictionary:
+## difese: per un signore, il livello del suo feudo (0 villaggio, 1 borgo, 2 città; -1 = borgo).
+static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi: int, aiuti: int, nemici: int, seme: int, cfg: Dictionary, difese := -1) -> Dictionary:
 	# il terreno a macchie (colline, boschi, uno stagno), non a celle sparse: si formano alture e
 	# boschetti da conquistare; le zone di schieramento (prime e ultime colonne) restano più libere
 	var rilievo := FastNoiseLite.new()
@@ -49,14 +54,25 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 				t = Terreno.BOSCO
 			terreno.append(t)
 	var assedio: bool = tipo_nemico == "signore"
-	var bandiera := Vector2i(LARGHEZZA - 2 - (1 if assedio else 0), ALTEZZA / 2)
+	var livelli: Array = cfg.get("assedio", {}).get("livelli", [{}])
+	var lv: Dictionary = livelli[clampi(difese if difese >= 0 else 1, 0, livelli.size() - 1)] if assedio else {}
+	var raggio := int(lv.get("raggio", 2))
+	var bandiera := Vector2i(LARGHEZZA - 1 - raggio if assedio else LARGHEZZA - 2, ALTEZZA / 2)
 	terreno[_i(bandiera)] = Terreno.COLLINA  # la bandiera sta su un'altura
 	var porta := Vector2i(-1, -1)
+	var torri: Array = []
 	if assedio:
-		porta = _castello(terreno, bandiera)
+		porta = _castello(terreno, bandiera, raggio, int(lv.get("case", 0)), seme)
+		if lv.get("torri", false):
+			for d in [Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(1, 1)]:
+				var t: Vector2i = bandiera + d * raggio
+				if dentro(t):
+					torri.append([t.x, t.y])
 	var b := {"regione": regione, "tipo_nemico": tipo_nemico, "turno": 1,
 		"fase": "schieramento", "finita": false, "vinta": false, "perche": "", "terreno": terreno,
-		"bandiera": [bandiera.x, bandiera.y], "unita": [], "diario": [], "prossimo_id": 1, "assedio": assedio}
+		"bandiera": [bandiera.x, bandiera.y], "unita": [], "diario": [], "prossimo_id": 1, "assedio": assedio,
+		"mura": {"livello": difese, "nome": str(lv.get("nome", "")), "materiale": str(lv.get("materiale", "pietra")),
+			"difesa": float(lv.get("difesa", 1.5)), "torri": torri} if assedio else {}}
 	# le nostre unità: gruppi di "per_unita" uomini per ogni tipo di soldato; chi tira sta dietro
 	var per := int(cfg.per_unita)
 	var soldati := 0
@@ -88,11 +104,13 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 			if terreno[i] == Terreno.MURA:
 				sulle_mura.append(Vector2i(i % LARGHEZZA, i / LARGHEZZA))
 		sulle_mura.sort_custom(func(x, y): return x.x < y.x)
+		# prima le torri, poi le mura dalla parte da cui arriviamo
+		sulle_mura.sort_custom(func(x, y): return torri.has([x.x, x.y]) and not torri.has([y.x, y.y]))
 		for u in b.unita:
 			if u.lato == "loro" and int(cfg.unita[u.tipo].gittata) > 1 and not sulle_mura.is_empty():
 				var posto: Vector2i = sulle_mura.pop_front()
 				u.cella = [posto.x, posto.y]
-		var punti := int(cfg.get("assedio", {}).get("porta", 20))
+		var punti := int(lv.get("porta", 20))
 		b.unita.append({"id": b.prossimo_id, "lato": "loro", "tipo": PORTA, "uomini": punti, "max": punti,
 			"cella": [porta.x, porta.y], "mosse": 0, "attaccato": true})
 		b.prossimo_id = int(b.prossimo_id) + 1
@@ -101,9 +119,8 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 
 
 ## Il castello: un quadrato di mura attorno alla bandiera, con la porta verso di noi; dentro e
-## davanti alla porta il terreno è sgombro. Restituisce la cella della porta.
-static func _castello(terreno: Array, bandiera: Vector2i) -> Vector2i:
-	var raggio := 2
+## davanti alla porta il terreno è sgombro, salvo le case del feudo (nelle città). Restituisce la porta.
+static func _castello(terreno: Array, bandiera: Vector2i, raggio: int, case: int, seme: int) -> Vector2i:
 	for y in range(bandiera.y - raggio - 1, bandiera.y + raggio + 2):
 		for x in range(bandiera.x - raggio - 2, bandiera.x + raggio + 2):
 			var c := Vector2i(x, y)
@@ -116,6 +133,18 @@ static func _castello(terreno: Array, bandiera: Vector2i) -> Vector2i:
 				terreno[_i(c)] = Terreno.PIANURA
 	var porta := Vector2i(bandiera.x - raggio, bandiera.y)
 	terreno[_i(porta)] = Terreno.PIANURA  # sotto la porta si passa, quando è sfondata
+	# le case nel cortile, lungo le mura, lasciando libera la strada dalla porta alla bandiera
+	var posti: Array[Vector2i] = []
+	for y in range(bandiera.y - raggio + 1, bandiera.y + raggio):
+		for x in range(bandiera.x - raggio + 1, bandiera.x + raggio):
+			var c := Vector2i(x, y)
+			if dentro(c) and y != bandiera.y and maxi(absi(x - bandiera.x), absi(y - bandiera.y)) == raggio - 1:
+				posti.append(c)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seme + 5
+	for k in mini(case, posti.size()):
+		var c: Vector2i = posti.pop_at(rng.randi_range(0, posti.size() - 1))
+		terreno[_i(c)] = Terreno.CASA
 	return porta
 
 
@@ -145,7 +174,7 @@ static func _attorno(centro: Vector2i, n: int, terreno: Array) -> Array[Vector2i
 	while posti.size() < n and not anello.is_empty():
 		var prossimo := []
 		for c in anello:
-			if not terreno[_i(c)] in [Terreno.ACQUA, Terreno.MURA] and posti.size() < n:
+			if not terreno[_i(c)] in [Terreno.ACQUA, Terreno.MURA, Terreno.CASA] and posti.size() < n:
 				posti.append(c)
 			for v in vicini(c):
 				if not visti.has(v):
@@ -158,7 +187,7 @@ static func _attorno(centro: Vector2i, n: int, terreno: Array) -> Array[Vector2i
 static func _aggiungi(b: Dictionary, lato: String, tipo: String, uomini: int, cella: Vector2i, cfg: Dictionary) -> void:
 	# se la cella è occupata o d'acqua, la prima libera vicina
 	var libera := cella
-	if occupante(b, libera) >= 0 or b.terreno[_i(libera)] == Terreno.ACQUA:
+	if occupante(b, libera) >= 0 or b.terreno[_i(libera)] in [Terreno.ACQUA, Terreno.MURA, Terreno.CASA]:
 		for c in _attorno(cella, 30, b.terreno):
 			if occupante(b, c) < 0:
 				libera = c
@@ -203,18 +232,24 @@ static func distanza(a: Vector2i, b: Vector2i) -> int:
 
 
 ## Si può passare da una cella alla vicina? In diagonale non si scivola fra due mura o due stagni.
-static func _passo_libero(b: Dictionary, da: Vector2i, a: Vector2i, lato: String) -> bool:
-	if not _calpestabile(b, a, lato):
+static func _passo_libero(b: Dictionary, da: Vector2i, a: Vector2i, u: Dictionary) -> bool:
+	if not calpestabile(b, a, u):
 		return false
 	if da.x != a.x and da.y != a.y:
-		return _calpestabile(b, Vector2i(a.x, da.y), lato) or _calpestabile(b, Vector2i(da.x, a.y), lato)
+		return calpestabile(b, Vector2i(a.x, da.y), u) or calpestabile(b, Vector2i(da.x, a.y), u)
 	return true
 
 
-## Acqua mai; le mura solo per chi difende il castello.
-static func _calpestabile(b: Dictionary, c: Vector2i, lato: String) -> bool:
+## Acqua e case mai; sulle mura i difensori a piedi, e dei nostri solo i fanti con le scale.
+static func calpestabile(b: Dictionary, c: Vector2i, u: Dictionary) -> bool:
 	var t := terreno_a(b, c)
-	return t != Terreno.ACQUA and (t != Terreno.MURA or lato == "loro")
+	if t == Terreno.ACQUA or t == Terreno.CASA:
+		return false
+	if t != Terreno.MURA:
+		return true
+	if u.get("tipo", "") == "cavalieri":
+		return false
+	return u.get("lato", "") == "loro" or (bool(u.get("scale", false)) and u.get("tipo", "") in FANTERIA)
 
 
 static func terreno_a(b: Dictionary, c: Vector2i) -> int:
@@ -257,7 +292,7 @@ static func raggiungibili(b: Dictionary, u: Dictionary, cfg: Dictionary) -> Dict
 				migliore = k
 		var c: Vector2i = coda.pop_at(migliore)
 		for v in vicini(c):
-			if not _passo_libero(b, c, v, u.lato) or occupante(b, v) >= 0:
+			if not _passo_libero(b, c, v, u) or occupante(b, v) >= 0:
 				continue
 			var nuova: int = spesa[c] + costo(b, v, cfg)
 			if nuova <= int(u.mosse) and (not spesa.has(v) or nuova < spesa[v]):
@@ -277,10 +312,12 @@ static func raggiungibili(b: Dictionary, u: Dictionary, cfg: Dictionary) -> Dict
 	return risultato
 
 
-## La gittata vera: dalle colline e dalle mura gli arcieri tirano una cella più lontano.
+## La gittata vera: dalle colline e dalle mura gli arcieri tirano una cella più lontano, dalle torri due.
 static func gittata(b: Dictionary, u: Dictionary, cfg: Dictionary) -> int:
 	var g := int(cfg.unita[u.tipo].gittata)
 	if g > 1 and quota(b, cella(u)) > 0:
+		g += 1
+	if g > 1 and b.get("mura", {}).get("torri", []).has(u.cella):
 		g += 1
 	return g
 
@@ -302,7 +339,7 @@ static func zona_schieramento(b: Dictionary, cfg: Dictionary) -> Array[Vector2i]
 	for r in ALTEZZA:
 		for c in int(cfg.get("zona_schieramento", 3)):
 			var x := Vector2i(c, r)
-			if _calpestabile(b, x, "noi"):
+			if calpestabile(b, x, {"lato": "noi", "tipo": "fanti"}):
 				zona.append(x)
 	return zona
 
@@ -358,6 +395,8 @@ static func forze(b: Dictionary, a: Dictionary, d: Dictionary, cfg: Dictionary) 
 		return {"fa": int(a.uomini) * forza(a, cfg), "fd": 0.0, "voci": ["contro la porta"], "da_lontano": false}
 	var ma := float(cfg.terreni[terreno_a(b, ca)].attacco)
 	var md := float(cfg.terreni[terreno_a(b, cd)].difesa)
+	if terreno_a(b, cd) == Terreno.MURA:
+		md = float(b.get("mura", {}).get("difesa", md))
 	if not is_equal_approx(md, 1.0):
 		voci.append("difende in %s ×%.2f" % [str(cfg.terreni[terreno_a(b, cd)].nome).to_lower(), md])
 	# altura: chi sta più in alto colpisce più forte; in mischia dal basso si fatica
@@ -407,6 +446,55 @@ static func _perdite(a: Dictionary, d: Dictionary, fa: float, fd: float, da_lont
 	if not da_lontano and int(d.uomini) - morti_d > 0:
 		morti_a = mini(int(a.uomini), roundi(fd / (fa + fd) * ceili(int(d.uomini) * float(cfg.risposta))))
 	return [morti_d, morti_a]
+
+
+# --- Scale per le mura -----------------------------------------------------------------
+
+## Il bosco dove l'unità sta o uno accanto, o (-1, -1).
+static func albero_vicino(b: Dictionary, u: Dictionary) -> Vector2i:
+	if terreno_a(b, cella(u)) == Terreno.BOSCO:
+		return cella(u)
+	for v in vicini(cella(u)):
+		if terreno_a(b, v) == Terreno.BOSCO:
+			return v
+	return Vector2i(-1, -1)
+
+
+## Un nostro fante, in un assedio, accanto a un bosco, che non ha ancora né legna né scale.
+static func puo_abbattere(b: Dictionary, u: Dictionary) -> bool:
+	return b.get("assedio", false) and b.fase == "noi" and not u.is_empty() and u.lato == "noi" and u.tipo in FANTERIA \
+		and not bool(u.attaccato) and not bool(u.get("legna", false)) and not bool(u.get("scale", false)) and albero_vicino(b, u).x >= 0
+
+
+## Abbatte l'albero (il bosco diventa pianura) e prende la legna: per questo turno l'unità ha finito.
+static func abbatti(b: Dictionary, id: int, cfg: Dictionary) -> Vector2i:
+	var u := trova(b, id)
+	if not puo_abbattere(b, u):
+		return Vector2i(-1, -1)
+	var c := albero_vicino(b, u)
+	b.terreno[_i(c)] = Terreno.PIANURA
+	u.legna = true
+	u.attaccato = true
+	u.mosse = 0
+	_diario(b, "%s abbattono un albero: con la legna faranno le scale." % cfg.unita[u.tipo].nome)
+	return c
+
+
+static func puo_fare_scale(b: Dictionary, u: Dictionary) -> bool:
+	return b.fase == "noi" and not u.is_empty() and u.lato == "noi" and bool(u.get("legna", false)) and not bool(u.attaccato)
+
+
+## Con la legna costruisce le scale (un altro turno): da adesso l'unità può salire sulle mura.
+static func costruisci_scale(b: Dictionary, id: int, cfg: Dictionary) -> bool:
+	var u := trova(b, id)
+	if not puo_fare_scale(b, u):
+		return false
+	u.legna = false
+	u.scale = true
+	u.attaccato = true
+	u.mosse = 0
+	_diario(b, "%s hanno le scale: possono salire sulle mura!" % cfg.unita[u.tipo].nome)
+	return true
 
 
 # --- Azioni ------------------------------------------------------------------------------

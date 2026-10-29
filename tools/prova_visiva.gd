@@ -26,6 +26,29 @@ func _via() -> void:
 	await _scatta("0c_prova_in_campo")
 	GameState.battaglia_ritirata()
 	GameState.chiudi_battaglia()
+	# le difese dei signori: palizzata (villaggio) e castello con torri e case (città), con le scale
+	for livello in [0, 2]:
+		GameState.inizia_prova_battaglia({"nemico": "signore", "fanti": 10, "spadaccini": 5, "arcieri": 5, "vassalli": 0, "nemici": 25, "difese": livello})
+		get_tree().change_scene_to_file("res://scenes/battaglia.tscn")
+		await _attendi(2.0)
+		var campo_p = get_tree().current_scene
+		await campo_p._fine_turno()  # inizia la battaglia
+		var fante: Dictionary = LogicaBattaglia.vive(GameState.battaglia, "noi").filter(func(u): return u.tipo == "fanti")[0]
+		fante.legna = livello == 0
+		fante.scale = livello == 2
+		var muro := Vector2i(-1, -1)
+		for i in GameState.battaglia.terreno.size():
+			if GameState.battaglia.terreno[i] == LogicaBattaglia.Terreno.MURA and LogicaBattaglia.occupante(GameState.battaglia, Vector2i(i % LogicaBattaglia.LARGHEZZA, i / LogicaBattaglia.LARGHEZZA)) < 0:
+				muro = Vector2i(i % LogicaBattaglia.LARGHEZZA, i / LogicaBattaglia.LARGHEZZA)
+				break
+		if livello == 2 and muro.x >= 0:
+			fante.cella = [muro.x, muro.y]  # già salito sulle mura con le scale
+			campo_p._nodi[int(fante.id)].position = campo_p.posizione(muro)
+		campo_p._scegli(int(fante.id))
+		await _attendi(0.5)
+		await _scatta("0d_assedio_palizzata" if livello == 0 else "0e_assedio_citta")
+		GameState.battaglia_ritirata()
+		GameState.chiudi_battaglia()
 	var inizio := Time.get_ticks_msec()
 	get_tree().change_scene_to_file("res://scenes/regno.tscn")
 	await _attendi(2.5)

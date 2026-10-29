@@ -798,6 +798,7 @@ func _ready() -> void:
 	GameState.chiudi_battaglia()
 	_prova_forze()
 	_prova_assedio()
+	_prova_sviluppo_regni()
 	var soldati_r := GameState.soldati
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
@@ -1619,7 +1620,76 @@ func _prova_assedio() -> void:
 	fante.mosse = 5
 	fante.attaccato = false
 	_verifica(LogicaBattaglia.raggiungibili(b, fante, cfg).has(LogicaBattaglia.cella(porta)), "dalla porta sfondata si entra")
+	# le scale: un fante accanto a un bosco abbatte un albero, poi costruisce le scale e sale sulle mura
+	var b2 := LogicaBattaglia.crea("prova", "signore", {"fanti": 5, "cavalieri": 5, "arcieri": 5}, 0, 0, 10, 7, cfg)
+	b2.fase = "noi"
+	var f2: Dictionary = LogicaBattaglia.vive(b2, "noi").filter(func(u): return u.tipo == "fanti")[0]
+	var c2: Dictionary = LogicaBattaglia.vive(b2, "noi").filter(func(u): return u.tipo == "cavalieri")[0]
+	var a2: Dictionary = LogicaBattaglia.vive(b2, "noi").filter(func(u): return u.tipo == "arcieri")[0]
+	var porta2: Dictionary = b2.unita.filter(func(u): return u.tipo == LogicaBattaglia.PORTA)[0]
+	var muro2 := LogicaBattaglia.cella(porta2) + Vector2i(0, -1)
+	var sotto2 := muro2 - Vector2i(1, 0)
+	for u in LogicaBattaglia.vive(b2, "loro"):
+		if LogicaBattaglia.cella(u) == muro2:
+			u.cella = [0, 0]
+			u.uomini = 0
+	f2.cella = [sotto2.x, sotto2.y]
+	var bosco2 := sotto2 - Vector2i(1, 0)
+	b2.terreno[bosco2.y * LogicaBattaglia.LARGHEZZA + bosco2.x] = LogicaBattaglia.Terreno.BOSCO
+	a2.cella = [bosco2.x, bosco2.y + 1]
+	_verifica(not LogicaBattaglia.puo_abbattere(b2, a2), "gli arcieri non fanno le scale: solo i fanti")
+	_verifica(not LogicaBattaglia.puo_fare_scale(b2, f2), "senza legna niente scale")
+	_verifica(LogicaBattaglia.abbatti(b2, int(f2.id), cfg) == bosco2 and LogicaBattaglia.terreno_a(b2, bosco2) == LogicaBattaglia.Terreno.PIANURA and f2.legna and f2.attaccato, "il fante abbatte l'albero: il bosco diventa radura, e il turno è finito")
+	f2.attaccato = false
+	_verifica(LogicaBattaglia.costruisci_scale(b2, int(f2.id), cfg) and f2.scale and not f2.legna, "con la legna costruisce le scale")
+	f2.attaccato = false
+	f2.mosse = 3
+	_verifica(LogicaBattaglia.raggiungibili(b2, f2, cfg).has(muro2), "con le scale il fante sale sulle mura")
+	c2.cella = [sotto2.x, sotto2.y + 3]
+	c2.scale = true
+	c2.mosse = 6
+	_verifica(LogicaBattaglia.raggiungibili(b2, c2, cfg).keys().all(func(c): return LogicaBattaglia.terreno_a(b2, c) != LogicaBattaglia.Terreno.MURA), "i cavalli sulle mura non salgono")
+	_verifica(not LogicaBattaglia.calpestabile(b2, muro2, {"lato": "loro", "tipo": "cavalieri"}) and LogicaBattaglia.calpestabile(b2, muro2, {"lato": "loro", "tipo": "balestrieri"}), "nemmeno quelli del nemico; i balestrieri sì")
+	# le difese crescono con il feudo del signore
+	var pal := LogicaBattaglia.crea("prova", "signore", {"fanti": 5}, 0, 0, 10, 3, cfg, 0)
+	var cit := LogicaBattaglia.crea("prova", "signore", {"fanti": 5}, 0, 0, 30, 3, cfg, 2)
+	var porta_pal: Dictionary = pal.unita.filter(func(u): return u.tipo == LogicaBattaglia.PORTA)[0]
+	var porta_cit: Dictionary = cit.unita.filter(func(u): return u.tipo == LogicaBattaglia.PORTA)[0]
+	var case_cit: int = cit.terreno.filter(func(t): return int(t) == LogicaBattaglia.Terreno.CASA).size()
+	_verifica(pal.mura.materiale == "legno" and int(porta_pal.uomini) < int(porta_cit.uomini) and float(pal.mura.difesa) < float(cit.mura.difesa), "un villaggio ha la palizzata, più debole delle mura")
+	_verifica(cit.mura.torri.size() == 4 and case_cit > 0, "una città ha le torri agli angoli e le case dentro (%d)" % case_cit)
+	var bal_torre := LogicaBattaglia.vive(cit, "loro").filter(func(u): return cit.mura.torri.has(u.cella))
+	_verifica(not bal_torre.is_empty() and LogicaBattaglia.gittata(cit, bal_torre[0], cfg) == int(cfg.unita[bal_torre[0].tipo].gittata) + 2, "dalle torri si tira ancora più lontano")
+
 	for u in LogicaBattaglia.vive(b, "loro"):
 		u.uomini = 0
 	LogicaBattaglia._controlla_fine(b)
 	_verifica(b.finita and b.vinta, "distrutti i difensori, il castello è preso")
+
+
+## I feudi dei signori crescono come il nostro: più abitanti, più soldati, difese più forti.
+func _prova_sviluppo_regni() -> void:
+	var signore := ""
+	for k in GameState.regni:
+		if GameState.regni[k].tipo == "signore" and not GameState.regni[k].conquistato:
+			signore = k
+			break
+	if signore == "":
+		_verifica(false, "c'è un signore da far crescere")
+		return
+	var r: Dictionary = GameState.regni[signore]
+	var abitanti_prima := GameState.abitanti
+	r.abitanti = 15
+	r.ritmo = 1.0
+	_verifica(GameState.livello_regno(signore) == 0 and GameState.difese_regno(signore) == "Palizzata", "un signore piccolo ha un villaggio con la palizzata")
+	var forza_prima := GameState.forza_regno(signore)
+	GameState.abitanti = 80
+	for i in 12:
+		GameState._sviluppa_regni()
+	_verifica(int(r.abitanti) > 60 and int(r.abitanti) <= 80, "il suo feudo cresce verso il nostro (%d)" % int(r.abitanti))
+	_verifica(GameState.livello_regno(signore) == 2 and GameState.forza_regno(signore) > forza_prima * 3, "diventa una città con un esercito più grande")
+	GameState.abitanti = 5
+	var ora := int(r.abitanti)
+	GameState._sviluppa_regni()
+	_verifica(int(r.abitanti) == ora, "e non cala se il nostro si svuota")
+	GameState.abitanti = abitanti_prima

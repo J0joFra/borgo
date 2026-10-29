@@ -62,6 +62,7 @@
 		"tributo_oro": 5,
 		"tributo_risorsa": 10,
 		"crescita_forza_per_anno": 0.1,
+		"sviluppo": {"abitanti_iniziali": [12, 22], "ritmo": [0.8, 1.25], "avvicinamento": 0.35, "minimo_per_anno": 6, "soldati_per_abitante": 0.3},
 		"banditi_dopo_conquista": 0.7,
 		"forza": {"signore": [30, 60], "banditi": [15, 35], "libera": [4, 12]}
 	},
@@ -95,9 +96,14 @@
 			{"nome": "Bosco", "costo": 2, "attacco": 1.0, "difesa": 1.3},
 			{"nome": "Collina", "costo": 2, "attacco": 1.0, "difesa": 1.15},
 			{"nome": "Acqua", "costo": 99, "attacco": 1.0, "difesa": 1.0},
-			{"nome": "Mura", "costo": 1, "attacco": 1.0, "difesa": 1.5}
+			{"nome": "Mura", "costo": 1, "attacco": 1.0, "difesa": 1.5},
+			{"nome": "Case", "costo": 99, "attacco": 1.0, "difesa": 1.0}
 		],
-		"assedio": {"porta": 20},
+		"assedio": {"livelli": [
+			{"nome": "Palizzata", "materiale": "legno", "raggio": 2, "porta": 10, "difesa": 1.25, "case": 0},
+			{"nome": "Mura di pietra", "materiale": "pietra", "raggio": 2, "porta": 20, "difesa": 1.5, "case": 0},
+			{"nome": "Castello con le torri", "materiale": "pietra", "raggio": 3, "porta": 30, "difesa": 1.5, "case": 5, "torri": true}
+		]},
 		"unita": {"fanti": {"nome": "Lancieri", "forza": 5, "mosse": 3, "gittata": 1}, "spadaccini": {"nome": "Spadaccini", "forza": 7, "mosse": 3, "gittata": 1}, "arcieri": {"nome": "Arcieri", "forza": 4, "mosse": 3, "gittata": 2}, "vassalli": {"nome": "Uomini dei vassalli", "forza": 4, "mosse": 3, "gittata": 1}, "cavalieri": {"nome": "Cavalieri", "forza": 6, "mosse": 4, "gittata": 1}, "balestrieri": {"nome": "Balestrieri", "forza": 4, "mosse": 2, "gittata": 2}, "predoni": {"nome": "Predoni", "forza": 4, "mosse": 4, "gittata": 1}, "contadini": {"nome": "Contadini armati", "forza": 3, "mosse": 3, "gittata": 1}, "porta": {"nome": "Porta del castello", "forza": 0, "mosse": 0, "gittata": 0}},
 		"eserciti": {"signore": ["cavalieri", "balestrieri", "cavalieri"], "banditi": ["predoni"], "libera": ["contadini"]}
 	},

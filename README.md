@@ -5,7 +5,8 @@ Il design completo è nel documento "Borgo — Game Design Document".
 
 ![Il menu principale](docs/menu.png)
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
-![La battaglia sul campo a esagoni](docs/battaglia.png)
+![La battaglia sul campo come il feudo](docs/battaglia.png)
+![L'assedio di una città: mura, torri, case, e un fante salito con le scale](docs/assedio.png)
 ![Vittoria: l'esercito nemico è distrutto](docs/battaglia_fine.png)
 ![Il tutorial dopo il prologo](docs/tutorial.png)
 ![Il primo inverno senza cibo: il castello apre le porte](docs/primo_inverno.png)
@@ -133,10 +134,17 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
     difende. Ogni unità ha la barra degli uomini rimasti. "Fine turno" fa muovere il nemico: difende la bandiera e
     attacca chi si avvicina, e dal 5° turno va all'assalto. **Non c'è limite di turni**: si vince distruggendo il loro
     esercito o tenendo la loro bandiera per un turno; si perde se cadono tutti i nostri. Si può sempre ritirarsi.
-    **Assedio**: contro un signore la bandiera sta in un **castello con le mura**. Sulle mura salgono solo i difensori
-    (difesa ×1,5, colpiscono dall'alto e i balestrieri tirano una cella più lontano); le mura non si scavalcano: la
-    **porta** (20 punti) si sfonda corpo a corpo (le frecce non la aprono, e lei non risponde). Gli assediati non
-    escono all'assalto.
+    **Assedio**: contro un signore la bandiera sta dentro le sue difese, che dipendono da **quanto è cresciuto il suo
+    feudo**: **palizzata** di legno (villaggio, porta da 10, difesa ×1,25), **mura di pietra** (borgo, porta da 20,
+    difesa ×1,5), **castello con le torri** e le case dentro le mura (città, porta da 30; dalle torri si tira due celle
+    più lontano). Sulle mura stanno i difensori a piedi (i cavalli mai): colpiscono dall'alto e chi tira arriva una
+    cella più lontano. Per entrare: sfondare la **porta** corpo a corpo (le frecce non la aprono, e lei non risponde),
+    oppure **le scale**: un fante (lancieri o spadaccini) accanto a un bosco **abbatte un albero** (il bosco diventa
+    radura), il turno dopo **costruisce le scale** e da lì può salire sulle mura. Gli assediati non escono all'assalto.
+  - **I feudi dei signori crescono come il nostro**: ognuno ha i suoi abitanti, che a ogni stagione si avvicinano a
+    quanti ne ha il nostro borgo (chi più in fretta, chi meno, e un po' ogni anno anche se noi restiamo piccoli; non
+    calano mai). Dagli abitanti vengono il livello (villaggio, borgo, città, con le stesse soglie del nostro),
+    l'esercito (0,3 soldati per abitante) e le difese dell'assedio. La spia racconta quanti sono e come sono difesi.
     Vincendo la regione è nostra e la governa un **vassallo**. Conquistare un covo di banditi fa arrivare meno incursioni.
     Perdendo torna solo una parte dei soldati.
   - **Vassalli** (scheda di una regione conquistata): la governa un consigliere libero oppure un cavaliere ("Affida a").

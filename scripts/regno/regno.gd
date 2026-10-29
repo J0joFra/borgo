@@ -214,6 +214,9 @@ func _aggiorna_scheda() -> void:
 	elif r.spiato:
 		righe.append("Forza: %d (il nostro esercito: %d)" % [GameState.forza_regno(_scelta), roundi(GameState.forza_esercito(GameState.soldati_presenti()))])
 		if r.tipo == "signore":
+			righe.append("Il suo feudo: %s di %d abitanti, difeso da %s." % [GameState.bil.livelli[GameState.livello_regno(_scelta)].nome.to_lower(),
+				int(r.abitanti), GameState.difese_regno(_scelta).to_lower()])
+		if r.tipo == "signore":
 			righe.append("Verso di noi: %s%s" % [GameState.testo_atteggiamento(int(r.atteggiamento)), " · alleato" if r.alleato else ""])
 	else:
 		righe.append("Non sappiamo quanto sono forti: manda una spia.")

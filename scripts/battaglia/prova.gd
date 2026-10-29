@@ -1,6 +1,6 @@
 extends Control
 ## Prova battaglia (dal menu principale): si sceglie il nemico e quanti uomini ha ciascuno,
-## poi si combatte sul campo a esagoni. Non serve una partita e non la cambia: utile per
+## poi si combatte sul campo di battaglia. Non serve una partita e non la cambia: utile per
 ## provare le battaglie senza dover far crescere il borgo.
 
 const PERGAMENA := Color("1b1f26")  # sfondo scuro, come l'interfaccia
@@ -15,6 +15,8 @@ const VALORI := [["fanti", "Lancieri", 0, 40, 5], ["spadaccini", "Spadaccini", 0
 var _p: Dictionary
 var _numeri: Dictionary = {}  # chiave -> Label
 var _nemico: Dictionary = {}  # tipo -> Button
+var _difese: Array = []  # un pulsante per livello delle difese del signore
+var _riga_difese: HBoxContainer
 
 
 func _ready() -> void:
@@ -43,7 +45,7 @@ func _ready() -> void:
 	titolo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(titolo)
 	var nota := Label.new()
-	nota.text = "Scegli i due eserciti e combatti sul campo a esagoni. Non serve una partita e non la cambia."
+	nota.text = "Scegli i due eserciti e combatti sul campo di battaglia. Non serve una partita e non la cambia."
 	nota.add_theme_font_size_override("font_size", 7)
 	nota.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	nota.custom_minimum_size.x = 300
@@ -63,6 +65,25 @@ func _ready() -> void:
 		b.pressed.connect(func(): _p.nemico = n[0]; _aggiorna())
 		riga_n.add_child(b)
 		_nemico[n[0]] = b
+
+	# contro un signore: quanto è cresciuto il suo feudo, cioè che difese ha
+	_riga_difese = HBoxContainer.new()
+	col.add_child(_riga_difese)
+	var ld := Label.new()
+	ld.text = "Difese:"
+	_riga_difese.add_child(ld)
+	if not _p.has("difese"):
+		_p.difese = 1
+	var livelli: Array = GameState.bil.battaglia.assedio.livelli
+	for i in livelli.size():
+		var bd := Button.new()
+		bd.text = "%s (%s)" % [livelli[i].nome, GameState.bil.livelli[mini(i, GameState.bil.livelli.size() - 1)].nome.to_lower()]
+		bd.toggle_mode = true
+		bd.focus_mode = Control.FOCUS_NONE
+		bd.add_theme_font_size_override("font_size", 7)
+		bd.pressed.connect(func(): _p.difese = i; _aggiorna())
+		_riga_difese.add_child(bd)
+		_difese.append(bd)
 
 	# due colonne di valori: entra anche sullo schermo basso di un telefono
 	var griglia := GridContainer.new()
@@ -125,6 +146,9 @@ func _aggiorna() -> void:
 		_nemico[k].set_pressed_no_signal(k == _p.nemico)
 	for k in _numeri:
 		_numeri[k].text = str(int(_p[k]))
+	_riga_difese.visible = _p.nemico == "signore"
+	for i in _difese.size():
+		_difese[i].set_pressed_no_signal(i == int(_p.difese))
 
 
 func _combatti() -> void:

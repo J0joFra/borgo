@@ -2015,6 +2015,46 @@ func _prepara_regni() -> void:
 		regni[str(i)] = {"tipo": r.tipo, "nome": r.nome, "signore": r.signore, "risorsa": r.risorsa,
 			"forza": rng.randi_range(int(intervallo[0]), int(intervallo[1])), "atteggiamento": atteggiamento,
 			"spiato": false, "alleato": false, "conquistato": false, "vassallo": -1, "lealta": 0, "tributo": "normale"}
+	# i feudi dei signori crescono come il nostro: abitanti iniziali e un passo tutto loro
+	var sv: Dictionary = bil.diplomazia.sviluppo
+	var rng_s := RandomNumberGenerator.new()
+	rng_s.seed = seme_mappa + 77
+	for k in regni:
+		if regni[k].tipo == "signore":
+			regni[k].abitanti = rng_s.randi_range(int(sv.abitanti_iniziali[0]), int(sv.abitanti_iniziali[1]))
+			regni[k].ritmo = snappedf(rng_s.randf_range(float(sv.ritmo[0]), float(sv.ritmo[1])), 0.01)
+
+
+## A ogni stagione i feudi dei signori crescono verso quanto è grande il nostro (chi più in fretta,
+## chi meno): così più cresce il borgo, più sono grandi e difesi quelli da conquistare. Non calano mai,
+## e anche se il nostro resta piccolo crescono un po' ogni anno.
+func _sviluppa_regni() -> void:
+	var sv: Dictionary = bil.diplomazia.sviluppo
+	var nostro := maxi(abitanti, int(sv.abitanti_iniziali[0]) + int(sv.minimo_per_anno) * (anno - 1))
+	for k in regni:
+		var r: Dictionary = regni[k]
+		if r.tipo != "signore" or r.conquistato:
+			continue
+		var meta := float(r.get("ritmo", 1.0)) * nostro
+		var ora := int(r.get("abitanti", sv.abitanti_iniziali[0]))
+		if meta > ora:
+			r.abitanti = ora + ceili((meta - ora) * float(sv.avvicinamento))
+
+
+## Il livello del feudo di un signore (0 villaggio, 1 borgo, 2 città), dagli abitanti come per il nostro.
+func livello_regno(chiave: String) -> int:
+	var r: Dictionary = regni[chiave]
+	var lv := 0
+	for i in range(1, bil.livelli.size()):
+		if int(r.get("abitanti", 0)) >= int(bil.livelli[i].get("abitanti", 9999)):
+			lv = i
+	return lv
+
+
+## Le difese che troveremo all'assedio (palizzata, mura, castello con le torri).
+func difese_regno(chiave: String) -> String:
+	var livelli: Array = bil.battaglia.assedio.livelli
+	return str(livelli[clampi(livello_regno(chiave), 0, livelli.size() - 1)].nome)
 
 
 func diplomazia_possibile() -> bool:
@@ -2023,6 +2063,10 @@ func diplomazia_possibile() -> bool:
 
 ## La forza di un regno adesso: cresce un po' ogni anno.
 func forza_regno(chiave: String) -> int:
+	if regni[chiave].tipo == "signore" and regni[chiave].has("abitanti"):
+		# l'esercito di un signore viene dai suoi abitanti
+		var c: Dictionary = bil.battaglia
+		return roundi(int(regni[chiave].abitanti) * float(bil.diplomazia.sviluppo.soldati_per_abitante) * float(c.unita[c.eserciti.signore[0]].forza))
 	return roundi(float(regni[chiave].forza) * (1.0 + float(bil.diplomazia.crescita_forza_per_anno) * (anno - 1)))
 
 
@@ -2187,7 +2231,7 @@ func _battaglia(m: Dictionary) -> void:
 			aiuti += roundi(leva_vassallo(k) / float(c.unita.vassalli.forza))
 	var nemici := maxi(2, roundi(forza_regno(m.regione) / float(c.unita[c.eserciti[r.tipo][0]].forza)))
 	var mt: Dictionary = m.get("truppe", {"fanti": int(m.soldati)})
-	battaglia = LogicaBattaglia.crea(m.regione, r.tipo, mt, 0, aiuti, nemici, _rng.randi(), c)
+	battaglia = LogicaBattaglia.crea(m.regione, r.tipo, mt, 0, aiuti, nemici, _rng.randi(), c, livello_regno(m.regione) if r.tipo == "signore" else -1)
 	if velocita > 0:
 		_velocita_prima = velocita
 	velocita = 0
@@ -2209,6 +2253,22 @@ func battaglia_inizia() -> void:
 		return
 	LogicaBattaglia.inizia(battaglia)
 	changed.emit()
+
+
+func battaglia_abbatti(id: int) -> Vector2i:
+	if battaglia.is_empty():
+		return Vector2i(-1, -1)
+	var c := LogicaBattaglia.abbatti(battaglia, id, bil.battaglia)
+	changed.emit()
+	return c
+
+
+func battaglia_scale(id: int) -> bool:
+	if battaglia.is_empty():
+		return false
+	var fatto := LogicaBattaglia.costruisci_scale(battaglia, id, bil.battaglia)
+	changed.emit()
+	return fatto
 
 
 func battaglia_anteprima(id: int, bersaglio: int) -> Dictionary:
@@ -2254,7 +2314,7 @@ func inizia_prova_battaglia(p: Dictionary) -> void:
 	for tipo in TIPI_SOLDATI:
 		if int(p.get(tipo, 0)) > 0:
 			t[tipo] = int(p[tipo])
-	battaglia = LogicaBattaglia.crea("prova", p.nemico, t, 0, int(p.vassalli), int(p.nemici), randi(), bil.battaglia)
+	battaglia = LogicaBattaglia.crea("prova", p.nemico, t, 0, int(p.vassalli), int(p.nemici), randi(), bil.battaglia, int(p.get("difese", 1)))
 	battaglia.prova = true
 	battaglia.titolo = "Prova: %s" % nomi.get(p.nemico, "battaglia")
 
@@ -2825,6 +2885,7 @@ func _fine_stagione() -> void:
 	_scadono_modificatori()
 	_riscuoti_tasse()
 	_riscuoti_tributi()
+	_sviluppa_regni()
 	if finita:
 		return
 	if abitanti <= 0:
@@ -3152,6 +3213,11 @@ func carica() -> bool:
 			for campo in ["forza", "atteggiamento", "vassallo", "lealta"]:
 				regni[k][campo] = int(salvati[k].get(campo, 0))
 			regni[k].tributo = str(salvati[k].get("tributo", "normale"))
+			if regni[k].tipo == "signore":
+				# i salvataggi di prima: gli abitanti dalla forza che avevano
+				var spa := float(bil.diplomazia.sviluppo.soldati_per_abitante) * float(bil.battaglia.unita.cavalieri.forza)
+				regni[k].abitanti = int(salvati[k].get("abitanti", roundi(float(salvati[k].get("forza", 40)) / spa)))
+				regni[k].ritmo = float(salvati[k].get("ritmo", 1.0))
 			for campo in ["spiato", "alleato", "conquistato"]:
 				regni[k][campo] = bool(salvati[k][campo])
 	missioni = dati.get("missioni", [])
