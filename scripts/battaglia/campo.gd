@@ -22,6 +22,7 @@ const TUNICHE := {"fanti": Color("a8322a"), "arcieri": Color("3f6b3a"), "vassall
 const TUNICHE_NOSTRE := {"fanti": Color("a8322a"), "spadaccini": Color("962a2a"), "arcieri": Color("8a3a2a"), "balestrieri": Color("7a2a22"),
 	"cavalieri": Color("c0402e"), "vassalli": Color("d0802c")}
 const FIGURE_MASSIME := 5
+const COLORI_LUCE := [Color("fff6e8"), Color("fff0d0"), Color("ffd6a8"), Color("dfe8ff")]  # come nel feudo, per stagione
 
 var camera: CameraIso
 var _cfg: Dictionary
@@ -84,15 +85,15 @@ func _crea_ambiente() -> void:
 	env.background_color = Color("cfe3ef")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color.WHITE
-	env.ambient_light_energy = 0.4
+	env.ambient_light_energy = 0.35
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var luce := DirectionalLight3D.new()
 	luce.rotation_degrees = Vector3(-55, -30, 0)
-	luce.light_energy = 0.8
-	luce.light_color = Color("fff0d0")
+	luce.light_energy = 0.75
+	luce.light_color = COLORI_LUCE[GameState.stagione]
 	luce.shadow_enabled = true
 	luce.directional_shadow_max_distance = 120.0
 	add_child(luce)
@@ -130,10 +131,45 @@ func cella_da_punto(p: Vector3) -> Vector2i:
 	return c if LogicaBattaglia.dentro(c) else Vector2i(-1, -1)
 
 
+## Il clima del campo: quello della regione dove si combatte (nella prova, il nostro).
+func _clima_campo() -> Dictionary:
+	var b := GameState.battaglia
+	var nome := GameState.clima
+	if not b.get("prova", false) and str(b.get("regione", "")).is_valid_int():
+		var g := Regioni.genera(GameState.seme_mappa)
+		var i := int(b.regione)
+		if i >= 0 and i < g.regioni.size():
+			nome = str(g.regioni[i].get("clima", nome))
+	return GameState.climi.get(nome, GameState.dati_clima())
+
+
+## Il campo come il terreno del feudo: i colori del suolo e gli alberi del clima nella stagione di
+## adesso, le celle a "fetta di terra" (una fascia d'erba, poi terra e terra scura).
 func _crea_campo() -> void:
 	var k := LowPoly.Costruttore.new()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
+	var clima := _clima_campo()
+	var st := GameState.stagione
+	var suolo: Dictionary = clima.get("suolo", {})
+	var dati_alberi: Dictionary = clima.get("alberi", {})
+	var erba := Color(str(suolo.get("erba", ["6fae47", "8db24a", "b39a48", "e6ecef"])[st]))
+	var acqua := Color(str(suolo.get("acqua", ["4a90c8", "4a90c8", "4a86b8", "b8d8ea"])[st]))
+	var roccia := Color(str(suolo.get("roccia", ["9a978d", "9a978d", "968f80", "dfe5e8"])[st]))
+	var tinte: Array = suolo.get("tinte_zone", ["000000", "3d6a3c", "6f7a3c", "9a9884"])
+	var pineta := Color(str(tinte[TerrenoFeudo.Bioma.PINETA]))
+	var rupi := Color(str(tinte[TerrenoFeudo.Bioma.RUPI]))
+	var misto := 0.12 if st == GameState.INVERNO else 0.38
+	var misure: Array = dati_alberi.get("tronco", [1.2, 1.0])
+	var alto_tronco := float(misure[0])
+	var tronco := LowPoly.cilindro(0.16 * float(misure[1]), 0.12 * float(misure[1]), alto_tronco, 5)
+	var chiome := [VistaTerreno.forma_chioma(str(dati_alberi.get("primo", "tondo")), alto_tronco),
+		VistaTerreno.forma_chioma(str(dati_alberi.get("secondo", "pino")), alto_tronco)]
+	var colori_chiome := [Color(str(dati_alberi.get("colori_primo", ["4a9a3e", "5aa035", "d0782c", "8a7a68"])[st])),
+		Color(str(dati_alberi.get("colori_secondo", ["2f6b40", "2f6b40", "2f6b40", "c4d6d0"])[st]))]
+	var quota_secondo := float(dati_alberi.get("quota_secondo", [0.45, 0.92, 0.15, 0.6])[TerrenoFeudo.Bioma.PINETA])
+	var masso := LowPoly.sfera(0.8, 1.1, 6, 3)
+	var alberi: Array = [[], []]  # per tipo di chioma: [trasformazione, colore]
 	for r in LogicaBattaglia.ALTEZZA:
 		for c in LogicaBattaglia.LARGHEZZA:
 			var cella := Vector2i(c, r)
@@ -141,33 +177,59 @@ func _crea_campo() -> void:
 			var p := posizione(cella)
 			var alto: float = QUOTE[t]
 			var base := Vector3(p.x, 0, p.z)
-			# il corpo di terra, poi la cima colorata
-			k.forma(LowPoly.cilindro(R * 0.97, R * 0.97, alto + 1.0, 6), LowPoly.t(base + Vector3(0, (alto - 1.0) / 2.0 - 0.06, 0), Vector3.ONE, PI / 6.0), TERRA)
-			var colore: Color = COLORI_TERRENO[t].darkened(rng.randf_range(0.0, 0.08))
-			k.forma(LowPoly.cilindro(R * 0.97, R * 0.97, 0.1, 6), LowPoly.t(base + Vector3(0, alto - 0.07, 0), Vector3.ONE, PI / 6.0), colore.darkened(0.35))
-			k.forma(LowPoly.cilindro(R * 0.88, R * 0.92, 0.12, 6), LowPoly.t(base + Vector3(0, alto - 0.03, 0), Vector3.ONE, PI / 6.0), colore)
+			var colore: Color
+			match t:
+				LogicaBattaglia.Terreno.ACQUA:
+					colore = acqua
+				LogicaBattaglia.Terreno.COLLINA:
+					colore = erba.darkened(0.12).lerp(rupi, misto * 0.6)
+				LogicaBattaglia.Terreno.BOSCO:
+					colore = erba.darkened(0.08).lerp(pineta, misto)
+				_:
+					colore = erba
+			# la stessa leggera variazione per cella del feudo, niente scacchiera piatta
+			var v := float(absi(hash(cella)) % 100) / 100.0
+			colore = colore.lightened(v * 0.05) if v > 0.5 else colore.darkened(v * 0.05)
+			# fetta di terra: terra scura in fondo, terra, una fascia d'erba e la cima
+			k.forma(LowPoly.cilindro(R * 0.98, R * 0.98, 1.8, 6), LowPoly.t(base + Vector3(0, VistaTerreno.FONDO + 0.9, 0), Vector3.ONE, PI / 6.0), VistaTerreno.TERRA_SCURA)
+			var terra_alta := alto - 0.3 + 1.2
+			k.forma(LowPoly.cilindro(R * 0.98, R * 0.98, terra_alta, 6), LowPoly.t(base + Vector3(0, -1.2 + terra_alta / 2.0, 0), Vector3.ONE, PI / 6.0), VistaTerreno.TERRA)
+			k.forma(LowPoly.cilindro(R * 0.98, R * 0.98, 0.3, 6), LowPoly.t(base + Vector3(0, alto - 0.15, 0), Vector3.ONE, PI / 6.0), colore.darkened(0.1))
+			# la cima, un filo più stretta: si vede appena il gradino fra un esagono e l'altro
+			k.forma(LowPoly.cilindro(R * 0.94, R * 0.98, 0.06, 6), LowPoly.t(base + Vector3(0, alto + 0.03, 0), Vector3.ONE, PI / 6.0), colore)
 			match t:
 				LogicaBattaglia.Terreno.PIANURA:
-					for i in 2:
+					if rng.randf() < 0.5:
 						var a := rng.randf() * TAU
-						k.forma(LowPoly.cilindro(0.18, 0.0, 0.35, 4), LowPoly.t(p + Vector3(cos(a), 0.15, sin(a)) * Vector3(R * 0.6, 1, R * 0.6)), colore.darkened(0.25))
+						k.forma(LowPoly.cilindro(0.16, 0.0, 0.4, 4), LowPoly.t(p + Vector3(cos(a) * R * 0.55, 0.2, sin(a) * R * 0.55)), colore.darkened(0.2))
 				LogicaBattaglia.Terreno.BOSCO:
-					for i in 3:
-						var a := TAU * i / 3.0 + rng.randf()
-						_albero(k, p + Vector3(cos(a), 0, sin(a)) * R * 0.5, rng.randf_range(0.8, 1.1))
+					for n in 3:
+						var a := TAU * n / 3.0 + rng.randf()
+						var dove := p + Vector3(cos(a), 0, sin(a)) * R * 0.5
+						var scala := rng.randf_range(0.75, 0.95)
+						var tipo := 1 if rng.randf() < quota_secondo else 0
+						var tr := LowPoly.t(dove, Vector3.ONE * scala, rng.randf() * TAU)
+						k.forma(tronco, tr * LowPoly.t(Vector3(0, alto_tronco / 2.0, 0)), VistaTerreno.TRONCO)
+						alberi[tipo].append([tr, (colori_chiome[tipo] as Color).lightened(rng.randf_range(-0.08, 0.08))])
 				LogicaBattaglia.Terreno.COLLINA:
-					k.forma(LowPoly.sfera(0.5, 0.5, 5, 3), LowPoly.t(p + Vector3(R * 0.45, 0.1, -R * 0.3)), Color("9a978d"))
-					k.forma(LowPoly.sfera(0.32, 0.3, 5, 3), LowPoly.t(p + Vector3(-R * 0.4, 0.06, R * 0.35)), Color("8d8a80"))
-				LogicaBattaglia.Terreno.ACQUA:
-					k.forma(LowPoly.cilindro(R * 0.3, R * 0.3, 0.02, 6), LowPoly.t(p + Vector3(R * 0.2, 0.03, -R * 0.2)), Color("8cc0e8"))
+					k.forma(masso, LowPoly.t(p + Vector3(R * 0.45, 0.15, -R * 0.3), Vector3(0.7, 0.5, 0.6), rng.randf() * TAU), roccia.lightened(rng.randf_range(-0.1, 0.1)))
+					k.forma(masso, LowPoly.t(p + Vector3(-R * 0.4, 0.1, R * 0.35), Vector3(0.45, 0.35, 0.4), rng.randf() * TAU), roccia.darkened(rng.randf_range(0.0, 0.1)))
 	var campo := MeshInstance3D.new()
 	campo.mesh = k.mesh()
 	add_child(campo)
-
-
-func _albero(k: LowPoly.Costruttore, p: Vector3, s: float) -> void:
-	k.forma(LowPoly.cilindro(0.12 * s, 0.1 * s, 0.7 * s, 5), LowPoly.t(p + Vector3(0, 0.35 * s, 0)), Color("6b4a2e"))
-	k.forma(LowPoly.cilindro(0.7 * s, 0.0, 1.9 * s, 6), LowPoly.t(p + Vector3(0, 1.5 * s, 0)), Color("2f6b40"))
+	# le chiome (bianche: il colore della stagione lo dà ogni istanza)
+	for tipo in 2:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = chiome[tipo]
+		mm.instance_count = alberi[tipo].size()
+		for n in alberi[tipo].size():
+			mm.set_instance_transform(n, alberi[tipo][n][0])
+			mm.set_instance_color(n, alberi[tipo][n][1])
+		var nodo := MultiMeshInstance3D.new()
+		nodo.multimesh = mm
+		add_child(nodo)
 
 
 func _crea_bandiera() -> void:
@@ -682,7 +744,7 @@ func _disegna_evidenza() -> void:
 
 func _esagono(k: LowPoly.Costruttore, c: Vector2i, colore: Color) -> void:
 	var p := posizione(c)
-	k.forma(LowPoly.cilindro(R * 0.8, R * 0.8, 0.04, 6), LowPoly.t(p + Vector3(0, 0.05, 0), Vector3.ONE, PI / 6.0), colore)
+	k.forma(LowPoly.cilindro(R * 0.8, R * 0.8, 0.04, 6), LowPoly.t(p + Vector3(0, 0.1, 0), Vector3.ONE, PI / 6.0), colore)
 
 
 # --- Gesti --------------------------------------------------------------------------

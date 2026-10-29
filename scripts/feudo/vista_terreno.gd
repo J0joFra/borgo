@@ -481,8 +481,8 @@ func _crea_alberi() -> void:
 	var misure: Array = alberi.get("tronco", [1.2, 1.0])
 	var h := float(misure[0])
 	var tronco := LowPoly.Costruttore.new().forma(LowPoly.cilindro(0.16 * float(misure[1]), 0.12 * float(misure[1]), h, 5), LowPoly.t(Vector3(0, h / 2.0, 0)), TRONCO).mesh()
-	var chioma_tonda := _forma_chioma(str(alberi.get("primo", "tondo")), h)
-	var chioma_pino := _forma_chioma(str(alberi.get("secondo", "pino")), h)
+	var chioma_tonda := forma_chioma(str(alberi.get("primo", "tondo")), h)
+	var chioma_pino := forma_chioma(str(alberi.get("secondo", "pino")), h)
 
 	var tutti: Array[Transform3D] = []
 	tutti.append_array(tondi)
@@ -644,7 +644,7 @@ func _colori(esadecimali: Array) -> Array[Color]:
 
 
 ## La chioma di un tipo di albero (bianca: il colore lo dà la stagione), sopra un tronco alto h.
-func _forma_chioma(forma: String, h: float) -> Mesh:
+static func forma_chioma(forma: String, h: float) -> Mesh:
 	var k := LowPoly.Costruttore.new()
 	match forma:
 		"pino":

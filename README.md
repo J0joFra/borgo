@@ -121,7 +121,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   - **Alleanza** (dono di 30 oro, solo con un signore): più è amichevole, più è facile che accetti. Un alleato manda
     rinforzi contro i banditi e un piccolo dono ogni stagione.
   - **Attacco e battaglia** (in stile Humankind): parte tutto l'esercito a casa e arriva dopo un mese. Allora si apre
-    il **campo di battaglia a esagoni** (colline, boschetti e stagni a macchie): le nostre unità a sinistra (lancieri,
+    il **campo di battaglia a esagoni**, con il terreno del gioco: i colori del suolo, gli alberi e la luce del clima della regione e della stagione, le celle a fetta di terra come nel feudo (colline, boschetti e stagni a macchie): le nostre unità a sinistra (lancieri,
     spadaccini, arcieri, balestrieri, cavalieri; uomini dei vassalli), quelle nemiche a destra a difesa della loro
     **bandiera** (cavalieri e balestrieri dei signori, predoni, contadini armati). Prima lo **schieramento**: si tocca
     una nostra unità e poi una cella della zona azzurra (sulle nostre unità si scambiano), poi "Inizia la battaglia".
