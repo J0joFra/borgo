@@ -121,13 +121,18 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   - **Alleanza** (dono di 30 oro, solo con un signore): più è amichevole, più è facile che accetti. Un alleato manda
     rinforzi contro i banditi e un piccolo dono ogni stagione.
   - **Attacco e battaglia** (in stile Humankind): parte tutto l'esercito a casa e arriva dopo un mese. Allora si apre
-    il **campo di battaglia a esagoni** (pianure, boschi, colline, acqua): le nostre unità a sinistra (fanti; arcieri e
-    fanti armati se ci sono armi; uomini dei vassalli), quelle nemiche a destra a difesa della loro **bandiera**
-    (cavalieri e balestrieri dei signori, predoni, contadini armati). Tocchi un'unità: le celle chiare sono dove può
-    andare (boschi e colline costano 2 mosse), i nemici rossi quelli che può attaccare. Corpo a corpo il difensore
-    risponde, con l'arco no; il bosco difende, la collina dà forza e fa tirare più lontano. "Fine turno" fa muovere
-    il nemico, che difende la bandiera e attacca chi si avvicina. **Si vince** distruggendo il loro esercito o tenendo
-    la loro bandiera per un turno; si perde se cadono tutti i nostri o dopo 6 turni. Si può sempre ritirarsi.
+    il **campo di battaglia a esagoni** (colline, boschetti e stagni a macchie): le nostre unità a sinistra (lancieri,
+    spadaccini, arcieri, balestrieri, cavalieri; uomini dei vassalli), quelle nemiche a destra a difesa della loro
+    **bandiera** (cavalieri e balestrieri dei signori, predoni, contadini armati). Prima lo **schieramento**: si tocca
+    una nostra unità e poi una cella della zona azzurra (sulle nostre unità si scambiano), poi "Inizia la battaglia".
+    Tocchi un'unità: le celle chiare sono dove può andare (boschi e colline costano 2 mosse), i nemici rossi quelli
+    che può attaccare. Il **primo tocco su un nemico mostra le perdite previste** con i bonus, il secondo attacca.
+    Corpo a corpo il difensore risponde, da lontano no. Regole: **altura** (dalla collina +25%, dal basso in mischia
+    -15%, e si tira più lontano), **fianchi** (+10% per ogni altra nostra unità attorno al bersaglio, fino a 3),
+    **supporto** (+10% in difesa per ogni compagno accanto, fino a 3), **lance contro cavalli** (×1,5), il bosco
+    difende. Ogni unità ha la barra degli uomini rimasti. "Fine turno" fa muovere il nemico: difende la bandiera e
+    attacca chi si avvicina, e dal 5° turno va all'assalto. **Non c'è limite di turni**: si vince distruggendo il loro
+    esercito o tenendo la loro bandiera per un turno; si perde se cadono tutti i nostri. Si può sempre ritirarsi.
     Vincendo la regione è nostra e la governa un **vassallo**. Conquistare un covo di banditi fa arrivare meno incursioni.
     Perdendo torna solo una parte dei soldati.
   - **Vassalli** (scheda di una regione conquistata): la governa un consigliere libero oppure un cavaliere ("Affida a").

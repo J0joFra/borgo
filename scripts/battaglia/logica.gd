@@ -2,9 +2,12 @@ class_name LogicaBattaglia
 extends RefCounted
 ## Le regole della battaglia tattica, in stile Humankind: un campo a esagoni con pianure, boschi,
 ## colline e acqua; le nostre unità a sinistra, quelle del nemico a destra a difesa della loro
-## bandiera. A turni: ogni unità si muove (i boschi e le colline costano di più) e poi attacca,
-## corpo a corpo o con l'arco da lontano. Si vince distruggendo l'esercito nemico o tenendo
-## la loro bandiera per un turno intero; si perde se cadono tutti i nostri o se finiscono i turni.
+## bandiera. Prima lo schieramento (le nostre unità si dispongono nelle prime colonne), poi a turni,
+## senza limite: ogni unità si muove (boschi e colline costano di più) e attacca, corpo a corpo o da
+## lontano. Contano l'altura (dall'alto si colpisce più forte), i fianchi (più unità attorno al
+## bersaglio), il supporto (i compagni accanto aiutano a difendersi) e le lance contro i cavalli.
+## Si vince distruggendo l'esercito nemico o tenendo la loro bandiera per un turno intero; si perde
+## se cadono tutti i nostri o con la ritirata.
 ## Tutto lo stato sta in un dizionario (GameState.battaglia), così si salva com'è.
 ## Le celle sono coordinate "offset" (colonna, riga) di esagoni a punta in su, righe dispari spostate.
 
@@ -19,27 +22,32 @@ const ALTEZZA := 9
 ## truppe: tipo di soldato (fanti, spadaccini, arcieri, balestrieri, cavalieri) -> quanti.
 ## armi: non più usato (le armi non ci sono più), resta per non cambiare chi la chiama.
 static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi: int, aiuti: int, nemici: int, seme: int, cfg: Dictionary) -> Dictionary:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seme
+	# il terreno a macchie (colline, boschi, uno stagno), non a celle sparse: si formano alture e
+	# boschetti da conquistare; le zone di schieramento (prime e ultime colonne) restano più libere
+	var rilievo := FastNoiseLite.new()
+	rilievo.seed = seme
+	rilievo.frequency = 0.22
+	var alberi := FastNoiseLite.new()
+	alberi.seed = seme + 1
+	alberi.frequency = 0.28
 	var terreno: Array = []
 	for r in ALTEZZA:
 		for c in LARGHEZZA:
-			var x := rng.randf()
 			var t := Terreno.PIANURA
-			if c > 1 and c < LARGHEZZA - 2:
-				if x < 0.16:
-					t = Terreno.BOSCO
-				elif x < 0.28:
-					t = Terreno.COLLINA
-				elif x < 0.33:
-					t = Terreno.ACQUA
-			elif x < 0.12:
+			var h := rilievo.get_noise_2d(c * 1.7, r * 2.0)
+			var f := alberi.get_noise_2d(c * 1.7 + 40.0, r * 2.0)
+			var in_mezzo := c > 2 and c < LARGHEZZA - 2
+			if in_mezzo and h > 0.28:
+				t = Terreno.COLLINA
+			elif in_mezzo and h < -0.5:
+				t = Terreno.ACQUA
+			elif f > (0.22 if in_mezzo else 0.45):
 				t = Terreno.BOSCO
 			terreno.append(t)
 	var bandiera := Vector2i(LARGHEZZA - 2, ALTEZZA / 2)
 	terreno[_i(bandiera)] = Terreno.COLLINA  # la bandiera sta su un'altura
-	var b := {"regione": regione, "tipo_nemico": tipo_nemico, "turno": 1, "turni": int(cfg.turni),
-		"fase": "noi", "finita": false, "vinta": false, "perche": "", "terreno": terreno,
+	var b := {"regione": regione, "tipo_nemico": tipo_nemico, "turno": 1,
+		"fase": "schieramento", "finita": false, "vinta": false, "perche": "", "terreno": terreno,
 		"bandiera": [bandiera.x, bandiera.y], "unita": [], "diario": [], "prossimo_id": 1}
 	# le nostre unità: gruppi di "per_unita" uomini per ogni tipo di soldato; chi tira sta dietro
 	var per := int(cfg.per_unita)
@@ -233,6 +241,118 @@ static func bersagli(b: Dictionary, u: Dictionary, cfg: Dictionary) -> Array:
 	return b.unita.filter(func(v): return v.lato != u.lato and int(v.uomini) > 0 and distanza(cella(u), cella(v)) <= g)
 
 
+# --- Schieramento ------------------------------------------------------------------------
+
+## Le celle dove schierare le nostre unità: le prime colonne, fuori dall'acqua.
+static func zona_schieramento(b: Dictionary, cfg: Dictionary) -> Array[Vector2i]:
+	var zona: Array[Vector2i] = []
+	for r in ALTEZZA:
+		for c in int(cfg.get("zona_schieramento", 3)):
+			var x := Vector2i(c, r)
+			if terreno_a(b, x) != Terreno.ACQUA:
+				zona.append(x)
+	return zona
+
+
+## Durante lo schieramento sposta una nostra unità in un'altra cella della zona (se è occupata
+## da una nostra unità, le due si scambiano il posto). Vero se l'ha fatto.
+static func schiera(b: Dictionary, id: int, dove: Vector2i, cfg: Dictionary) -> bool:
+	var u := trova(b, id)
+	if b.fase != "schieramento" or u.is_empty() or u.lato != "noi" or not zona_schieramento(b, cfg).has(dove):
+		return false
+	var altro := trova(b, occupante(b, dove))
+	if not altro.is_empty():
+		if altro.lato != "noi":
+			return false
+		altro.cella = u.cella.duplicate()
+	u.cella = [dove.x, dove.y]
+	return true
+
+
+## Fine dello schieramento: si comincia a combattere.
+static func inizia(b: Dictionary) -> void:
+	if b.fase == "schieramento":
+		b.fase = "noi"
+		_diario(b, "Le schiere sono pronte: all'attacco!")
+
+
+# --- Forze in campo ------------------------------------------------------------------------
+
+## Quanto è in alto una cella (le colline sono alture).
+static func quota(b: Dictionary, c: Vector2i) -> int:
+	return 1 if terreno_a(b, c) == Terreno.COLLINA else 0
+
+
+## Quante unità di un lato stanno attorno a una cella (senza contare chi è escluso).
+static func _vicini_di(b: Dictionary, c: Vector2i, lato: String, escluso: int) -> int:
+	var n := 0
+	for v in vicini(c):
+		var u := trova(b, occupante(b, v))
+		if not u.is_empty() and u.lato == lato and int(u.id) != escluso:
+			n += 1
+	return n
+
+
+## Le forze di un attacco, senza fortuna, con la spiegazione di ogni bonus (per l'anteprima):
+## {fa, fd, voci: ["dall'alto +25%", ...], da_lontano}.
+static func forze(b: Dictionary, a: Dictionary, d: Dictionary, cfg: Dictionary) -> Dictionary:
+	var voci: Array[String] = []
+	var ca := cella(a)
+	var cd := cella(d)
+	var da_lontano := distanza(ca, cd) > 1
+	var ma := float(cfg.terreni[terreno_a(b, ca)].attacco)
+	var md := float(cfg.terreni[terreno_a(b, cd)].difesa)
+	if not is_equal_approx(md, 1.0):
+		voci.append("difende in %s ×%.2f" % [str(cfg.terreni[terreno_a(b, cd)].nome).to_lower(), md])
+	# altura: chi sta più in alto colpisce più forte; in mischia dal basso si fatica
+	if quota(b, ca) > quota(b, cd):
+		ma *= 1.0 + float(cfg.get("altura", 0.25))
+		voci.append("dall'alto +%d%%" % roundi(float(cfg.get("altura", 0.25)) * 100))
+	elif quota(b, ca) < quota(b, cd) and not da_lontano:
+		ma *= 1.0 - float(cfg.get("dal_basso", 0.15))
+		voci.append("dal basso -%d%%" % roundi(float(cfg.get("dal_basso", 0.15)) * 100))
+	# fianchi: le altre unità dell'attaccante attorno al bersaglio
+	var massimo := int(cfg.get("massimo_vicini", 3))
+	var fianchi := mini(massimo, _vicini_di(b, cd, a.lato, int(a.id)))
+	if fianchi > 0:
+		ma *= 1.0 + fianchi * float(cfg.get("fianco", 0.1))
+		voci.append("fianchi +%d%%" % roundi(fianchi * float(cfg.get("fianco", 0.1)) * 100))
+	# supporto: i compagni accanto al difensore lo aiutano
+	var supporto := mini(massimo, _vicini_di(b, cd, d.lato, int(d.id)))
+	if supporto > 0:
+		md *= 1.0 + supporto * float(cfg.get("supporto", 0.1))
+		voci.append("loro supporto +%d%%" % roundi(supporto * float(cfg.get("supporto", 0.1)) * 100))
+	# le lance fermano i cavalli (in attacco e in difesa)
+	var lance := float(cfg.get("lance_contro_cavalli", 1.5))
+	if a.tipo == "fanti" and d.tipo == "cavalieri":
+		ma *= lance
+		voci.append("lance contro cavalli ×%.1f" % lance)
+	elif a.tipo == "cavalieri" and d.tipo == "fanti" and not da_lontano:
+		md *= lance
+		voci.append("cavalli contro lance (loro ×%.1f)" % lance)
+	return {"fa": int(a.uomini) * forza(a, cfg) * ma, "fd": int(d.uomini) * forza(d, cfg) * md, "voci": voci, "da_lontano": da_lontano}
+
+
+## Le perdite che ci si aspetta da un attacco (senza fortuna), per decidere prima di colpire.
+static func anteprima(b: Dictionary, id: int, bersaglio: int, cfg: Dictionary) -> Dictionary:
+	var a := trova(b, id)
+	var d := trova(b, bersaglio)
+	if a.is_empty() or d.is_empty():
+		return {}
+	var f := forze(b, a, d, cfg)
+	var morti := _perdite(a, d, float(f.fa), float(f.fd), bool(f.da_lontano), cfg)
+	return {"morti_difensore": morti[0], "morti_attaccante": morti[1], "voci": f.voci, "da_lontano": f.da_lontano}
+
+
+## Quanti cadono: [difensori, attaccanti]. Corpo a corpo il difensore risponde (contrattacco), da lontano no.
+static func _perdite(a: Dictionary, d: Dictionary, fa: float, fd: float, da_lontano: bool, cfg: Dictionary) -> Array[int]:
+	var morti_d := mini(int(d.uomini), roundi(fa / (fa + fd) * ceili(int(a.uomini) * float(cfg.letalita))))
+	var morti_a := 0
+	if not da_lontano and int(d.uomini) - morti_d > 0:
+		morti_a = mini(int(a.uomini), roundi(fd / (fa + fd) * ceili(int(d.uomini) * float(cfg.risposta))))
+	return [morti_d, morti_a]
+
+
 # --- Azioni ------------------------------------------------------------------------------
 
 ## Sposta un'unità lungo il percorso (se ci arriva con le mosse che ha).
@@ -257,15 +377,13 @@ static func attacca(b: Dictionary, id: int, bersaglio: int, cfg: Dictionary, rng
 	var d := trova(b, bersaglio)
 	if a.is_empty() or d.is_empty() or not bersagli(b, a, cfg).has(d):
 		return {}
-	var ta: Dictionary = cfg.terreni[terreno_a(b, cella(a))]
-	var td: Dictionary = cfg.terreni[terreno_a(b, cella(d))]
-	var fa := int(a.uomini) * forza(a, cfg) * float(ta.attacco) * rng.randf_range(0.85, 1.15)
-	var fd := int(d.uomini) * forza(d, cfg) * float(td.difesa) * rng.randf_range(0.85, 1.15)
-	var da_lontano := distanza(cella(a), cella(d)) > 1
-	var morti_d := mini(int(d.uomini), roundi(fa / (fa + fd) * ceili(int(a.uomini) * float(cfg.letalita))))
-	var morti_a := 0
-	if not da_lontano and int(d.uomini) - morti_d > 0:
-		morti_a = mini(int(a.uomini), roundi(fd / (fa + fd) * ceili(int(d.uomini) * float(cfg.risposta))))
+	var f := forze(b, a, d, cfg)
+	var fa := float(f.fa) * rng.randf_range(0.85, 1.15)
+	var fd := float(f.fd) * rng.randf_range(0.85, 1.15)
+	var da_lontano: bool = f.da_lontano
+	var morti := _perdite(a, d, fa, fd, da_lontano, cfg)
+	var morti_d := morti[0]
+	var morti_a := morti[1]
 	d.uomini = int(d.uomini) - morti_d
 	a.uomini = int(a.uomini) - morti_a
 	a.attaccato = true
@@ -310,8 +428,6 @@ static func fine_turno(b: Dictionary, cfg: Dictionary, rng: RandomNumberGenerato
 		var su := trova(b, occupante(b, bandiera))
 		if not su.is_empty() and su.lato == "noi":
 			_fine(b, true, "Abbiamo preso e tenuto la loro bandiera!")
-		elif int(b.turno) >= int(b.turni):
-			_fine(b, false, "Il sole tramonta e la loro bandiera sventola ancora: l'esercito torna a casa.")
 	if not b.finita:
 		b.turno = int(b.turno) + 1
 		b.fase = "noi"
@@ -344,7 +460,9 @@ static func _mossa_nemica(b: Dictionary, u: Dictionary, cfg: Dictionary, rng: Ra
 	for n in nostri:
 		if distanza(cella(n), cella(u)) < distanza(cella(vicino), cella(u)):
 			vicino = n
-	var minaccia := distanza(cella(vicino), bandiera) <= int(cfg.allarme_bandiera) or distanza(cella(vicino), cella(u)) <= int(cfg.unita[u.tipo].mosse) + 1
+	# senza limite di turni il nemico non aspetta per sempre: dopo qualche turno va all'assalto
+	var minaccia := distanza(cella(vicino), bandiera) <= int(cfg.allarme_bandiera) or distanza(cella(vicino), cella(u)) <= int(cfg.unita[u.tipo].mosse) + 1 \
+		or int(b.turno) >= int(cfg.get("assalto_dal_turno", 5))
 	var meta := cella(vicino) if minaccia else bandiera
 	var possibili := raggiungibili(b, u, cfg)
 	var gitt := gittata(b, u, cfg)

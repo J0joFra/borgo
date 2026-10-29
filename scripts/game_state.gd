@@ -2198,6 +2198,25 @@ func _battaglia(m: Dictionary) -> void:
 
 
 ## Le azioni della battaglia, chiamate dalla scena: muovere, attaccare, finire il turno, ritirarsi.
+func battaglia_schiera(id: int, dove: Vector2i) -> bool:
+	if battaglia.is_empty():
+		return false
+	return LogicaBattaglia.schiera(battaglia, id, dove, bil.battaglia)
+
+
+func battaglia_inizia() -> void:
+	if battaglia.is_empty():
+		return
+	LogicaBattaglia.inizia(battaglia)
+	changed.emit()
+
+
+func battaglia_anteprima(id: int, bersaglio: int) -> Dictionary:
+	if battaglia.is_empty():
+		return {}
+	return LogicaBattaglia.anteprima(battaglia, id, bersaglio, bil.battaglia)
+
+
 func battaglia_muovi(id: int, dove: Vector2i) -> Array[Vector2i]:
 	if battaglia.is_empty() or battaglia.fase != "noi":
 		return []

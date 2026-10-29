@@ -1,8 +1,11 @@
 extends Node3D
 ## Il campo di battaglia in 3D, in stile Humankind: esagoni di pianura, bosco, collina e acqua,
 ## le unità come gruppetti di figure con lo stendardo e il numero di uomini, la bandiera nemica
-## da conquistare. Si tocca una nostra unità per sceglierla: le celle dove può andare si
-## illuminano, i nemici attaccabili diventano rossi. "Fine turno" fa muovere il nemico.
+## da conquistare. Prima lo schieramento: si tocca una nostra unità e poi una cella della zona
+## azzurra per spostarla, e "Inizia la battaglia". Poi si tocca una nostra unità per sceglierla:
+## le celle dove può andare si illuminano, i nemici attaccabili diventano rossi; il primo tocco su
+## un nemico mostra le perdite previste (con altura, fianchi, supporto), il secondo attacca.
+## "Fine turno" fa muovere il nemico; non c'è limite di turni.
 ## Le regole sono in LogicaBattaglia; qui grafica, animazioni e comandi.
 
 const R := 2.2  # raggio di un esagono, in metri
@@ -26,6 +29,7 @@ var _nodi: Dictionary = {}  # id unità -> Node3D
 var _scelta := -1
 var _possibili: Dictionary = {}  # cella -> percorso
 var _bersagli: Array = []
+var _mirato := -1  # il nemico toccato una volta: si vede l'anteprima, al secondo tocco si attacca
 var _evidenza: MeshInstance3D
 var _occupato := false  # durante le animazioni non si tocca nulla
 var _mesh_figure: Dictionary = {}
@@ -69,6 +73,7 @@ func _ready() -> void:
 	camera.position = Vector3(LARGO * LogicaBattaglia.LARGHEZZA / 2.0, 0, PASSO_RIGA * LogicaBattaglia.ALTEZZA / 2.0)
 	_crea_interfaccia()
 	_aggiorna()
+	_disegna_evidenza()
 
 
 # --- Campo --------------------------------------------------------------------------
@@ -139,14 +144,22 @@ func _crea_campo() -> void:
 			# il corpo di terra, poi la cima colorata
 			k.forma(LowPoly.cilindro(R * 0.97, R * 0.97, alto + 1.0, 6), LowPoly.t(base + Vector3(0, (alto - 1.0) / 2.0 - 0.06, 0), Vector3.ONE, PI / 6.0), TERRA)
 			var colore: Color = COLORI_TERRENO[t].darkened(rng.randf_range(0.0, 0.08))
-			k.forma(LowPoly.cilindro(R * 0.95, R * 0.97, 0.12, 6), LowPoly.t(base + Vector3(0, alto - 0.06, 0), Vector3.ONE, PI / 6.0), colore)
+			k.forma(LowPoly.cilindro(R * 0.97, R * 0.97, 0.1, 6), LowPoly.t(base + Vector3(0, alto - 0.07, 0), Vector3.ONE, PI / 6.0), colore.darkened(0.35))
+			k.forma(LowPoly.cilindro(R * 0.88, R * 0.92, 0.12, 6), LowPoly.t(base + Vector3(0, alto - 0.03, 0), Vector3.ONE, PI / 6.0), colore)
 			match t:
+				LogicaBattaglia.Terreno.PIANURA:
+					for i in 2:
+						var a := rng.randf() * TAU
+						k.forma(LowPoly.cilindro(0.18, 0.0, 0.35, 4), LowPoly.t(p + Vector3(cos(a), 0.15, sin(a)) * Vector3(R * 0.6, 1, R * 0.6)), colore.darkened(0.25))
 				LogicaBattaglia.Terreno.BOSCO:
 					for i in 3:
 						var a := TAU * i / 3.0 + rng.randf()
 						_albero(k, p + Vector3(cos(a), 0, sin(a)) * R * 0.5, rng.randf_range(0.8, 1.1))
 				LogicaBattaglia.Terreno.COLLINA:
 					k.forma(LowPoly.sfera(0.5, 0.5, 5, 3), LowPoly.t(p + Vector3(R * 0.45, 0.1, -R * 0.3)), Color("9a978d"))
+					k.forma(LowPoly.sfera(0.32, 0.3, 5, 3), LowPoly.t(p + Vector3(-R * 0.4, 0.06, R * 0.35)), Color("8d8a80"))
+				LogicaBattaglia.Terreno.ACQUA:
+					k.forma(LowPoly.cilindro(R * 0.3, R * 0.3, 0.02, 6), LowPoly.t(p + Vector3(R * 0.2, 0.03, -R * 0.2)), Color("8cc0e8"))
 	var campo := MeshInstance3D.new()
 	campo.mesh = k.mesh()
 	add_child(campo)
@@ -244,7 +257,33 @@ func _crea_unita(u: Dictionary) -> void:
 	etichetta.outline_size = 12
 	etichetta.no_depth_test = true
 	nodo.add_child(etichetta)
+	nodo.add_child(_barra("Fondo", Color(0.06, 0.06, 0.08, 0.85), 1.0, 0))
+	nodo.add_child(_barra("Vita", Color("e2574c") if u.lato == "noi" else Color("5f9ee0"), 1.0, 1))
 	_aggiorna_unita(u)
+
+
+const LARGO_BARRA := 1.8
+
+## Una barretta sempre rivolta alla camera sopra l'unità: il fondo scuro e quanti uomini restano.
+func _barra(nome: String, colore: Color, quota: float, ordine: int) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	m.name = nome
+	var q := QuadMesh.new()
+	q.size = Vector2(LARGO_BARRA * quota, 0.26)
+	q.center_offset = Vector3(-LARGO_BARRA * (1.0 - quota) / 2.0, 0, 0)
+	m.mesh = q
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.billboard_keep_scale = true
+	mat.no_depth_test = true
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.render_priority = ordine
+	mat.albedo_color = colore
+	m.material_override = mat
+	m.position = Vector3(0, 2.35, 0)
+	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return m
 
 
 func _aggiorna_unita(u: Dictionary) -> void:
@@ -266,6 +305,12 @@ func _aggiorna_unita(u: Dictionary) -> void:
 	var etichetta: Label3D = nodo.get_node("Numero")
 	etichetta.text = str(int(u.uomini))
 	etichetta.modulate = Color("ffd0c8") if u.lato == "noi" else Color("d0e0ff")
+	var vita: MeshInstance3D = nodo.get_node("Vita")
+	var quota := clampf(float(u.uomini) / maxf(1.0, float(u.max)), 0.0, 1.0)
+	var q: QuadMesh = vita.mesh
+	q.size.x = LARGO_BARRA * quota
+	q.center_offset.x = -LARGO_BARRA * (1.0 - quota) / 2.0
+	vita.visible = quota > 0.0
 	if int(u.uomini) <= 0:
 		var tw := create_tween()
 		tw.tween_property(nodo, "scale", Vector3(1.35, 0.05, 1.35), 0.4)
@@ -295,7 +340,7 @@ func _numero_volante(dove: Vector3, testo: String, colore: Color) -> void:
 
 func _tocco(schermo: Vector2) -> void:
 	var b := GameState.battaglia
-	if _occupato or b.is_empty() or b.finita or b.fase != "noi":
+	if _occupato or b.is_empty() or b.finita or not (b.fase in ["noi", "schieramento"]):
 		return
 	var raggio := camera.raggio(schermo)
 	var o: Vector3 = raggio[0]
@@ -308,22 +353,47 @@ func _tocco(schermo: Vector2) -> void:
 		return
 	var chi := LogicaBattaglia.occupante(b, cella)
 	var u := LogicaBattaglia.trova(b, chi)
+	if b.fase == "schieramento":
+		_tocco_schieramento(chi, u, cella)
+		return
 	if not u.is_empty() and u.lato == "noi":
 		_scegli(chi)
 	elif not u.is_empty() and _scelta >= 0 and _bersagli.any(func(x): return int(x.id) == chi):
-		_attacca(_scelta, chi)
+		if _mirato == chi:
+			_attacca(_scelta, chi)
+		else:
+			_mirato = chi
+			_disegna_evidenza()
+			_aggiorna()
 	elif _possibili.has(cella):
 		_muovi(_scelta, cella)
 	else:
 		_scegli(-1)
 
 
+## Durante lo schieramento: si sceglie una nostra unità e la si mette in una cella della zona
+## (se c'è già una nostra unità, le due si scambiano).
+func _tocco_schieramento(chi: int, u: Dictionary, cella: Vector2i) -> void:
+	if _scelta >= 0 and chi != _scelta and GameState.battaglia_schiera(_scelta, cella):
+		Audio.effetto("click")
+		for x in GameState.battaglia.unita:
+			var nodo: Node3D = _nodi.get(int(x.id))
+			if nodo and nodo.position.distance_to(posizione(LogicaBattaglia.cella(x))) > 0.01:
+				create_tween().tween_property(nodo, "position", posizione(LogicaBattaglia.cella(x)), 0.2)
+		_scegli(-1)
+	elif not u.is_empty() and u.lato == "noi":
+		_scegli(chi)
+	else:
+		_scegli(-1)
+
+
 func _scegli(id: int) -> void:
 	_scelta = id
+	_mirato = -1
 	_possibili = {}
 	_bersagli = []
 	var u := LogicaBattaglia.trova(GameState.battaglia, id)
-	if not u.is_empty():
+	if not u.is_empty() and GameState.battaglia.fase == "noi":
 		if not bool(u.attaccato):
 			_possibili = LogicaBattaglia.raggiungibili(GameState.battaglia, u, _cfg)
 		_bersagli = LogicaBattaglia.bersagli(GameState.battaglia, u, _cfg)
@@ -399,6 +469,10 @@ func _anima_attacco(e: Dictionary) -> void:
 
 
 func _fine_turno() -> void:
+	if not _occupato and GameState.battaglia.fase == "schieramento":
+		GameState.battaglia_inizia()
+		_scegli(-1)
+		return
 	if _occupato or GameState.battaglia.fase != "noi":
 		return
 	_scegli(-1)
@@ -543,12 +617,25 @@ func _aggiorna() -> void:
 	var loro := LogicaBattaglia.vive(b, "loro")
 	var uomini_noi: int = noi.reduce(func(s, u): return s + int(u.uomini), 0)
 	var uomini_loro: int = loro.reduce(func(s, u): return s + int(u.uomini), 0)
-	_turno.text = "Turno %d di %d  ·  %s  ·  noi %d uomini, loro %d" % [int(b.turno), int(b.turni),
-		"il tuo turno" if b.fase == "noi" else ("turno del nemico" if b.fase == "loro" else "finita"), uomini_noi, uomini_loro]
+	if b.fase == "schieramento":
+		_turno.text = "Schieramento  ·  noi %d uomini, loro %d" % [uomini_noi, uomini_loro]
+	else:
+		_turno.text = "Turno %d  ·  %s  ·  noi %d uomini, loro %d" % [int(b.turno),
+			"il tuo turno" if b.fase == "noi" else ("turno del nemico" if b.fase == "loro" else "finita"), uomini_noi, uomini_loro]
+	_btn_fine.text = "Inizia la battaglia" if b.fase == "schieramento" else "Fine turno"
 	_diario.text = "\n".join(b.diario.slice(maxi(0, b.diario.size() - 3)))
 	var u := LogicaBattaglia.trova(b, _scelta)
-	if u.is_empty():
-		_scheda.text = "Tocca una tua unità (stendardo rosso) per muoverla: le celle chiare sono dove può andare, i nemici in rosso quelli che può attaccare. Boschi e colline costano 2 mosse ma difendono meglio; dalle colline si colpisce più forte e gli arcieri tirano più lontano."
+	var m := LogicaBattaglia.trova(b, _mirato)
+	if b.fase == "schieramento":
+		_scheda.text = ("%s: tocca una cella azzurra per spostarla (o un'altra tua unità per scambiarle)." % _cfg.unita[u.tipo].nome) if not u.is_empty() \
+			else "Schiera l'esercito: tocca una tua unità e poi una cella azzurra. Metti le lance davanti ai cavalli, gli arcieri dietro, e cerca le colline. Poi \"Inizia la battaglia\"."
+	elif not u.is_empty() and not m.is_empty():
+		var p := GameState.battaglia_anteprima(_scelta, _mirato)
+		_scheda.text = "%s contro %s (%d uomini)\nPerdite previste: loro %d, noi %d%s\n%s\nTocca di nuovo il nemico per attaccare." % [
+			_cfg.unita[u.tipo].nome, _cfg.unita[m.tipo].nome, int(m.uomini), int(p.morti_difensore), int(p.morti_attaccante),
+			" (da lontano, niente risposta)" if p.da_lontano else "", ", ".join(p.voci) if not p.voci.is_empty() else "Nessun vantaggio di terreno."]
+	elif u.is_empty():
+		_scheda.text = "Tocca una tua unità (stendardo rosso) per muoverla: le celle chiare sono dove può andare, i nemici in rosso quelli che può attaccare. Boschi e colline costano 2 mosse ma difendono meglio; dall'alto si colpisce più forte, attaccare in tanti attorno a un nemico aiuta (fianchi), stare vicini protegge (supporto)."
 	else:
 		var d: Dictionary = _cfg.unita[u.tipo]
 		var t: Dictionary = _cfg.terreni[LogicaBattaglia.terreno_a(b, LogicaBattaglia.cella(u))]
@@ -556,7 +643,7 @@ func _aggiorna() -> void:
 			d.nome, "", int(u.uomini), int(u.max), LogicaBattaglia.forza(u, _cfg),
 			int(u.mosse), LogicaBattaglia.gittata(b, u, _cfg), t.nome.to_lower(), float(t.attacco), float(t.difesa),
 			"Ha già attaccato in questo turno." if bool(u.attaccato) else ("Nemici a tiro: %d" % _bersagli.size() if not _bersagli.is_empty() else "")]
-	_btn_fine.disabled = _occupato or b.fase != "noi"
+	_btn_fine.disabled = _occupato or not (b.fase in ["noi", "schieramento"])
 	for x in b.unita:
 		_aggiorna_unita(x)
 
@@ -565,7 +652,12 @@ func _aggiorna() -> void:
 func _disegna_evidenza() -> void:
 	var k := LowPoly.Costruttore.new()
 	var vuoto := true
-	var u := LogicaBattaglia.trova(GameState.battaglia, _scelta)
+	var b := GameState.battaglia
+	if b.get("fase", "") == "schieramento":
+		for c in LogicaBattaglia.zona_schieramento(b, _cfg):
+			_esagono(k, c, Color(0.35, 0.7, 1.0, 0.35))
+			vuoto = false
+	var u := LogicaBattaglia.trova(b, _scelta)
 	if not u.is_empty():
 		_esagono(k, LogicaBattaglia.cella(u), Color(1.0, 0.85, 0.3, 0.7))
 		vuoto = false
@@ -573,7 +665,7 @@ func _disegna_evidenza() -> void:
 		_esagono(k, c, Color(1, 1, 1, 0.35))
 		vuoto = false
 	for x in _bersagli:
-		_esagono(k, LogicaBattaglia.cella(x), Color(1.0, 0.25, 0.2, 0.6))
+		_esagono(k, LogicaBattaglia.cella(x), Color(1.0, 0.1, 0.05, 0.85) if int(x.id) == _mirato else Color(1.0, 0.25, 0.2, 0.5))
 		vuoto = false
 	if vuoto:
 		_evidenza.mesh = null

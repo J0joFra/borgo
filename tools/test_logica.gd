@@ -717,7 +717,19 @@ func _ready() -> void:
 	var cfg_b: Dictionary = GameState.bil.battaglia
 	var noi_b := LogicaBattaglia.vive(bt, "noi")
 	var loro_b := LogicaBattaglia.vive(bt, "loro")
-	_verifica(not bt.is_empty() and GameState.velocita == 0 and bt.fase == "noi" and noi_b.size() == 4 and loro_b.size() >= 1, "arrivato l'esercito si schiera sul campo: il tempo si ferma")
+	_verifica(not bt.is_empty() and GameState.velocita == 0 and bt.fase == "schieramento" and noi_b.size() == 4 and loro_b.size() >= 1, "arrivato l'esercito si schiera sul campo: il tempo si ferma")
+	# schieramento: si sposta solo nella zona, scambiandosi con le nostre unità
+	var zona_b := LogicaBattaglia.zona_schieramento(bt, cfg_b)
+	_verifica(zona_b.all(func(c): return c.x < int(cfg_b.zona_schieramento)) and noi_b.all(func(u): return zona_b.has(LogicaBattaglia.cella(u))), "le nostre unità partono nella zona di schieramento")
+	var primo_b: Dictionary = noi_b[0]
+	var secondo_b: Dictionary = noi_b[1]
+	var cella_1 := LogicaBattaglia.cella(primo_b)
+	var cella_2 := LogicaBattaglia.cella(secondo_b)
+	_verifica(GameState.battaglia_schiera(int(primo_b.id), cella_2) and LogicaBattaglia.cella(primo_b) == cella_2 and LogicaBattaglia.cella(secondo_b) == cella_1, "schierando su una nostra unità le due si scambiano")
+	_verifica(not GameState.battaglia_schiera(int(primo_b.id), Vector2i(LogicaBattaglia.LARGHEZZA - 1, 0)), "fuori dalla zona non si schiera")
+	_verifica(GameState.battaglia_muovi(int(primo_b.id), cella_1).is_empty(), "durante lo schieramento non si combatte")
+	GameState.battaglia_inizia()
+	_verifica(bt.fase == "noi" and not GameState.battaglia_schiera(int(primo_b.id), cella_1), "iniziata la battaglia lo schieramento è chiuso")
 	_verifica(noi_b.any(func(u): return u.tipo == "arcieri") and noi_b.any(func(u): return u.tipo == "fanti"), "in campo lancieri e arcieri")
 	_verifica(GameState.soldati_presenti() == 0, "in battaglia i soldati non sono a casa")
 	_verifica(LogicaBattaglia.distanza(Vector2i(0, 0), Vector2i(2, 0)) == 2 and LogicaBattaglia.vicini(Vector2i(3, 3)).size() == 6, "esagoni: distanze e vicini")
@@ -758,19 +770,29 @@ func _ready() -> void:
 	loro_f[0].cella = [0, 0]
 	var nostro_f: Dictionary = LogicaBattaglia.vive(bf, "noi")[0]
 	nostro_f.cella = [bandiera_b.x, bandiera_b.y]
+	GameState.battaglia_inizia()
 	GameState.battaglia_fine_turno()
 	_verifica(bf.finita and bf.vinta and GameState.regni[forte].conquistato, "presa e tenuta la loro bandiera: vittoria")
 	GameState.chiudi_battaglia()
 	GameState.regni[forte].conquistato = false
-	# finiscono i turni senza prendere niente: si torna a casa
+	# niente limite di turni: si combatte finché un esercito cade (il nemico, dopo un po', attacca)
 	GameState.soldati = 10
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
 		GameState._avanza_missioni()
-	for turno_b in int(GameState.bil.battaglia.turni):
-		GameState.battaglia_fine_turno()
-	_verifica(GameState.battaglia.finita and not GameState.battaglia.vinta and int(GameState.battaglia.turno) == int(GameState.bil.battaglia.turni), "dopo %d turni senza la bandiera la battaglia è persa" % int(GameState.bil.battaglia.turni))
+	GameState.battaglia_inizia()
+	for turno_b in 8:
+		if not GameState.battaglia.finita:
+			GameState.battaglia_fine_turno()
+	var bl: Dictionary = GameState.battaglia
+	_verifica(bl.finita or int(bl.turno) > 8, "niente limite di turni: dopo 8 turni si combatte ancora (turno %d)" % int(bl.turno))
+	var vicino_l := 99
+	for u in LogicaBattaglia.vive(bl, "loro"):
+		for v in LogicaBattaglia.vive(bl, "noi"):
+			vicino_l = mini(vicino_l, LogicaBattaglia.distanza(LogicaBattaglia.cella(u), LogicaBattaglia.cella(v)))
+	_verifica(bl.finita or vicino_l <= 2, "dopo qualche turno il nemico va all'assalto (distanza %d)" % vicino_l)
 	GameState.chiudi_battaglia()
+	_prova_forze()
 	var soldati_r := GameState.soldati
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
@@ -1506,3 +1528,49 @@ func _verifica(condizione: bool, descrizione: String) -> void:
 	else:
 		_errori += 1
 		print("  FAIL ", descrizione)
+
+
+## Altura, fianchi, supporto e lance su un campo piatto fatto a mano.
+func _prova_forze() -> void:
+	var cfg: Dictionary = GameState.bil.battaglia
+	var terreno: Array = []
+	terreno.resize(LogicaBattaglia.LARGHEZZA * LogicaBattaglia.ALTEZZA)
+	terreno.fill(LogicaBattaglia.Terreno.PIANURA)
+	var b := {"terreno": terreno, "unita": [], "diario": []}
+	var a := {"id": 1, "lato": "noi", "tipo": "spadaccini", "uomini": 10, "max": 10, "cella": [4, 4]}
+	var d := {"id": 2, "lato": "loro", "tipo": "spadaccini", "uomini": 10, "max": 10, "cella": [5, 4]}
+	b.unita = [a, d]
+	var base := float(LogicaBattaglia.forze(b, a, d, cfg).fa)
+	var base_d := float(LogicaBattaglia.forze(b, a, d, cfg).fd)
+	_verifica(is_equal_approx(base, base_d), "a parità di tutto le forze sono pari")
+	terreno[4 * LogicaBattaglia.LARGHEZZA + 4] = LogicaBattaglia.Terreno.COLLINA
+	var f_alto := LogicaBattaglia.forze(b, a, d, cfg)
+	_verifica(is_equal_approx(float(f_alto.fa), base * (1.0 + float(cfg.altura))) and not f_alto.voci.is_empty(), "dall'alto si colpisce più forte")
+	terreno[4 * LogicaBattaglia.LARGHEZZA + 4] = LogicaBattaglia.Terreno.PIANURA
+	terreno[4 * LogicaBattaglia.LARGHEZZA + 5] = LogicaBattaglia.Terreno.COLLINA
+	var f_basso := LogicaBattaglia.forze(b, a, d, cfg)
+	_verifica(float(f_basso.fa) < base and float(f_basso.fd) > base_d, "dal basso, contro chi sta in collina, si fatica")
+	terreno[4 * LogicaBattaglia.LARGHEZZA + 5] = LogicaBattaglia.Terreno.PIANURA
+	# fianchi: due nostre unità in più attorno al nemico
+	var attorno := LogicaBattaglia.vicini(Vector2i(5, 4)).filter(func(c): return c != Vector2i(4, 4))
+	var id := 3
+	for c in attorno.slice(0, 2):
+		b.unita.append({"id": id, "lato": "noi", "tipo": "fanti", "uomini": 5, "max": 5, "cella": [c.x, c.y]})
+		id += 1
+	_verifica(is_equal_approx(float(LogicaBattaglia.forze(b, a, d, cfg).fa), base * (1.0 + 2 * float(cfg.fianco))), "attaccare dai fianchi aiuta")
+	b.unita = [a, d]
+	# supporto: un compagno accanto al difensore
+	var accanto: Vector2i = LogicaBattaglia.vicini(Vector2i(5, 4)).filter(func(c): return c != Vector2i(4, 4))[0]
+	b.unita.append({"id": 9, "lato": "loro", "tipo": "fanti", "uomini": 5, "max": 5, "cella": [accanto.x, accanto.y]})
+	_verifica(is_equal_approx(float(LogicaBattaglia.forze(b, a, d, cfg).fd), base_d * (1.0 + float(cfg.supporto))), "i compagni accanto aiutano a difendersi")
+	b.unita = [a, d]
+	# lance contro cavalli
+	a.tipo = "fanti"
+	d.tipo = "cavalieri"
+	var lance := LogicaBattaglia.forze(b, a, d, cfg)
+	_verifica(is_equal_approx(float(lance.fa), 10 * LogicaBattaglia.forza(a, cfg) * float(cfg.lance_contro_cavalli)), "le lance fermano i cavalli")
+	a.tipo = "cavalieri"
+	d.tipo = "fanti"
+	_verifica(is_equal_approx(float(LogicaBattaglia.forze(b, a, d, cfg).fd), 10 * LogicaBattaglia.forza(d, cfg) * float(cfg.lance_contro_cavalli)), "e i cavalli contro le lance soffrono")
+	var p := LogicaBattaglia.anteprima(b, 1, 2, cfg)
+	_verifica(int(p.morti_difensore) > 0 and int(p.morti_attaccante) >= 0 and not p.da_lontano, "l'anteprima dice le perdite previste")

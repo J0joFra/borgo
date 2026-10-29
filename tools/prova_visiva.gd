@@ -2,6 +2,8 @@ extends Node
 ## Prova visiva: prologo davanti al falò, scelta della guida, mondo esteso col confine,
 ## consiglio, mappa del regno. Salva screenshot in user:// (serve un display, non --headless).
 
+var _anteprima_vista := false
+
 
 func _ready() -> void:
 	_via.call_deferred()
@@ -383,6 +385,9 @@ func _via() -> void:
 		campo._scegli(int(scelto.id))
 		await _attendi(0.4)
 		await _scatta("32_battaglia_scelta")
+		await campo._fine_turno()  # "Inizia la battaglia": finisce lo schieramento
+		campo._scegli(int(scelto.id))
+		await _attendi(0.3)
 		# avanza verso la bandiera il più possibile
 		var bandiera := Vector2i(int(GameState.battaglia.bandiera[0]), int(GameState.battaglia.bandiera[1]))
 		for u in nostri:
@@ -398,6 +403,15 @@ func _via() -> void:
 			for u in LogicaBattaglia.vive(GameState.battaglia, "noi"):
 				var bers := LogicaBattaglia.bersagli(GameState.battaglia, u, GameState.bil.battaglia)
 				if not bers.is_empty():
+					if not _anteprima_vista:
+						# il primo tocco sul nemico mostra le perdite previste
+						campo._scegli(int(u.id))
+						campo._mirato = int(bers[0].id)
+						campo._disegna_evidenza()
+						campo._aggiorna()
+						await _attendi(0.3)
+						await _scatta("32b_battaglia_anteprima")
+						_anteprima_vista = true
 					await campo._attacca(int(u.id), int(bers[0].id))
 				else:
 					var possibili: Dictionary = LogicaBattaglia.raggiungibili(GameState.battaglia, u, GameState.bil.battaglia)
