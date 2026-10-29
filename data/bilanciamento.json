@@ -97,8 +97,12 @@
 			{"nome": "Collina", "costo": 2, "attacco": 1.0, "difesa": 1.15},
 			{"nome": "Acqua", "costo": 99, "attacco": 1.0, "difesa": 1.0},
 			{"nome": "Mura", "costo": 1, "attacco": 1.0, "difesa": 1.5},
-			{"nome": "Case", "costo": 99, "attacco": 1.0, "difesa": 1.0}
+			{"nome": "Case", "costo": 99, "attacco": 1.0, "difesa": 1.0},
+			{"nome": "Fiume", "costo": 99, "attacco": 1.0, "difesa": 1.0},
+			{"nome": "Ponte", "costo": 1, "attacco": 1.0, "difesa": 0.85},
+			{"nome": "Fuori", "costo": 99, "attacco": 1.0, "difesa": 1.0}
 		],
+		"fiume": {"probabilita": 0.6, "ponte_pietra": 0.5},
 		"assedio": {"livelli": [
 			{"nome": "Palizzata", "materiale": "legno", "raggio": 2, "porta": 10, "difesa": 1.25, "case": 0},
 			{"nome": "Mura di pietra", "materiale": "pietra", "raggio": 2, "porta": 20, "difesa": 1.5, "case": 0},

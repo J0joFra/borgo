@@ -1,7 +1,9 @@
 class_name LogicaBattaglia
 extends RefCounted
 ## Le regole della battaglia tattica, in stile Humankind: un piccolo campo a quadretti come il terreno
-## del feudo, con pianure, boschi, colline e acqua (le diagonali contano come passi); le nostre unità a sinistra, quelle del nemico a destra a difesa della loro
+## del feudo, di forma irregolare, con pianure, boschi, colline e acqua (le diagonali contano come
+## passi). Spesso un fiume lo taglia in due: si passa da un ponte, se c'è, o da un ponte di barche che
+## i nostri fanti costruiscono con la legna di un albero abbattuto; le nostre unità a sinistra, quelle del nemico a destra a difesa della loro
 ## bandiera. Prima lo schieramento (le nostre unità si dispongono nelle prime colonne), poi a turni,
 ## senza limite: ogni unità si muove (boschi e colline costano di più) e attacca, corpo a corpo o da
 ## lontano. Contano l'altura (dall'alto si colpisce più forte), i fianchi (più unità attorno al
@@ -17,7 +19,7 @@ extends RefCounted
 ## Tutto lo stato sta in un dizionario (GameState.battaglia), così si salva com'è.
 ## Le celle sono (colonna, riga) di una griglia quadrata.
 
-enum Terreno { PIANURA, BOSCO, COLLINA, ACQUA, MURA, CASA }
+enum Terreno { PIANURA, BOSCO, COLLINA, ACQUA, MURA, CASA, FIUME, PONTE, FUORI }
 
 const LARGHEZZA := 16
 const ALTEZZA := 10
@@ -53,6 +55,8 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 			elif f > (0.22 if in_mezzo else 0.45):
 				t = Terreno.BOSCO
 			terreno.append(t)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seme + 9
 	var assedio: bool = tipo_nemico == "signore"
 	var livelli: Array = cfg.get("assedio", {}).get("livelli", [{}])
 	var lv: Dictionary = livelli[clampi(difese if difese >= 0 else 1, 0, livelli.size() - 1)] if assedio else {}
@@ -61,16 +65,47 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 	terreno[_i(bandiera)] = Terreno.COLLINA  # la bandiera sta su un'altura
 	var porta := Vector2i(-1, -1)
 	var torri: Array = []
+	var edifici := {}  # indice cella -> modello (case, chiesa, tende...): il paese del nemico
+	_forma(terreno, bandiera, raggio + 1 if assedio else 2, seme)
+	# il fiume, fra il nostro schieramento e il nemico (prima delle mura o del loro campo)
+	var ponti := {}
+	var fine_fiume := (bandiera.x - raggio - 3) if assedio else (LARGHEZZA - 5)
+	if fine_fiume >= 4 and rng.randf() < float(cfg.get("fiume", {}).get("probabilita", 0.6)):
+		var x := rng.randi_range(4, fine_fiume)
+		var righe_fiume: Array[int] = []
+		for r in ALTEZZA:
+			if r > 0:
+				x = clampi(x + rng.randi_range(-1, 1), 4, fine_fiume)
+			var c := Vector2i(x, r)
+			if terreno[_i(c)] != Terreno.FUORI:
+				terreno[_i(c)] = Terreno.FIUME
+				righe_fiume.append(r)
+		if not righe_fiume.is_empty() and rng.randf() < float(cfg.get("fiume", {}).get("ponte_pietra", 0.5)):
+			var riga: int = righe_fiume[righe_fiume.size() / 2 + rng.randi_range(-1, 1) if righe_fiume.size() > 2 else 0]
+			for cx in LARGHEZZA:
+				if terreno[_i(Vector2i(cx, riga))] == Terreno.FIUME:
+					terreno[_i(Vector2i(cx, riga))] = Terreno.PONTE
+					ponti[str(_i(Vector2i(cx, riga)))] = "pietra"
+					break
 	if assedio:
 		porta = _castello(terreno, bandiera, raggio, int(lv.get("case", 0)), seme)
+		for i in terreno.size():
+			if terreno[i] == Terreno.CASA:
+				edifici[str(i)] = ""
 		if lv.get("torri", false):
 			for d in [Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(1, 1)]:
 				var t: Vector2i = bandiera + d * raggio
 				if dentro(t):
 					torri.append([t.x, t.y])
+	if not assedio:
+		_accampamento(terreno, bandiera, tipo_nemico, edifici)
+	# per le scale e i ponti serve legna: dalla nostra parte c'è sempre un bosco
+	_assicura_bosco(terreno, rng)
+	_dai_nomi_edifici(edifici, tipo_nemico, int(lv.get("case", 0)) >= 5, rng)
 	var b := {"regione": regione, "tipo_nemico": tipo_nemico, "turno": 1,
 		"fase": "schieramento", "finita": false, "vinta": false, "perche": "", "terreno": terreno,
 		"bandiera": [bandiera.x, bandiera.y], "unita": [], "diario": [], "prossimo_id": 1, "assedio": assedio,
+		"ponti": ponti, "edifici": edifici,
 		"mura": {"livello": difese, "nome": str(lv.get("nome", "")), "materiale": str(lv.get("materiale", "pietra")),
 			"difesa": float(lv.get("difesa", 1.5)), "torri": torri} if assedio else {}}
 	# le nostre unità: gruppi di "per_unita" uomini per ogni tipo di soldato; chi tira sta dietro
@@ -121,6 +156,10 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 ## Il castello: un quadrato di mura attorno alla bandiera, con la porta verso di noi; dentro e
 ## davanti alla porta il terreno è sgombro, salvo le case del feudo (nelle città). Restituisce la porta.
 static func _castello(terreno: Array, bandiera: Vector2i, raggio: int, case: int, seme: int) -> Vector2i:
+	for y in range(bandiera.y - raggio, bandiera.y + raggio + 1):
+		for x in range(bandiera.x - raggio - 1, bandiera.x + raggio + 1):
+			if dentro(Vector2i(x, y)) and terreno[_i(Vector2i(x, y))] == Terreno.FUORI:
+				terreno[_i(Vector2i(x, y))] = Terreno.PIANURA
 	for y in range(bandiera.y - raggio - 1, bandiera.y + raggio + 2):
 		for x in range(bandiera.x - raggio - 2, bandiera.x + raggio + 2):
 			var c := Vector2i(x, y)
@@ -174,7 +213,7 @@ static func _attorno(centro: Vector2i, n: int, terreno: Array) -> Array[Vector2i
 	while posti.size() < n and not anello.is_empty():
 		var prossimo := []
 		for c in anello:
-			if not terreno[_i(c)] in [Terreno.ACQUA, Terreno.MURA, Terreno.CASA] and posti.size() < n:
+			if terreno[_i(c)] in [Terreno.PIANURA, Terreno.BOSCO, Terreno.COLLINA, Terreno.PONTE] and posti.size() < n:
 				posti.append(c)
 			for v in vicini(c):
 				if not visti.has(v):
@@ -187,7 +226,7 @@ static func _attorno(centro: Vector2i, n: int, terreno: Array) -> Array[Vector2i
 static func _aggiungi(b: Dictionary, lato: String, tipo: String, uomini: int, cella: Vector2i, cfg: Dictionary) -> void:
 	# se la cella è occupata o d'acqua, la prima libera vicina
 	var libera := cella
-	if occupante(b, libera) >= 0 or b.terreno[_i(libera)] in [Terreno.ACQUA, Terreno.MURA, Terreno.CASA]:
+	if occupante(b, libera) >= 0 or not b.terreno[_i(libera)] in [Terreno.PIANURA, Terreno.BOSCO, Terreno.COLLINA, Terreno.PONTE]:
 		for c in _attorno(cella, 30, b.terreno):
 			if occupante(b, c) < 0:
 				libera = c
@@ -196,6 +235,86 @@ static func _aggiungi(b: Dictionary, lato: String, tipo: String, uomini: int, ce
 	b.unita.append({"id": b.prossimo_id, "lato": lato, "tipo": tipo, "uomini": uomini, "max": uomini,
 		"cella": [libera.x, libera.y], "mosse": int(d.mosse), "attaccato": false})
 	b.prossimo_id = int(b.prossimo_id) + 1
+
+
+## La forma del campo: non un rettangolo ma un'isola dai bordi ondulati, come il feudo. Restano sempre
+## dentro la zona di schieramento e il campo attorno alla bandiera; le celle staccate vanno fuori.
+static func _forma(terreno: Array, bandiera: Vector2i, attorno: int, seme: int) -> void:
+	var rumore := FastNoiseLite.new()
+	rumore.seed = seme + 3
+	rumore.frequency = 0.2
+	var cx := (LARGHEZZA - 1) / 2.0
+	var cy := (ALTEZZA - 1) / 2.0
+	for r in ALTEZZA:
+		for c in LARGHEZZA:
+			var ux := absf(c - cx) / (cx + 0.5)
+			var uy := absf(r - cy) / (cy + 0.5)
+			var d := pow(pow(ux, 4.0) + pow(uy, 4.0), 0.25)
+			var tenuta := (c < 3 and absi(r - int(cy)) <= 3) or (absi(c - bandiera.x) <= attorno and absi(r - bandiera.y) <= attorno)
+			if not tenuta and d + rumore.get_noise_2d(c * 2.3, r * 2.3) * 0.35 > 0.97:
+				terreno[_i(Vector2i(c, r))] = Terreno.FUORI
+	# un solo pezzo: quello collegato allo schieramento
+	var inizio := Vector2i(0, int(cy))
+	var visti := {inizio: true}
+	var coda: Array[Vector2i] = [inizio]
+	while not coda.is_empty():
+		var x: Vector2i = coda.pop_back()
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var v: Vector2i = x + d
+			if dentro(v) and not visti.has(v) and terreno[_i(v)] != Terreno.FUORI:
+				visti[v] = true
+				coda.append(v)
+	for i in terreno.size():
+		if not visti.has(Vector2i(i % LARGHEZZA, i / LARGHEZZA)):
+			terreno[i] = Terreno.FUORI
+
+
+## Fuori dalle mura: il campo dei banditi (tende) o le fattorie della terra libera, dietro la bandiera.
+static func _accampamento(terreno: Array, bandiera: Vector2i, tipo: String, edifici: Dictionary) -> void:
+	var quante := 3
+	for d in [Vector2i(1, -2), Vector2i(1, 2), Vector2i(-1, -2), Vector2i(-1, 2), Vector2i(1, 0), Vector2i(0, -2), Vector2i(0, 2)]:
+		if quante <= 0:
+			break
+		var c: Vector2i = bandiera + d
+		if dentro(c) and terreno[_i(c)] in [Terreno.PIANURA, Terreno.BOSCO, Terreno.COLLINA]:
+			terreno[_i(c)] = Terreno.CASA
+			edifici[str(_i(c))] = ""
+			quante -= 1
+
+
+## Che edificio c'è in ogni cella di case, secondo chi è il nemico.
+static func _dai_nomi_edifici(edifici: Dictionary, tipo: String, citta: bool, rng: RandomNumberGenerator) -> void:
+	var scelta: Array
+	match tipo:
+		"banditi":
+			scelta = ["tent", "tent", "tent"]
+		"libera":
+			scelta = ["building_home_B_yellow", "building_windmill_yellow", "building_home_A_yellow"]
+		_:
+			scelta = ["building_castle_blue", "building_church_blue", "building_home_A_blue", "building_home_B_blue", "building_tavern_blue",
+				"building_market_blue", "building_blacksmith_blue"] if citta else ["building_home_A_blue", "building_home_B_blue", "building_well_blue"]
+	var chiavi := edifici.keys()
+	for k in chiavi.size():
+		edifici[chiavi[k]] = scelta[k % scelta.size()] if k < scelta.size() else scelta[rng.randi_range(2, scelta.size() - 1) if scelta.size() > 2 else 0]
+
+
+## Se dalla nostra parte del fiume (o prima delle mura) non c'è un bosco, ne nasce uno: serve la legna.
+static func _assicura_bosco(terreno: Array, rng: RandomNumberGenerator) -> void:
+	var limite := LARGHEZZA
+	for i in terreno.size():
+		if terreno[i] in [Terreno.FIUME, Terreno.PONTE, Terreno.MURA]:
+			limite = mini(limite, i % LARGHEZZA)
+	var liberi: Array[Vector2i] = []
+	for i in terreno.size():
+		var c := Vector2i(i % LARGHEZZA, i / LARGHEZZA)
+		if c.x < limite - 1 and c.x >= 2:
+			if terreno[i] == Terreno.BOSCO:
+				return
+			if terreno[i] == Terreno.PIANURA:
+				liberi.append(c)
+	if not liberi.is_empty():
+		var c: Vector2i = liberi[rng.randi_range(0, liberi.size() - 1)]
+		terreno[_i(c)] = Terreno.BOSCO
 
 
 # --- Griglia ---------------------------------------------------------------------------
@@ -243,7 +362,7 @@ static func _passo_libero(b: Dictionary, da: Vector2i, a: Vector2i, u: Dictionar
 ## Acqua e case mai; sulle mura i difensori a piedi, e dei nostri solo i fanti con le scale.
 static func calpestabile(b: Dictionary, c: Vector2i, u: Dictionary) -> bool:
 	var t := terreno_a(b, c)
-	if t == Terreno.ACQUA or t == Terreno.CASA:
+	if t in [Terreno.ACQUA, Terreno.CASA, Terreno.FIUME, Terreno.FUORI]:
 		return false
 	if t != Terreno.MURA:
 		return true
@@ -460,9 +579,15 @@ static func albero_vicino(b: Dictionary, u: Dictionary) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
-## Un nostro fante, in un assedio, accanto a un bosco, che non ha ancora né legna né scale.
+## C'è un fiume da attraversare?
+static func ha_fiume(b: Dictionary) -> bool:
+	return b.terreno.has(Terreno.FIUME)
+
+
+## Un nostro fante accanto a un bosco, che non ha ancora né legna né scale, quando la legna serve
+## (un assedio, per le scale, o un fiume, per il ponte di barche).
 static func puo_abbattere(b: Dictionary, u: Dictionary) -> bool:
-	return b.get("assedio", false) and b.fase == "noi" and not u.is_empty() and u.lato == "noi" and u.tipo in FANTERIA \
+	return (b.get("assedio", false) or ha_fiume(b)) and b.fase == "noi" and not u.is_empty() and u.lato == "noi" and u.tipo in FANTERIA \
 		and not bool(u.attaccato) and not bool(u.get("legna", false)) and not bool(u.get("scale", false)) and albero_vicino(b, u).x >= 0
 
 
@@ -481,7 +606,7 @@ static func abbatti(b: Dictionary, id: int, cfg: Dictionary) -> Vector2i:
 
 
 static func puo_fare_scale(b: Dictionary, u: Dictionary) -> bool:
-	return b.fase == "noi" and not u.is_empty() and u.lato == "noi" and bool(u.get("legna", false)) and not bool(u.attaccato)
+	return b.get("assedio", false) and b.fase == "noi" and not u.is_empty() and u.lato == "noi" and bool(u.get("legna", false)) and not bool(u.attaccato)
 
 
 ## Con la legna costruisce le scale (un altro turno): da adesso l'unità può salire sulle mura.
@@ -495,6 +620,37 @@ static func costruisci_scale(b: Dictionary, id: int, cfg: Dictionary) -> bool:
 	u.mosse = 0
 	_diario(b, "%s hanno le scale: possono salire sulle mura!" % cfg.unita[u.tipo].nome)
 	return true
+
+
+## La cella di fiume accanto (in orizzontale o verticale) dove gettare il ponte, o (-1, -1).
+static func fiume_vicino(b: Dictionary, u: Dictionary) -> Vector2i:
+	for d in [Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0)]:
+		var v: Vector2i = cella(u) + d
+		if dentro(v) and terreno_a(b, v) == Terreno.FIUME:
+			return v
+	return Vector2i(-1, -1)
+
+
+static func puo_fare_ponte(b: Dictionary, u: Dictionary) -> bool:
+	return b.fase == "noi" and not u.is_empty() and u.lato == "noi" and bool(u.get("legna", false)) and not bool(u.attaccato) and fiume_vicino(b, u).x >= 0
+
+
+## Con la legna i fanti gettano un ponte di barche sulla cella di fiume accanto: da lì si passa
+## (anche il nemico!). Per questo turno l'unità ha finito.
+static func costruisci_ponte(b: Dictionary, id: int, cfg: Dictionary) -> Vector2i:
+	var u := trova(b, id)
+	if not puo_fare_ponte(b, u):
+		return Vector2i(-1, -1)
+	var c := fiume_vicino(b, u)
+	b.terreno[_i(c)] = Terreno.PONTE
+	if not b.has("ponti"):
+		b.ponti = {}
+	b.ponti[str(_i(c))] = "barche"
+	u.legna = false
+	u.attaccato = true
+	u.mosse = 0
+	_diario(b, "%s gettano un ponte di barche sul fiume!" % cfg.unita[u.tipo].nome)
+	return c
 
 
 # --- Azioni ------------------------------------------------------------------------------

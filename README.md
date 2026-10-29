@@ -5,7 +5,7 @@ Il design completo è nel documento "Borgo — Game Design Document".
 
 ![Il menu principale](docs/menu.png)
 ![Il prologo: chi guiderà i sopravvissuti?](docs/prologo.png)
-![La battaglia sul campo come il feudo](docs/battaglia.png)
+![La battaglia: campo irregolare, fiume con il ponte di pietra, palizzata](docs/battaglia.png)
 ![L'assedio di una città: mura, torri, case, e un fante salito con le scale](docs/assedio.png)
 ![Vittoria: l'esercito nemico è distrutto](docs/battaglia_fine.png)
 ![Il tutorial dopo il prologo](docs/tutorial.png)
@@ -122,7 +122,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   - **Alleanza** (dono di 30 oro, solo con un signore): più è amichevole, più è facile che accetti. Un alleato manda
     rinforzi contro i banditi e un piccolo dono ogni stagione.
   - **Attacco e battaglia** (in stile Humankind): parte tutto l'esercito a casa e arriva dopo un mese. Allora si apre
-    il **campo di battaglia**: un piccolo diorama a quadretti come il terreno del feudo (le diagonali contano come un passo), con i colori del suolo, gli alberi e la luce del clima della regione e della stagione, colline a gradoni, boschetti e stagni: le nostre unità a sinistra (lancieri,
+    il **campo di battaglia**: un piccolo diorama a quadretti come il terreno del feudo, di **forma irregolare** (le diagonali contano come un passo), con i colori del suolo, gli alberi e la luce del clima della regione e della stagione, colline a gradoni, boschetti e stagni, e gli **edifici 3D del borgo**: mura, torri e porta del castello, case, chiesa e maniero nelle città, tende nei covi dei banditi, fattorie e mulino nelle terre libere. Spesso un **fiume** taglia il campo: si passa da un ponte di pietra, se c'è, oppure un fante abbatte un albero e con la legna getta un **ponte di barche** dalla riva (ci passa anche il nemico): le nostre unità a sinistra (lancieri,
     spadaccini, arcieri, balestrieri, cavalieri; uomini dei vassalli), quelle nemiche a destra a difesa della loro
     **bandiera** (cavalieri e balestrieri dei signori, predoni, contadini armati). Prima lo **schieramento**: si tocca
     una nostra unità e poi una cella della zona azzurra (sulle nostre unità si scambiano), poi "Inizia la battaglia".

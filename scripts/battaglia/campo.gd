@@ -11,8 +11,11 @@ extends Node3D
 
 const CELLA := 3.2  # lato di una cella, in metri
 const R := CELLA / 2.0
-## altezza della cima per pianura, bosco, collina, acqua, mura (il camminamento), case (il terreno)
-const QUOTE := [0.3, 0.3, 0.9, 0.0, 2.1, 0.3]
+## altezza della cima per pianura, bosco, collina, acqua, mura (il camminamento), case (il terreno),
+## fiume, ponte (l'impalcato), fuori dal campo
+const QUOTE := [0.3, 0.3, 0.9, 0.0, 2.1, 0.3, -0.1, 0.45, 0.0]
+const ALTEZZA_TORRE := 3.65  # le torri agli angoli delle mura (modello del borgo), sopra il terreno
+const ALTEZZA_PALIZZATA := 1.75
 const SUOLO_MURA := 0.3  # sotto le mura il terreno è pianura
 const ALTEZZA_MURA := 1.8
 const TERRA := Color("8a6a45")
@@ -44,8 +47,10 @@ var _scheda: Label
 var _diario: Label
 var _btn_fine: Button
 var _btn_ritirata: Button
-var _btn_azione: Button  # abbattere un albero / costruire le scale, per i fanti negli assedi
+var _btn_azione: Button  # abbattere un albero / costruire le scale, per i fanti
+var _btn_ponte: Button   # gettare un ponte di barche sul fiume, con la legna
 var _nodi_campo: Array = []  # le mesh del terreno, da rifare quando si abbatte un albero
+var _decori: Node3D  # i modelli del borgo sul campo: mura, torri, case, ponti
 var _esito: PanelContainer
 var _esito_testo: Label
 
@@ -66,6 +71,7 @@ func _ready() -> void:
 	_crea_ambiente()
 	_crea_campo()
 	_crea_bandiera()
+	_crea_nuvole()
 	for u in GameState.battaglia.unita:
 		if int(u.uomini) > 0:
 			_crea_unita(u)
@@ -106,12 +112,40 @@ func _crea_ambiente() -> void:
 ## Il centro di una cella, alla quota della sua cima (sulle mura, il camminamento).
 func posizione(c: Vector2i) -> Vector3:
 	var t := LogicaBattaglia.terreno_a(GameState.battaglia, c)
-	return Vector3((c.x + 0.5) * CELLA, QUOTE[t], (c.y + 0.5) * CELLA)
+	var y: float = QUOTE[t]
+	if t == LogicaBattaglia.Terreno.MURA:
+		y = SUOLO_MURA + (ALTEZZA_TORRE if _angolo(c) and not _legno() else (ALTEZZA_PALIZZATA if _legno() else 1.9))
+	return Vector3((c.x + 0.5) * CELLA, y, (c.y + 0.5) * CELLA)
+
+
+func _legno() -> bool:
+	return GameState.battaglia.get("mura", {}).get("materiale", "pietra") == "legno"
+
+
+func _porta() -> Vector2i:
+	for u in GameState.battaglia.unita:
+		if u.tipo == LogicaBattaglia.PORTA:
+			return LogicaBattaglia.cella(u)
+	return Vector2i(-1, -1)
+
+
+## Una cella di mura che fa angolo (mura in orizzontale e in verticale): lì c'è una torre.
+func _angolo(c: Vector2i) -> bool:
+	var o := _mura_verso(c, Vector2i(1, 0)) or _mura_verso(c, Vector2i(-1, 0))
+	var v := _mura_verso(c, Vector2i(0, 1)) or _mura_verso(c, Vector2i(0, -1))
+	return o == v
+
+
+func _mura_verso(c: Vector2i, d: Vector2i) -> bool:
+	var v := c + d
+	return LogicaBattaglia.dentro(v) and (LogicaBattaglia.terreno_a(GameState.battaglia, v) == LogicaBattaglia.Terreno.MURA or v == _porta())
 
 
 ## La quota del terreno di una cella (senza le mura).
 func _suolo(c: Vector2i) -> float:
 	var t := LogicaBattaglia.terreno_a(GameState.battaglia, c)
+	if t == LogicaBattaglia.Terreno.PONTE:
+		return float(QUOTE[LogicaBattaglia.Terreno.FIUME])
 	return SUOLO_MURA if t in [LogicaBattaglia.Terreno.MURA, LogicaBattaglia.Terreno.CASA] else float(QUOTE[t])
 
 
@@ -126,9 +160,9 @@ func cella_da_punto(p: Vector3) -> Vector2i:
 func cella_da_raggio(o: Vector3, d: Vector3) -> Vector2i:
 	if absf(d.y) < 1e-4:
 		return Vector2i(-1, -1)
-	for quota in [QUOTE[LogicaBattaglia.Terreno.MURA], QUOTE[LogicaBattaglia.Terreno.COLLINA], 0.3, 0.0]:
+	for quota in [SUOLO_MURA + ALTEZZA_TORRE, SUOLO_MURA + 1.9, SUOLO_MURA + ALTEZZA_PALIZZATA, QUOTE[LogicaBattaglia.Terreno.COLLINA], 0.45, 0.3, 0.0, -0.1]:
 		var c := cella_da_punto(o + d * ((float(quota) - o.y) / d.y))
-		if c.x >= 0 and absf(float(QUOTE[LogicaBattaglia.terreno_a(GameState.battaglia, c)]) - float(quota)) < 0.05:
+		if c.x >= 0 and absf(posizione(c).y - float(quota)) < 0.05:
 			return c
 	return cella_da_punto(o + d * ((0.3 - o.y) / d.y))
 
@@ -172,17 +206,24 @@ func _crea_campo() -> void:
 	var quota_secondo := float(dati_alberi.get("quota_secondo", [0.45, 0.92, 0.15, 0.6])[TerrenoFeudo.Bioma.PINETA])
 	var masso := LowPoly.sfera(0.8, 1.1, 6, 3)
 	var alberi: Array = [[], []]  # per tipo di chioma: [trasformazione, colore]
+	var fiume := Color(str(suolo.get("fiume", ["5aa6dc", "5aa6dc", "5a9cd0", "7aaccc"])[st]))
+	_decori = Node3D.new()
+	add_child(_decori)
 	for r in LogicaBattaglia.ALTEZZA:
 		for c in LogicaBattaglia.LARGHEZZA:
 			var cella := Vector2i(c, r)
 			var t := LogicaBattaglia.terreno_a(GameState.battaglia, cella)
 			var p := Vector3((c + 0.5) * CELLA, _suolo(cella), (r + 0.5) * CELLA)
 			rng.seed = hash(cella) + 11  # ogni cella i suoi alberi: abbattendone uno gli altri restano
+			if t == LogicaBattaglia.Terreno.FUORI:
+				continue
 			var alto := _suolo(cella)
 			var colore: Color
 			match t:
 				LogicaBattaglia.Terreno.ACQUA:
 					colore = acqua
+				LogicaBattaglia.Terreno.FIUME, LogicaBattaglia.Terreno.PONTE:
+					colore = fiume
 				LogicaBattaglia.Terreno.COLLINA:
 					colore = erba.darkened(0.12).lerp(rupi, misto * 0.6)
 				LogicaBattaglia.Terreno.BOSCO:
@@ -207,6 +248,11 @@ func _crea_campo() -> void:
 						var tr := LowPoly.t(dove, Vector3.ONE * scala, rng.randf() * TAU)
 						k.forma(tronco, tr * LowPoly.t(Vector3(0, alto_tronco / 2.0, 0)), VistaTerreno.TRONCO)
 						alberi[tipo].append([tr, (colori_chiome[tipo] as Color).lightened(rng.randf_range(-0.08, 0.08))])
+				LogicaBattaglia.Terreno.FIUME:
+					if rng.randf() < 0.35:
+						_modello("waterlily_A" if rng.randf() < 0.5 else "waterlily_B", p + Vector3(rng.randf_range(-0.8, 0.8), 0.02, rng.randf_range(-0.8, 0.8)), 1.0, rng.randf() * TAU)
+				LogicaBattaglia.Terreno.PONTE:
+					_ponte(k, cella, p)
 				LogicaBattaglia.Terreno.COLLINA:
 					k.forma(masso, LowPoly.t(p + Vector3(R * 0.45, 0.15, -R * 0.3), Vector3(0.7, 0.5, 0.6), rng.randf() * TAU), roccia.lightened(rng.randf_range(-0.1, 0.1)))
 					k.forma(masso, LowPoly.t(p + Vector3(-R * 0.4, 0.1, R * 0.35), Vector3(0.45, 0.35, 0.4), rng.randf() * TAU), roccia.darkened(rng.randf_range(0.0, 0.1)))
@@ -215,7 +261,7 @@ func _crea_campo() -> void:
 	var campo := MeshInstance3D.new()
 	campo.mesh = k.mesh()
 	add_child(campo)
-	_nodi_campo = [campo]
+	_nodi_campo = [campo, _decori]
 	# le chiome (bianche: il colore della stagione lo dà ogni istanza)
 	for tipo in 2:
 		var mm := MultiMesh.new()
@@ -249,7 +295,7 @@ func _cella_suolo(k: LowPoly.Costruttore, c: Vector2i, h: float, colore: Color) 
 	k.quad(Vector3(x0, h, z0), Vector3(x1, h, z0), Vector3(x1, h, z1), Vector3(x0, h, z1), Vector3.UP, colore)
 	for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var vicino: Vector2i = c + dir
-		var bordo := not LogicaBattaglia.dentro(vicino)
+		var bordo := not LogicaBattaglia.dentro(vicino) or LogicaBattaglia.terreno_a(GameState.battaglia, vicino) == LogicaBattaglia.Terreno.FUORI
 		var h_vicino := VistaTerreno.FONDO if bordo else _suolo(vicino)
 		if h_vicino >= h:
 			continue
@@ -277,70 +323,117 @@ func _parete(k: LowPoly.Costruttore, a: Vector3, b: Vector3, sopra: float, sotto
 	k.quad(Vector3(a.x, sopra, a.z), Vector3(b.x, sopra, b.z), Vector3(b.x, sotto, b.z), Vector3(a.x, sotto, a.z), n, colore)
 
 
-## Le difese del castello: la palizzata di tronchi appuntiti (villaggio) o le mura di pietra come quelle
-## del feudo, con un pilastro per cella, i tratti verso le mura vicine e la porta, i merli; nelle
-## città le torri agli angoli. Sopra la porta l'architrave.
-func _crea_mura(k: LowPoly.Costruttore) -> void:
+## Un modello del borgo (KayKit) sul campo: centrato in (x, z) e poggiato sulla quota del centro,
+## scalato perché il lato più lungo (o l'altezza, se data) misuri quanto chiesto, girato di "giro".
+func _modello(nome: String, centro: Vector3, lungo: float, giro := 0.0, alto := 0.0, dove: Node3D = null) -> MeshInstance3D:
+	var mesh := CatalogoModelli.mesh_esatta(nome)
+	if mesh == null:
+		return null
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.transform = _trasformazione(mesh, centro, lungo, giro, alto)
+	(dove if dove else _decori).add_child(mi)
+	return mi
+
+
+func _trasformazione(mesh: Mesh, centro: Vector3, lungo: float, giro := 0.0, alto := 0.0) -> Transform3D:
+	var bb := mesh.get_aabb()
+	var s := alto / bb.size.y if alto > 0.0 else lungo / maxf(bb.size.x, bb.size.z)
+	return Transform3D(Basis(Vector3.UP, giro).scaled(Vector3.ONE * s), centro) \
+		* Transform3D(Basis.IDENTITY, Vector3(-bb.get_center().x, -bb.position.y, -bb.get_center().z))
+
+
+## Le difese del castello con i pezzi del borgo: mura di pietra (con le torri agli angoli) o la
+## palizzata di legno; sulla porta l'arco (i battenti sono la "porta", che si può sfondare).
+func _crea_mura(_k: LowPoly.Costruttore) -> void:
 	var b := GameState.battaglia
-	var porta := Vector2i(-1, -1)
-	for u in b.unita:
-		if u.tipo == LogicaBattaglia.PORTA:
-			porta = LogicaBattaglia.cella(u)
-	var legno: bool = b.get("mura", {}).get("materiale", "pietra") == "legno"
-	var torri: Array = b.get("mura", {}).get("torri", [])
-	var chiara := VistaTerreno.LEGNO_CHIARO if legno else VistaTerreno.PIETRA_MURA
-	var scura := VistaTerreno.LEGNO_PONTE if legno else VistaTerreno.PIETRA_MURA_SCURA
-	var largo := CELLA * 0.62
+	var porta := _porta()
+	var legno := _legno()
+	var citta: bool = not b.get("mura", {}).get("torri", []).is_empty()
 	for r in LogicaBattaglia.ALTEZZA:
 		for c in LogicaBattaglia.LARGHEZZA:
 			var cella := Vector2i(c, r)
 			if LogicaBattaglia.terreno_a(b, cella) != LogicaBattaglia.Terreno.MURA:
 				continue
 			var centro := Vector3((c + 0.5) * CELLA, SUOLO_MURA, (r + 0.5) * CELLA)
-			var torre := torri.has([c, r])
-			var lato_pilastro := largo + (0.7 if torre else 0.15)
-			var alto_pilastro := ALTEZZA_MURA + 0.05
-			k.forma(LowPoly.cubo(Vector3(lato_pilastro, alto_pilastro, lato_pilastro)), LowPoly.t(centro + Vector3(0, alto_pilastro / 2.0, 0)), scura)
-			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var v: Vector2i = cella + d
-				if not LogicaBattaglia.dentro(v) or (LogicaBattaglia.terreno_a(b, v) != LogicaBattaglia.Terreno.MURA and v != porta):
-					continue
-				var verso := Vector3(d.x, 0, d.y)
-				var lungo := CELLA / 2.0
-				var dim := Vector3(absf(d.x) * lungo + absf(d.y) * largo, ALTEZZA_MURA, absf(d.y) * lungo + absf(d.x) * largo)
-				k.forma(LowPoly.cubo(dim), LowPoly.t(centro + verso * (lungo / 2.0) + Vector3(0, ALTEZZA_MURA / 2.0, 0)), chiara)
-				if legno:
-					# le punte dei tronchi sopra il tratto di palizzata
-					for n in 3:
-						var punto := centro + verso * (lungo * (0.25 + n * 0.3))
-						k.forma(LowPoly.cilindro(0.22, 0.0, 0.5, 5), LowPoly.t(punto + Vector3(0, ALTEZZA_MURA + 0.25, 0)), scura)
-			if torre:
-				# la torre: un piano in più tutto attorno al camminamento e i merli grandi
-				for m in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1), Vector2(0, -1), Vector2(0, 1), Vector2(-1, 0), Vector2(1, 0)]:
-					k.forma(LowPoly.cubo(Vector3(0.45, 0.7, 0.45)), LowPoly.t(centro + Vector3(m.x * lato_pilastro * 0.42, ALTEZZA_MURA + 0.35, m.y * lato_pilastro * 0.42)), scura)
-			elif legno:
-				k.forma(LowPoly.cilindro(0.3, 0.0, 0.55, 5), LowPoly.t(centro + Vector3(0, ALTEZZA_MURA + 0.28, 0)), scura)
+			var o := _mura_verso(cella, Vector2i(1, 0)) or _mura_verso(cella, Vector2i(-1, 0))
+			var v := _mura_verso(cella, Vector2i(0, 1)) or _mura_verso(cella, Vector2i(0, -1))
+			if legno:
+				# i pezzi di palizzata sono lunghi in z: girati per i tratti in orizzontale
+				if o or not v:
+					_modello("fence_wood_straight", centro, CELLA, PI / 2.0)
+				if v or not o:
+					_modello("fence_wood_straight", centro, CELLA)
+			elif o == v:
+				_modello("building_tower_base_blue", centro, CELLA * (1.0 if citta else 0.85))
+				if citta:
+					_modello("flag_blue", centro + Vector3(0, ALTEZZA_TORRE, 0), 0.0, 0.0, 1.6)
 			else:
-				for m in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-					k.forma(LowPoly.cubo(Vector3(0.35, 0.4, 0.35)), LowPoly.t(centro + Vector3(m.x * largo * 0.42, ALTEZZA_MURA + 0.2, m.y * largo * 0.42)), scura)
+				_modello("wall_straight", centro, CELLA, 0.0 if o else PI / 2.0)
 	if porta.x >= 0:
 		var sopra := Vector3((porta.x + 0.5) * CELLA, SUOLO_MURA, (porta.y + 0.5) * CELLA)
-		k.forma(LowPoly.cubo(Vector3(largo, 0.5, CELLA)), LowPoly.t(sopra + Vector3(0, ALTEZZA_MURA - 0.25, 0)), scura)
+		if legno:
+			_modello("fence_wood_straight_gate", sopra, CELLA)
+		else:
+			_modello("wall_straight_gate", sopra, CELLA, PI / 2.0)
 
 
-## Le case del feudo nemico dentro le mura (nelle città): muri chiari e tetto a punta.
+## Il paese del nemico con gli edifici del borgo: case, chiesa, castello (città), tende (banditi),
+## fattorie e mulino (terra libera). Le celle di case non si attraversano.
 func _crea_case(k: LowPoly.Costruttore) -> void:
 	var b := GameState.battaglia
+	var edifici: Dictionary = b.get("edifici", {})
 	for r in LogicaBattaglia.ALTEZZA:
 		for c in LogicaBattaglia.LARGHEZZA:
 			var cella := Vector2i(c, r)
 			if LogicaBattaglia.terreno_a(b, cella) != LogicaBattaglia.Terreno.CASA:
 				continue
 			var p := Vector3((c + 0.5) * CELLA, SUOLO_MURA, (r + 0.5) * CELLA)
-			var giro := float(absi(hash(cella)) % 2) * PI / 2.0
-			k.forma(LowPoly.cubo(Vector3(2.0, 1.4, 1.6)), LowPoly.t(p + Vector3(0, 0.7, 0), Vector3.ONE, giro), Color("e2d4b4"))
-			k.forma(LowPoly.cilindro(1.65, 0.0, 1.1, 4), LowPoly.t(p + Vector3(0, 1.95, 0), Vector3(1.0, 1.0, 0.85), giro + PI / 4.0), Color("b04a3a"))
-			k.forma(LowPoly.cubo(Vector3(0.4, 0.7, 0.05)), LowPoly.t(p + Vector3(0, 0.35, 0.81).rotated(Vector3.UP, giro), Vector3.ONE, giro), VistaTerreno.LEGNO_PONTE)
+			var nome := str(edifici.get(str(r * LogicaBattaglia.LARGHEZZA + c), ""))
+			var giro := float(absi(hash(cella)) % 4) * PI / 2.0
+			var lato := CELLA * (0.62 if nome == "tent" else 0.92)
+			if nome == "" or _modello(nome, p, lato, giro) == null:
+				k.forma(LowPoly.cubo(Vector3(2.0, 1.4, 1.6)), LowPoly.t(p + Vector3(0, 0.7, 0), Vector3.ONE, giro), Color("e2d4b4"))
+				k.forma(LowPoly.cilindro(1.65, 0.0, 1.1, 4), LowPoly.t(p + Vector3(0, 1.95, 0), Vector3(1.0, 1.0, 0.85), giro + PI / 4.0), Color("b04a3a"))
+			elif nome == "tent":
+				# il fuoco del campo accanto alla tenda
+				k.forma(LowPoly.cilindro(0.35, 0.35, 0.1, 6), LowPoly.t(p + Vector3(1.0, 0.05, 1.0)), Color("6a6a66"))
+				k.forma(LowPoly.cilindro(0.22, 0.0, 0.5, 5), LowPoly.t(p + Vector3(1.0, 0.3, 1.0)), Color("ff9a3c"))
+
+
+## Un ponte: di pietra (c'era già) o di barche (l'hanno gettato i nostri fanti).
+func _ponte(k: LowPoly.Costruttore, cella: Vector2i, p: Vector3) -> void:
+	var tipo := str(GameState.battaglia.get("ponti", {}).get(str(cella.y * LogicaBattaglia.LARGHEZZA + cella.x), "barche"))
+	if tipo == "pietra":
+		var mesh := CatalogoModelli.mesh_esatta("building_bridge_A")
+		if mesh:
+			var s := CELLA * 1.3 / mesh.get_aabb().size.z
+			# l'impalcato (la cima del modello) alla quota dove camminano le unità
+			var giu := mesh.get_aabb().size.y * s
+			_modello("building_bridge_A", Vector3(p.x, QUOTE[LogicaBattaglia.Terreno.PONTE] + 0.05 - giu, p.z), CELLA * 1.3, PI / 2.0)
+			return
+	# barche lungo la corrente, assi di traverso per passare
+	for lato in [-1.0, 1.0]:
+		k.forma(LowPoly.cubo(Vector3(0.8, 0.35, CELLA * 0.85)), LowPoly.t(p + Vector3(lato * 0.85, 0.12, 0)), VistaTerreno.LEGNO_PONTE)
+		k.forma(LowPoly.cilindro(0.4, 0.0, 0.5, 4), Transform3D(Basis(Vector3.RIGHT, PI / 2.0), p + Vector3(lato * 0.85, 0.12, CELLA * 0.5)), VistaTerreno.LEGNO_PONTE)
+	for n in 7:
+		k.forma(LowPoly.cubo(Vector3(CELLA * 1.05, 0.08, 0.34)), LowPoly.t(p + Vector3(0, QUOTE[LogicaBattaglia.Terreno.PONTE] - p.y - 0.04, -1.2 + n * 0.4)), VistaTerreno.LEGNO_CHIARO if n % 2 == 0 else VistaTerreno.LEGNO_PONTE)
+
+
+## Qualche nuvola del borgo che passa lenta sopra il campo.
+func _crea_nuvole() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var largo := CELLA * LogicaBattaglia.LARGHEZZA
+	for i in 4:
+		var nuvola := _modello("cloud_big" if i % 2 == 0 else "cloud_small", Vector3(rng.randf_range(0, largo), rng.randf_range(9.0, 12.0), rng.randf_range(-2.0, CELLA * LogicaBattaglia.ALTEZZA)), rng.randf_range(4.0, 6.5), rng.randf() * TAU, 0.0, self)
+		if nuvola == null:
+			return
+		nuvola.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var tw := create_tween().set_loops()
+		var x := nuvola.position.x
+		tw.tween_property(nuvola, "position:x", x + 14.0, 40.0 + i * 8.0).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(nuvola, "position:x", x, 40.0 + i * 8.0).set_trans(Tween.TRANS_SINE)
 
 
 func _crea_bandiera() -> void:
@@ -349,8 +442,10 @@ func _crea_bandiera() -> void:
 	var p := posizione(c)
 	var k := LowPoly.Costruttore.new()
 	var colore: Color = COLORI_NEMICI.get(b.tipo_nemico, Color("3f6f9f"))
-	k.forma(LowPoly.cilindro(0.08, 0.08, 4.0, 5), LowPoly.t(p + Vector3(-R * 0.55, 2.0, -R * 0.35)), Color("5a3a22"))
-	k.forma(LowPoly.cubo(Vector3(1.4, 0.9, 0.06)), LowPoly.t(p + Vector3(-R * 0.55 + 0.7, 3.5, -R * 0.35)), colore)
+	var modello := {"signore": "flag_blue", "banditi": "flag_green", "libera": "flag_yellow"}.get(b.tipo_nemico, "flag_blue") as String
+	if _modello(modello, p + Vector3(-R * 0.55, 0, -R * 0.35), 0.0, 0.0, 3.2, self) == null:
+		k.forma(LowPoly.cilindro(0.08, 0.08, 4.0, 5), LowPoly.t(p + Vector3(-R * 0.55, 2.0, -R * 0.35)), Color("5a3a22"))
+		k.forma(LowPoly.cubo(Vector3(1.4, 0.9, 0.06)), LowPoly.t(p + Vector3(-R * 0.55 + 0.7, 3.5, -R * 0.35)), colore)
 	k.forma(LowPoly.cubo(Vector3(CELLA * 0.9, 0.05, CELLA * 0.9)), LowPoly.t(p + Vector3(0, 0.02, 0)), colore.lightened(0.3))
 	var m := MeshInstance3D.new()
 	m.mesh = k.mesh()
@@ -444,23 +539,16 @@ func _crea_unita(u: Dictionary) -> void:
 func _attrezzi() -> Node3D:
 	var n := Node3D.new()
 	n.name = "Attrezzi"
-	var legna := MeshInstance3D.new()
+	var legna := _modello("resource_lumber", Vector3(-0.1, 0, -0.85), 1.2, 0.3, 0.0, n)
+	if legna == null:
+		legna = MeshInstance3D.new()
+		n.add_child(legna)
 	legna.name = "Legna"
-	var k := LowPoly.Costruttore.new()
-	for i in 3:
-		k.forma(LowPoly.cilindro(0.12, 0.12, 1.1, 6), Transform3D(Basis(Vector3.FORWARD, PI / 2.0), Vector3(-0.2 + i * 0.1, 0.12 + (0.2 if i == 1 else 0.0), -0.85 + i * 0.24)), VistaTerreno.TRONCO)
-	legna.mesh = k.mesh()
-	n.add_child(legna)
-	var scala := MeshInstance3D.new()
-	scala.name = "Scala"
-	k = LowPoly.Costruttore.new()
-	for lato in [-0.25, 0.25]:
-		k.forma(LowPoly.cubo(Vector3(0.07, 2.2, 0.07)), LowPoly.t(Vector3(lato, 1.1, 0)), VistaTerreno.LEGNO_CHIARO)
-	for g in 5:
-		k.forma(LowPoly.cubo(Vector3(0.5, 0.05, 0.05)), LowPoly.t(Vector3(0, 0.3 + g * 0.42, 0)), VistaTerreno.LEGNO_PONTE)
-	scala.mesh = k.mesh()
-	scala.transform = Transform3D(Basis(Vector3.FORWARD, 0.25), Vector3(-0.7, 0, 0.75))
-	n.add_child(scala)
+	var perno := Node3D.new()
+	perno.name = "Scala"
+	perno.transform = Transform3D(Basis(Vector3.FORWARD, 0.25), Vector3(-0.7, 0, 0.75))
+	n.add_child(perno)
+	_modello("ladder", Vector3.ZERO, 0.0, PI / 2.0, 2.3, perno)
 	return n
 
 
@@ -494,15 +582,22 @@ func _crea_porta(u: Dictionary) -> void:
 	add_child(nodo)
 	_nodi[int(u.id)] = nodo
 	nodo.position = Vector3((int(u.cella[0]) + 0.5) * CELLA, SUOLO_MURA, (int(u.cella[1]) + 0.5) * CELLA)
-	var k := LowPoly.Costruttore.new()
-	for lato in [-1, 1]:
-		k.forma(LowPoly.cubo(Vector3(0.3, ALTEZZA_MURA - 0.5, CELLA * 0.48)), LowPoly.t(Vector3(0, (ALTEZZA_MURA - 0.5) / 2.0, lato * CELLA * 0.25)), VistaTerreno.LEGNO_PONTE)
-		for f in 2:
-			k.forma(LowPoly.cubo(Vector3(0.34, 0.1, CELLA * 0.44)), LowPoly.t(Vector3(0, 0.35 + f * 0.6, lato * CELLA * 0.25)), Color("4a4a4a"))
-	var m := MeshInstance3D.new()
-	m.name = "Figure"
-	m.mesh = k.mesh()
-	nodo.add_child(m)
+	# i battenti del modello, nella stessa posizione che hanno rispetto all'arco
+	var figure := Node3D.new()
+	figure.name = "Figure"
+	nodo.add_child(figure)
+	var arco := "fence_wood_straight_gate" if _legno() else "wall_straight_gate"
+	var battenti := ["fence_wood_straight_gate_fence_wood_straight_door"] if _legno() else ["wall_straight_gate_door_left", "wall_straight_gate_door_right"]
+	var base := CatalogoModelli.mesh_esatta(arco)
+	if base:
+		var tr := _trasformazione(base, Vector3.ZERO, CELLA, 0.0 if _legno() else PI / 2.0)
+		for nome in battenti:
+			var mesh := CatalogoModelli.mesh_esatta(nome)
+			if mesh:
+				var mi := MeshInstance3D.new()
+				mi.mesh = mesh
+				mi.transform = tr
+				figure.add_child(mi)
 	var etichetta := Label3D.new()
 	etichetta.name = "Numero"
 	etichetta.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -738,6 +833,16 @@ func _azione_scale() -> void:
 	_scegli(_scelta)
 
 
+## Il fante scelto, con la legna, getta un ponte di barche sul fiume accanto.
+func _azione_ponte() -> void:
+	if _occupato or _scelta < 0:
+		return
+	if GameState.battaglia_ponte(_scelta).x >= 0:
+		Audio.effetto("click")
+		_ricrea_campo()
+	_scegli(_scelta)
+
+
 func _fine_turno() -> void:
 	if not _occupato and GameState.battaglia.fase == "schieramento":
 		GameState.battaglia_inizia()
@@ -797,7 +902,7 @@ func _crea_interfaccia() -> void:
 	_titolo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(_titolo)
 	var obiettivo := Label.new()
-	obiettivo.text = ("Assedio (%s): sfonda la porta o sali sulle mura con le scale, poi prendi la loro bandiera e tienila per un turno, o distruggi i difensori" % str(b.mura.get("nome", "mura")).to_lower() if b.get("assedio", false)
+	obiettivo.text = ("Assedio (%s): entra dalla porta o con le scale, tieni la loro bandiera per un turno o distruggi i difensori" % str(b.mura.get("nome", "mura")).to_lower() if b.get("assedio", false)
 		else "Prendi la loro bandiera e tienila per un turno, o distruggi il loro esercito")
 	obiettivo.add_theme_font_size_override("font_size", 7)
 	obiettivo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -844,6 +949,13 @@ func _crea_interfaccia() -> void:
 	_btn_azione.visible = false
 	_btn_azione.pressed.connect(_azione_scale)
 	comandi.add_child(_btn_azione)
+	_btn_ponte = Button.new()
+	_btn_ponte.text = "Getta un ponte di barche"
+	_btn_ponte.custom_minimum_size = Vector2(80, 22)
+	_btn_ponte.focus_mode = Control.FOCUS_NONE
+	_btn_ponte.visible = false
+	_btn_ponte.pressed.connect(_azione_ponte)
+	comandi.add_child(_btn_ponte)
 	_btn_fine = Button.new()
 	_btn_fine.text = "Fine turno"
 	_btn_fine.custom_minimum_size = Vector2(80, 26)
@@ -924,10 +1036,14 @@ func _aggiorna() -> void:
 			_scheda.text += "\n" + ("Ha le scale: può salire sulle mura." if bool(u.get("scale", false))
 				else ("Ha la legna: costruisci le scale." if bool(u.get("legna", false))
 				else "Per salire sulle mura: abbatti un albero (accanto a un bosco), poi costruisci le scale."))
+		elif LogicaBattaglia.ha_fiume(b) and u.tipo in LogicaBattaglia.FANTERIA:
+			_scheda.text += "\n" + ("Ha la legna: vicino al fiume getta un ponte di barche." if bool(u.get("legna", false))
+				else "Per passare il fiume: abbatti un albero, poi getta un ponte di barche dalla riva.")
 	_btn_fine.disabled = _occupato or not (b.fase in ["noi", "schieramento"])
 	var puo_abbattere := LogicaBattaglia.puo_abbattere(b, u)
 	var puo_scale := LogicaBattaglia.puo_fare_scale(b, u)
 	_btn_azione.visible = not _occupato and (puo_abbattere or puo_scale)
+	_btn_ponte.visible = not _occupato and LogicaBattaglia.puo_fare_ponte(b, u)
 	_btn_azione.text = "Abbatti un albero" if puo_abbattere else "Costruisci le scale"
 	for x in b.unita:
 		_aggiorna_unita(x)

@@ -14,6 +14,7 @@ static var _trovati: Dictionary = {}  # chiave -> percorso del file principale (
 static var _file: Array[String] = []
 static var _pronto := false
 static var _config: Dictionary = {}
+static var _mesh_esatte: Dictionary = {}  # nome -> Mesh (o null)
 
 
 static func percorso(tipo: String) -> String:
@@ -49,6 +50,20 @@ static func istanzia_cantiere(progresso: float, larghezza: float, profondita: fl
 static func numero_fasi_cantiere() -> int:
 	_prepara()
 	return maxi(1, _config.get("cantiere", []).size())
+
+
+## La mesh di un solo file (nome senza estensione, esatto: niente pezzi aggiunti), o null.
+static func mesh_esatta(nome: String) -> Mesh:
+	_prepara()
+	if _mesh_esatte.has(nome):
+		return _mesh_esatte[nome]
+	var trovata: Mesh = null
+	for p in _file:
+		if p.get_basename().get_file() == nome and p.get_extension().to_lower() == "obj":
+			trovata = load(p) as Mesh
+			break
+	_mesh_esatte[nome] = trovata
+	return trovata
 
 
 ## Ingombro complessivo di tutte le mesh del nodo, nelle coordinate del nodo.

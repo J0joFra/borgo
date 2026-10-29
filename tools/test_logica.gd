@@ -799,6 +799,7 @@ func _ready() -> void:
 	_prova_forze()
 	_prova_assedio()
 	_prova_sviluppo_regni()
+	_prova_fiume()
 	var soldati_r := GameState.soldati
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
@@ -1693,3 +1694,80 @@ func _prova_sviluppo_regni() -> void:
 	GameState._sviluppa_regni()
 	_verifica(int(r.abitanti) == ora, "e non cala se il nostro si svuota")
 	GameState.abitanti = abitanti_prima
+
+
+## Il campo non è un rettangolo, e spesso c'è un fiume da passare con un ponte di barche.
+func _prova_fiume() -> void:
+	var cfg: Dictionary = GameState.bil.battaglia
+	var con_fuori := 0
+	var con_fiume := 0
+	var collegati := true
+	var bosco_nostro := true
+	var senza_ponte := {}
+	for seme in 30:
+		var b := LogicaBattaglia.crea("prova", ["libera", "banditi", "signore"][seme % 3], {"fanti": 10}, 0, 0, 10, seme * 31, cfg)
+		if b.terreno.has(LogicaBattaglia.Terreno.FUORI):
+			con_fuori += 1
+		if LogicaBattaglia.ha_fiume(b):
+			con_fiume += 1
+			if not b.terreno.has(LogicaBattaglia.Terreno.PONTE) and senza_ponte.is_empty():
+				senza_ponte = b
+		# tutto il campo (fiume e mura comprese) è un pezzo solo, e tocca la zona di schieramento
+		var dentro := []
+		for i in b.terreno.size():
+			if b.terreno[i] != LogicaBattaglia.Terreno.FUORI:
+				dentro.append(Vector2i(i % LogicaBattaglia.LARGHEZZA, i / LogicaBattaglia.LARGHEZZA))
+		var visti := {dentro[0]: true}
+		var coda := [dentro[0]]
+		while not coda.is_empty():
+			var x: Vector2i = coda.pop_back()
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var v: Vector2i = x + d
+				if LogicaBattaglia.dentro(v) and not visti.has(v) and LogicaBattaglia.terreno_a(b, v) != LogicaBattaglia.Terreno.FUORI:
+					visti[v] = true
+					coda.append(v)
+		if visti.size() != dentro.size() or LogicaBattaglia.zona_schieramento(b, cfg).size() < 10:
+			collegati = false
+		# dalla nostra parte c'è un bosco per la legna
+		var limite := LogicaBattaglia.LARGHEZZA
+		for i in b.terreno.size():
+			if b.terreno[i] in [LogicaBattaglia.Terreno.FIUME, LogicaBattaglia.Terreno.PONTE, LogicaBattaglia.Terreno.MURA]:
+				limite = mini(limite, i % LogicaBattaglia.LARGHEZZA)
+		var bosco := false
+		for i in b.terreno.size():
+			if b.terreno[i] == LogicaBattaglia.Terreno.BOSCO and i % LogicaBattaglia.LARGHEZZA < limite:
+				bosco = true
+		bosco_nostro = bosco_nostro and bosco
+	_verifica(con_fuori >= 25, "il campo ha una forma irregolare, non è un rettangolo (%d su 30)" % con_fuori)
+	_verifica(collegati, "il campo è un pezzo solo, con la zona di schieramento")
+	_verifica(con_fiume >= 8 and con_fiume <= 26, "spesso c'è un fiume (%d su 30)" % con_fiume)
+	_verifica(bosco_nostro, "dalla nostra parte c'è sempre un bosco per la legna")
+	if senza_ponte.is_empty():
+		_verifica(false, "c'è un fiume senza ponte")
+		return
+	var b: Dictionary = senza_ponte
+	b.fase = "noi"
+	var f: Dictionary = LogicaBattaglia.vive(b, "noi")[0]
+	# il fante sulla riva, accanto al fiume
+	var riva := Vector2i(-1, -1)
+	for i in b.terreno.size():
+		var c := Vector2i(i % LogicaBattaglia.LARGHEZZA, i / LogicaBattaglia.LARGHEZZA)
+		if b.terreno[i] == LogicaBattaglia.Terreno.PIANURA and LogicaBattaglia.dentro(c + Vector2i(1, 0)) and LogicaBattaglia.terreno_a(b, c + Vector2i(1, 0)) == LogicaBattaglia.Terreno.FIUME and LogicaBattaglia.occupante(b, c) < 0:
+			riva = c
+			break
+	f.cella = [riva.x, riva.y]
+	f.mosse = 8
+	# per ogni riga, dove scorre il fiume: "di là" è a destra del fiume della propria riga
+	var fiume_in := {}
+	for i in b.terreno.size():
+		if b.terreno[i] == LogicaBattaglia.Terreno.FIUME:
+			fiume_in[i / LogicaBattaglia.LARGHEZZA] = i % LogicaBattaglia.LARGHEZZA
+	var di_la := func(c: Vector2i) -> bool: return fiume_in.has(c.y) and c.x > int(fiume_in[c.y])
+	_verifica(not LogicaBattaglia.raggiungibili(b, f, cfg).keys().any(di_la), "senza ponte il fiume non si passa")
+	_verifica(not LogicaBattaglia.puo_fare_ponte(b, f), "senza legna niente ponte")
+	f.legna = true
+	var ponte := LogicaBattaglia.costruisci_ponte(b, int(f.id), cfg)
+	_verifica(ponte == riva + Vector2i(1, 0) and LogicaBattaglia.terreno_a(b, ponte) == LogicaBattaglia.Terreno.PONTE and not f.legna and str(b.ponti[str(ponte.y * LogicaBattaglia.LARGHEZZA + ponte.x)]) == "barche", "con la legna i fanti gettano un ponte di barche")
+	f.attaccato = false
+	f.mosse = 8
+	_verifica(LogicaBattaglia.raggiungibili(b, f, cfg).keys().any(di_la), "dal ponte si passa dall'altra parte")

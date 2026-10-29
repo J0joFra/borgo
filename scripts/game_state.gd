@@ -2263,6 +2263,14 @@ func battaglia_abbatti(id: int) -> Vector2i:
 	return c
 
 
+func battaglia_ponte(id: int) -> Vector2i:
+	if battaglia.is_empty():
+		return Vector2i(-1, -1)
+	var c := LogicaBattaglia.costruisci_ponte(battaglia, id, bil.battaglia)
+	changed.emit()
+	return c
+
+
 func battaglia_scale(id: int) -> bool:
 	if battaglia.is_empty():
 		return false
