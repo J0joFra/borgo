@@ -92,6 +92,8 @@ var _lampeggia: Tween
 var _btn_suggerimenti: Button
 var _tempo: Label
 var _velocita: Array[Button] = []
+var _finestre: Dictionary = {}  # pannello centrale -> [ScrollContainer, contenuto]
+var _bordi: Array = []          # [MarginContainer, lati] da allontanare dal notch (vedi _margini_sicuri)
 var _nome_pulsante: PanelContainer
 var _nome_testo: Label
 var _menu: PanelContainer
@@ -141,6 +143,11 @@ func _ready() -> void:
 	add_child(_radice)
 	_crea_barra()
 	_crea_lati()
+	_radice.resized.connect(func():
+		_margini_sicuri()
+		for f in _finestre:
+			if f.visible:
+				_adatta_finestra(f))
 	_crea_avvisi()  # un solo contenitore per avviso + allarme, così non si sovrappongono
 	_crea_menu()
 	_crea_pannello()
@@ -310,7 +317,7 @@ static func _riquadro(sfondo: Color, bordo: Color, margine := 3, raggio := 2, om
 	return s
 
 
-func _bottone(testo: String, larghezza := 0, altezza := 16, motivo := "") -> Button:
+func _bottone(testo: String, larghezza := 0, altezza := 18, motivo := "") -> Button:
 	var b := Button.new()
 	b.text = testo
 	b.custom_minimum_size = Vector2(larghezza, altezza)
@@ -318,6 +325,24 @@ func _bottone(testo: String, larghezza := 0, altezza := 16, motivo := "") -> But
 	if motivo != "":
 		b.tooltip_text = motivo
 	return b
+
+
+## Sui telefoni col notch (o gli angoli tondi) l'area sicura è più piccola dello schermo:
+## i pulsanti ai bordi si spostano dentro.
+func _margini_sicuri() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var finestra := Vector2(DisplayServer.window_get_size())
+	var sicura := DisplayServer.get_display_safe_area()
+	if finestra.x <= 0.0 or sicura.size.x <= 0:
+		return
+	var k := _radice.get_viewport_rect().size.x / finestra.x  # pixel veri -> pixel dell'interfaccia
+	var dentro := {"left": maxf(0.0, sicura.position.x) * k, "top": maxf(0.0, sicura.position.y) * k,
+		"right": maxf(0.0, finestra.x - sicura.end.x) * k}
+	for voce in _bordi:
+		for lato in voce[1]:
+			var base := MARGINE + (20 if lato == "top" and voce[1].size() == 1 else 0)
+			voce[0].add_theme_constant_override("margin_" + lato, base + roundi(minf(float(dentro[lato]), 40.0)))
 
 
 ## Un pulsante tondo con solo l'icona: il nome compare tenendolo premuto (o col mouse sopra).
@@ -388,16 +413,42 @@ func _pannello_centrale(titolo: String) -> Array:
 	pannello.custom_minimum_size = Vector2(320, 0)
 	pannello.visible = false
 	centro.add_child(pannello)
+	var tutto := VBoxContainer.new()
+	tutto.add_theme_constant_override("separation", 3)
+	pannello.add_child(tutto)
+	# il titolo con la X per chiudere resta sempre in vista; il resto scorre se lo schermo è basso
+	var testa := HBoxContainer.new()
+	tutto.add_child(testa)
+	var t := Label.new()
+	t.text = titolo
+	t.add_theme_font_size_override("font_size", 10)
+	t.add_theme_color_override("font_color", ORO)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	testa.add_child(t)
+	var x := _bottone_icona("chiudi", "Chiudi", "", 18)
+	x.pressed.connect(func(): pannello.visible = false)
+	testa.add_child(x)
+	var scorre := ScrollContainer.new()
+	scorre.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	tutto.add_child(scorre)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 3)
-	pannello.add_child(col)
-	if titolo != "":
-		var t := Label.new()
-		t.text = titolo
-		t.add_theme_font_size_override("font_size", 10)
-		t.add_theme_color_override("font_color", ORO)
-		col.add_child(t)
+	scorre.add_child(col)
+	_finestre[pannello] = [scorre, col]
+	pannello.visibility_changed.connect(func(): if pannello.visible: _adatta_finestra.call_deferred(pannello))
 	return [pannello, col]
+
+
+## Una finestra centrale non deve uscire dallo schermo: se il contenuto è più alto (o più largo)
+## dello spazio libero, scorre.
+func _adatta_finestra(pannello: PanelContainer) -> void:
+	if not _finestre.has(pannello):
+		return
+	var scorre: ScrollContainer = _finestre[pannello][0]
+	var col: Control = _finestre[pannello][1]
+	var spazio := _radice.get_viewport_rect().size
+	var dentro := col.get_combined_minimum_size()
+	scorre.custom_minimum_size = Vector2(minf(dentro.x, spazio.x - 24.0), minf(dentro.y, spazio.y - 48.0))
 
 
 # --- Barra risorse ----------------------------------------------------------------
@@ -411,6 +462,7 @@ func _crea_barra() -> void:
 	mc.add_theme_constant_override("margin_top", MARGINE)
 	mc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radice.add_child(mc)
+	_bordi.append([mc, ["left", "right", "top"]])
 	var riga := HBoxContainer.new()
 	riga.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mc.add_child(riga)
@@ -431,7 +483,11 @@ func _crea_barra() -> void:
 		l.custom_minimum_size.x = 0 if chiave != "abitanti" else 20
 		l.add_theme_font_size_override("font_size", 7)
 		l.tooltip_text = GameState.nome_risorsa(chiave)
-		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		l.mouse_filter = Control.MOUSE_FILTER_STOP
+		# sul telefono non c'è il mouse sopra: toccando il numero si leggono i dettagli
+		l.gui_input.connect(func(e: InputEvent):
+			if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and e.pressed):
+				mostra_avviso(l.tooltip_text.replace("\n", " · "), 5.0))
 		chip.add_child(l)
 		_numeri[chiave] = l
 	var spazio := Control.new()
@@ -448,7 +504,7 @@ func _crea_barra() -> void:
 	_tempo.add_theme_font_size_override("font_size", 7)
 	tempo.add_child(_tempo)
 	for i in 4:
-		var b := _bottone_icona(["pausa", "x1", "x2", "x3"][i], "Pausa" if i == 0 else "Velocità x%d" % i, "", 12)
+		var b := _bottone_icona(["pausa", "x1", "x2", "x3"][i], "Pausa" if i == 0 else "Velocità x%d" % i, "", 16)
 		b.toggle_mode = true
 		b.pressed.connect(_imposta_velocita.bind(i))
 		tempo.add_child(b)
@@ -468,6 +524,7 @@ func _crea_lati() -> void:
 	mc_s.add_theme_constant_override("margin_top", MARGINE + 20)  # sotto la barra
 	mc_s.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radice.add_child(mc_s)
+	_bordi.append([mc_s, ["left"]])
 	var sinistra := VBoxContainer.new()
 	sinistra.add_theme_constant_override("separation", 4)
 	sinistra.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -490,6 +547,7 @@ func _crea_lati() -> void:
 	mc_d.add_theme_constant_override("margin_top", MARGINE + 20)
 	mc_d.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radice.add_child(mc_d)
+	_bordi.append([mc_d, ["right"]])
 	var destra := VBoxContainer.new()
 	destra.add_theme_constant_override("separation", 4)
 	destra.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -745,32 +803,32 @@ func _crea_pannello() -> void:
 	_dettagli.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_dettagli.custom_minimum_size.x = 280
 	testi.add_child(_dettagli)
-	_btn_meno = _bottone("-", 18, 18, "Togli un lavoratore")
+	_btn_meno = _bottone("−", 24, 22, "Togli un lavoratore")
 	_btn_meno.pressed.connect(func(): cambia_lavoratori.emit(_edificio, -1))
-	_btn_piu = _bottone("+", 18, 18, "Aggiungi un lavoratore")
+	_btn_piu = _bottone("+", 24, 22, "Aggiungi un lavoratore")
 	_btn_piu.pressed.connect(func(): cambia_lavoratori.emit(_edificio, 1))
-	_btn_demolisci = _bottone("Demolisci", 0, 18, "Demolisci l'edificio (chiede conferma)")
+	_btn_demolisci = _bottone("Demolisci", 0, 22, "Demolisci l'edificio (chiede conferma)")
 	_btn_demolisci.pressed.connect(_chiedi_demolizione)
-	_btn_migliora = _bottone("Migliora", 0, 18, "Passa al livello successivo")
+	_btn_migliora = _bottone("Migliora", 0, 22, "Passa al livello successivo")
 	_btn_migliora.pressed.connect(func(): migliora.emit(_edificio))
-	_btn_collega = _bottone("Collega", 0, 18, "Mostra la strada che lo collega alla piazza")
+	_btn_collega = _bottone("Collega", 0, 22, "Mostra la strada che lo collega alla piazza")
 	_btn_collega.pressed.connect(func(): collega.emit(_edificio))
-	_btn_gira = _bottone_icona("destra", "Gira", "ruota l'edificio di 90°", 18)
+	_btn_gira = _bottone_icona("destra", "Gira", "ruota l'edificio di 90°", 22)
 	_btn_gira.pressed.connect(func(): gira.emit(_edificio))
-	_btn_sposta = _bottone_icona("sposta", "Sposta", "fino a 2 caselle", 18)
+	_btn_sposta = _bottone_icona("sposta", "Sposta", "fino a 2 caselle", 22)
 	_btn_sposta.pressed.connect(func(): sposta.emit(_edificio))
-	_btn_ruota = _bottone("Ruota", 0, 18, "Ruota l'edificio di 90°")
+	_btn_ruota = _bottone("Ruota", 0, 22, "Ruota l'edificio di 90°")
 	_btn_ruota.pressed.connect(func(): ruota_edificio.emit())
-	_btn_ok = _bottone("Costruisci", 0, 18, "Conferma il piazzamento")
+	_btn_ok = _bottone("Costruisci", 0, 22, "Conferma il piazzamento")
 	_btn_ok.pressed.connect(func(): conferma_piazzamento.emit())
-	_btn_annulla = _bottone("Annulla", 0, 18, "Annulla il piazzamento (o premi ESC)")
+	_btn_annulla = _bottone("Annulla", 0, 22, "Annulla il piazzamento (o premi ESC)")
 	_btn_annulla.pressed.connect(func(): annulla_piazzamento.emit())
-	_btn_chiudi = _bottone("X", 18, 18, "Chiudi (o premi ESC)")
+	_btn_chiudi = _bottone("X", 22, 22, "Chiudi (o premi ESC)")
 	_btn_chiudi.pressed.connect(func(): chiudi_pannello.emit())
 	_btn_chiudi.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	sopra.add_child(_btn_chiudi)
 	for nome in GameState.nomi_colture():
-		var bc := _bottone(GameState.colture[nome].nome, 0, 18, "Coltiva %s in questo campo" % GameState.colture[nome].nome.to_lower())
+		var bc := _bottone(GameState.colture[nome].nome, 0, 22, "Coltiva %s in questo campo" % GameState.colture[nome].nome.to_lower())
 		bc.toggle_mode = true
 		bc.pressed.connect(_chiedi_coltura.bind(nome))
 		_btn_colture[nome] = bc
@@ -787,8 +845,9 @@ func _crea_info() -> void:
 	_info = r[0]
 	var col: VBoxContainer = r[1]
 	var scorre := ScrollContainer.new()
-	scorre.custom_minimum_size = Vector2(420, 118)
+	scorre.custom_minimum_size = Vector2(420, 0)
 	scorre.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scorre.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED  # scorre la finestra intera
 	col.add_child(scorre)
 	_info_testo = Label.new()
 	_info_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -807,7 +866,8 @@ func _crea_info() -> void:
 		b.pressed.connect(func(): GameState.tasse = livello; _aggiorna())
 		riga.add_child(b)
 		_tasse.append(b)
-	var legenda := HBoxContainer.new()
+	var legenda := HFlowContainer.new()  # va a capo: sullo schermo stretto non allarga la finestra
+	legenda.custom_minimum_size.x = 400
 	col.add_child(legenda)
 	for chiave in GameState.RISORSE_VISIBILI + ["abitanti", "disponibili", "felicita"]:
 		legenda.add_child(_icona(chiave, 8.0))
@@ -822,9 +882,10 @@ func _crea_info() -> void:
 	col.add_child(_btn_suggerimenti)
 	var audio := HBoxContainer.new()
 	col.add_child(audio)
-	for chiave in ["musica", "effetti"]:
-		var b := _bottone("Musica" if chiave == "musica" else "Effetti sonori", 0, 16,
-			"Attiva o disattiva la musica" if chiave == "musica" else "Attiva o disattiva gli effetti sonori")
+	for chiave in ["musica", "effetti", "interfaccia_grande"]:
+		var b := _bottone({"musica": "Musica", "effetti": "Effetti sonori", "interfaccia_grande": "Interfaccia grande"}[chiave], 0, 18,
+			{"musica": "Attiva o disattiva la musica", "effetti": "Attiva o disattiva gli effetti sonori",
+				"interfaccia_grande": "Pulsanti e testi più grandi, per il telefono"}[chiave])
 		b.toggle_mode = true
 		b.button_pressed = GameState.opzioni[chiave]
 		b.toggled.connect(func(v): GameState.imposta_opzione(chiave, v))
@@ -883,11 +944,11 @@ func _crea_mercato() -> void:
 	_btn_auto = _bottone("Automatico", 0, 14)
 	_btn_auto.toggle_mode = true
 	_btn_auto.tooltip_text = "Compra e vendi da solo secondo le soglie che imposti"
-	_btn_auto.toggled.connect(func(v): _mercato_manuale.visible = not v; _mercato_auto.visible = v; _aggiorna())
+	_btn_auto.toggled.connect(func(v): _mercato_manuale.visible = not v; _mercato_auto.visible = v; _aggiorna(); _adatta_finestra.call_deferred(_mercato))
 	col.add_child(_btn_auto)
 	var scorre := ScrollContainer.new()
-	scorre.custom_minimum_size.y = 140
 	scorre.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scorre.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED  # scorre la finestra intera
 	col.add_child(scorre)
 	_mercato_manuale = scorre
 	var griglia := GridContainer.new()
@@ -912,10 +973,10 @@ func _crea_mercato() -> void:
 		tendenza.custom_minimum_size = Vector2(30, 8)
 		tendenza.mouse_filter = Control.MOUSE_FILTER_PASS
 		griglia.add_child(tendenza)
-		var compra := _bottone("", 100, 14)
+		var compra := _bottone("", 100, 17)
 		compra.pressed.connect(func(): Audio.effetto("moneta" if GameState.compra(r2) else "errore"))
 		griglia.add_child(compra)
-		var vendi := _bottone("", 100, 14)
+		var vendi := _bottone("", 100, 17)
 		vendi.pressed.connect(func(): Audio.effetto("moneta" if GameState.vendi(r2) else "errore"))
 		griglia.add_child(vendi)
 		_mercato_righe[r2] = [scorta, tendenza, compra, vendi]
@@ -937,8 +998,8 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 	_mercato_auto.add_child(spiega)
 	# undici risorse non stanno nello schermo: la tabella scorre, riserva e Chiudi restano visibili
 	var scorre := ScrollContainer.new()
-	scorre.custom_minimum_size.y = 130
 	scorre.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scorre.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED  # scorre la finestra intera
 	_mercato_auto.add_child(scorre)
 	var griglia := GridContainer.new()
 	griglia.columns = 10
@@ -966,7 +1027,7 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 		griglia.add_child(vuoto)
 		var celle := [scorta]
 		for chiave in ["vendi_sopra", "compra_sotto"]:
-			var meno := _bottone("−", 16, 11, "Soglia più bassa")
+			var meno := _bottone("−", 20, 16, "Soglia più bassa")
 			meno.pressed.connect(_soglia.bind(r2, chiave, -1))
 			griglia.add_child(meno)
 			var valore := Label.new()
@@ -974,7 +1035,7 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 			valore.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			griglia.add_child(valore)
 			celle.append(valore)
-			var piu := _bottone("+", 16, 11, "Soglia più alta")
+			var piu := _bottone("+", 20, 16, "Soglia più alta")
 			piu.pressed.connect(_soglia.bind(r2, chiave, 1))
 			griglia.add_child(piu)
 		_mercato_auto_righe[r2] = celle
@@ -983,14 +1044,14 @@ func _crea_mercato_auto(col: VBoxContainer) -> void:
 	var l2 := Label.new()
 	l2.text = "Oro da tenere sempre da parte:"
 	riga.add_child(l2)
-	var meno_r := _bottone("−", 16, 11, "Tieni da parte meno oro")
+	var meno_r := _bottone("−", 20, 16, "Tieni da parte meno oro")
 	meno_r.pressed.connect(func(): GameState.riserva_oro = maxi(0, GameState.riserva_oro - 10); _aggiorna())
 	riga.add_child(meno_r)
 	_riserva = Label.new()
 	_riserva.custom_minimum_size.x = 30
 	_riserva.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	riga.add_child(_riserva)
-	var piu_r := _bottone("+", 16, 11, "Tieni da parte più oro")
+	var piu_r := _bottone("+", 20, 16, "Tieni da parte più oro")
 	piu_r.pressed.connect(func(): GameState.riserva_oro += 10; _aggiorna())
 	riga.add_child(piu_r)
 

@@ -182,6 +182,10 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Segni sopra gli edifici**: un anello che si riempie fino alla prossima consegna del raccolto (con l'icona della
   risorsa), un anello col martello sui cantieri, una **freccia verde** dove si può migliorare adesso (toccandola si
   apre l'edificio) e un **segnale rosso** dove manca la strada (toccandolo la si traccia).
+- **Telefono**: sugli schermi touch si accende da sola l'**interfaccia grande** (×1,3: pulsanti e testi più grossi;
+  si cambia nelle Opzioni del menu o nell'Info). Le finestre hanno la X in alto e scorrono se lo schermo è basso;
+  toccando un numero della barra in alto se ne leggono i dettagli; i pulsanti ai bordi stanno dentro l'area sicura
+  (notch); col telefono in verticale un velo chiede di girarlo.
 - **Interfaccia** scura e minimale, pensata per il telefono in orizzontale: risorse e tempo in due capsule in alto,
   pulsanti tondi a icona ai lati (tenendoli premuti compare il nome), pannelli semitrasparenti con l'oro come accento.
 - **Ruotare gli edifici**: mentre si piazza, pulsante "Ruota" (o tasto R) per girarlo di 90°.
@@ -302,7 +306,11 @@ godot --headless --path . res://tools/test_logica.tscn
 Controlla produzione, fame, inverno, tasse, livelli, salvataggio e regole del terreno. Stampa `TEST: OK` se tutto torna.
 
 `tools/prova_visiva.tscn` gioca da solo qualche minuto e salva screenshot in `user://` (serve una finestra, non `--headless`).
-`tools/prova_rapida.tscn` fa lo stesso in pochi secondi con una partita già avviata: utile per ritoccare la grafica.
+`tools/prova_rapida.tscn` fa lo stesso in pochi secondi con una partita già avviata: utile per ritoccare la grafica
+(`BORGO_UI_GRANDE=1` per l'interfaccia grande, `PROVA_CLIMA=deserto` per un clima).
+
+`tools/simula_economia.tscn` gioca da solo qualche anno senza grafica, con un giocatore automatico ragionevole, e stampa
+le risorse a ogni stagione: serve a bilanciare i numeri (`SIM_ANNI`, `SIM_SEMI`, `SIM_CLIMA`).
 
 ## Esportare su Android
 

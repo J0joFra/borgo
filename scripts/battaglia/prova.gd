@@ -64,12 +64,18 @@ func _ready() -> void:
 		riga_n.add_child(b)
 		_nemico[n[0]] = b
 
+	# due colonne di valori: entra anche sullo schermo basso di un telefono
+	var griglia := GridContainer.new()
+	griglia.columns = 2
+	griglia.add_theme_constant_override("h_separation", 14)
+	griglia.add_theme_constant_override("v_separation", 2)
+	col.add_child(griglia)
 	for v in VALORI:
 		var riga := HBoxContainer.new()
-		col.add_child(riga)
+		griglia.add_child(riga)
 		var nome := Label.new()
 		nome.text = v[1]
-		nome.custom_minimum_size.x = 150
+		nome.custom_minimum_size.x = 110
 		riga.add_child(nome)
 		var meno := _piccolo("−")
 		meno.pressed.connect(func(): _cambia(v, -1))

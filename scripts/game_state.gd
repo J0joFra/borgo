@@ -93,7 +93,10 @@ var aiuto_inverno_dato := false  # il primo inverno, se finisce il cibo, il sign
 var tutorial_passo := -1         # passo del tutorial iniziale (-1: finito, saltato o mai iniziato)
 var suggerimenti_attivi := true
 ## Opzioni del menu principale, valide per tutte le partite (user://opzioni.cfg).
-var opzioni := {"tutorial": true, "suggerimenti": true, "schermo_intero": false, "musica": true, "effetti": true}
+var opzioni := {"tutorial": true, "suggerimenti": true, "schermo_intero": false, "musica": true, "effetti": true,
+	"interfaccia_grande": false}
+## Quanto si ingrandisce l'interfaccia con "Interfaccia grande" (telefoni: pulsanti e testi più grossi).
+const SCALA_GRANDE := 1.3
 const OPZIONI_PATH := "user://opzioni.cfg"
 var _prossimo_suggerimento := 0
 var _tick_suggerimento := 0
@@ -130,6 +133,7 @@ func _ready() -> void:
 	climi = (load("res://data/climi.json") as JSON).data
 	dati_eventi = (load("res://data/eventi.json") as JSON).data
 	_carica_opzioni()
+	_crea_avviso_orizzontale.call_deferred()
 	var guida: Dictionary = (load("res://data/tutorial.json") as JSON).data
 	dati_tutorial = guida.passi
 	dati_suggerimenti = guida.suggerimenti
@@ -1188,12 +1192,47 @@ func _falo_diventa_piazza() -> void:
 # --- Tutorial e suggerimenti ------------------------------------------------------------
 
 func _carica_opzioni() -> void:
+	# sui telefoni e sui tablet l'interfaccia grande è accesa di partenza
+	opzioni.interfaccia_grande = schermo_touch()
 	var cfg := ConfigFile.new()
 	if cfg.load(OPZIONI_PATH) == OK:
 		for k in opzioni:
 			opzioni[k] = bool(cfg.get_value("opzioni", k, opzioni[k]))
+	if OS.get_environment("BORGO_UI_GRANDE") != "":
+		opzioni.interfaccia_grande = OS.get_environment("BORGO_UI_GRANDE") == "1"
 	suggerimenti_attivi = opzioni.suggerimenti
 	_applica_schermo()
+
+
+## Col telefono in verticale (nel browser la rotazione non si può bloccare) un velo chiede di girarlo.
+func _crea_avviso_orizzontale() -> void:
+	var livello := CanvasLayer.new()
+	livello.layer = 100
+	get_tree().root.add_child(livello)
+	var velo := ColorRect.new()
+	velo.color = Color(0.06, 0.07, 0.09, 0.96)
+	velo.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	velo.mouse_filter = Control.MOUSE_FILTER_STOP
+	livello.add_child(velo)
+	var testo := Label.new()
+	testo.text = "Gira il telefono in orizzontale\nper giocare a Borgo"
+	testo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	testo.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	testo.add_theme_font_size_override("font_size", 20)
+	testo.add_theme_color_override("font_color", Color("e8c060"))
+	testo.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	velo.add_child(testo)
+	var controlla := func():
+		var s := DisplayServer.window_get_size()
+		livello.visible = s.y > s.x * 1.1
+	get_tree().root.size_changed.connect(controlla)
+	controlla.call()
+
+
+## Vero su telefoni e tablet (anche nel browser): lì serve l'interfaccia grande.
+func schermo_touch() -> bool:
+	return OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") \
+		or (DisplayServer.get_name() != "headless" and DisplayServer.is_touchscreen_available())
 
 
 func imposta_opzione(chiave: String, valore: bool) -> void:
@@ -1210,6 +1249,9 @@ func imposta_opzione(chiave: String, valore: bool) -> void:
 
 
 func _applica_schermo() -> void:
+	# interfaccia grande: tutta la grafica 2D (pulsanti, testi, pannelli) più grossa
+	if get_tree() and get_tree().root:
+		get_tree().root.content_scale_factor = SCALA_GRANDE if opzioni.interfaccia_grande else 1.0
 	if OS.has_feature("web") or DisplayServer.get_name() == "headless":
 		return
 	var voluta := DisplayServer.WINDOW_MODE_FULLSCREEN if opzioni.schermo_intero else DisplayServer.WINDOW_MODE_WINDOWED

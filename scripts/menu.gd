@@ -127,26 +127,32 @@ func _crea_interfaccia() -> void:
 	radice.theme = Hud.crea_tema()
 	livello.add_child(radice)
 
+	# una colonna a sinistra: titolo e pulsanti; con l'interfaccia grande (telefono) più compatta
+	var grande: bool = GameState.opzioni.interfaccia_grande
+	var colonna := VBoxContainer.new()
+	colonna.position = Vector2(26, 12 if grande else 16)
+	colonna.add_theme_constant_override("separation", 0)
+	radice.add_child(colonna)
 	var titolo := Label.new()
 	titolo.text = "Borgo"
-	titolo.add_theme_font_size_override("font_size", 34)
+	titolo.add_theme_font_size_override("font_size", 26 if grande else 34)
 	titolo.add_theme_color_override("font_color", ORO)
 	titolo.add_theme_color_override("font_outline_color", INCHIOSTRO)
 	titolo.add_theme_constant_override("outline_size", 6)
-	titolo.position = Vector2(26, 16)
-	radice.add_child(titolo)
+	colonna.add_child(titolo)
 	var sotto := Label.new()
 	sotto.text = "Dalle ceneri di %s, un feudo da far crescere" % GameState.dati_famiglie.get("regno_caduto", "Valmora")
 	sotto.add_theme_color_override("font_color", Color("f3e3c3"))
 	sotto.add_theme_color_override("font_outline_color", INCHIOSTRO)
 	sotto.add_theme_constant_override("outline_size", 3)
-	sotto.position = Vector2(28, 58)
-	radice.add_child(sotto)
+	colonna.add_child(sotto)
+	var spazio := Control.new()
+	spazio.custom_minimum_size.y = 6 if grande else 12
+	colonna.add_child(spazio)
 
 	_principale = VBoxContainer.new()
-	_principale.position = Vector2(26, 84)
-	_principale.add_theme_constant_override("separation", 5)
-	radice.add_child(_principale)
+	_principale.add_theme_constant_override("separation", 3 if grande else 5)
+	colonna.add_child(_principale)
 	var salvata := _partita_salvata()
 	if not salvata.is_empty():
 		var continua := _bottone("Continua")
@@ -196,6 +202,7 @@ func _crea_interfaccia() -> void:
 	_btn_suggerimenti = _interruttore(col, "Suggerimenti ogni tanto", GameState.opzioni.suggerimenti, "suggerimenti")
 	_interruttore(col, "Musica", GameState.opzioni.musica, "musica")
 	_interruttore(col, "Effetti sonori", GameState.opzioni.effetti, "effetti")
+	_interruttore(col, "Interfaccia grande (telefono)", GameState.opzioni.interfaccia_grande, "interfaccia_grande")
 	if not OS.has_feature("web") and not OS.has_feature("mobile"):
 		_btn_schermo = _interruttore(col, "Schermo intero", GameState.opzioni.schermo_intero, "schermo_intero")
 	var chiudi_o := _bottone("Chiudi", 60)
@@ -211,7 +218,7 @@ func _crea_interfaccia() -> void:
 func _bottone(testo: String, larghezza := 120) -> Button:
 	var b := Button.new()
 	b.text = testo
-	b.custom_minimum_size = Vector2(larghezza, 24)
+	b.custom_minimum_size = Vector2(larghezza, 21 if GameState.opzioni.interfaccia_grande else 24)
 	b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_font_size_override("font_size", 10)
 	return b
