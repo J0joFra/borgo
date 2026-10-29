@@ -127,5 +127,331 @@
 			"colori_secondo": ["2a5a40", "2a5a40", "2a5a40", "d0e0e0"],
 			"quota_secondo": [0.6, 0.95, 0.4, 0.7]
 		}
+	},
+	"foresta_pluviale": {
+		"nome": "Foresta Pluviale",
+		"neve": false,
+		"zone": {"prateria": "radura umida", "pineta": "giungla", "palude": "acquitrino", "rupi": "alture boscose"},
+		"risorse": {"orzo": "Riso", "grano": "Mais", "rape": "Banane",
+			"semi_orzo": "Semi di riso", "semi_grano": "Semi di mais", "semi_rape": "Piantine di banano", "farina": "Farina di mais"},
+		"icone": {"rape": "banane", "semi_rape": "banane"},
+		"colture": {
+			"orzo": {"nome": "Riso", "stagioni": ["primavera", "estate"], "colore": "c8d890"},
+			"grano": {"nome": "Mais", "stagioni": ["estate", "autunno"], "colore": "e0c040"},
+			"rape": {"nome": "Banane", "stagioni": ["primavera", "estate", "autunno"], "colore": "e0d040"}
+		},
+		"edifici": {
+			"falo": "Fuoco del villaggio", "dimora": "Casa lunga del capo", "piazza": "Piazza delle liane", "tenda": "Riparo di foglie",
+			"casa": "Capanna di bambù", "casa+1": "Capanna grande di bambù", "casa+2": "Casa su palafitte",
+			"magazzino": "Granaio di bambù", "magazzino+1": "Granaio grande", "magazzino+2": "Magazzino su palafitte",
+			"taglialegna": "Tagliatore di palme", "forestale": "Piantatore di palme",
+			"raccoglitore": "Raccoglitore di frutti", "raccoglitore+2": "Dispensa della giungla",
+			"pescatore": "Pescatore di fiume", "cacciatore": "Cacciatore di tapiri", "cacciatore+2": "Riserva della giungla",
+			"mulino": "Macina", "mulino+1": "Macina a due pietre", "mulino+2": "Grande macina",
+			"forno": "Forno di terra", "taverna": "Casa del cacao", "mercato": "Mercato galleggiante",
+			"chiesa": "Santuario", "chiesa+1": "Santuario con torre", "chiesa+2": "Grande santuario"
+		},
+		"suolo": {
+			"erba": ["3a8a3a", "4a9a3a", "5a9a4a", "6aaa5a"],
+			"acqua": ["3a7a8a", "3a7a8a", "3a7282", "5a9aaa"],
+			"fiume": ["4a8a9a", "4a8a9a", "4a8292", "6aaaba"],
+			"roccia": ["5a6a5a", "5a6a5a", "566656", "8a9a8a"],
+			"radura": "4a8a4a",
+			"tinte_zone": ["000000", "1a5a2a", "3a7a3a", "5a8a5a"]
+		},
+		"alberi": {
+			"primo": "palma", "secondo": "kapok", "tronco": [1.8, 1.4],
+			"colori_primo": ["2a7a3a", "3a8a3a", "4a9a3a", "5aaa4a"],
+			"colori_secondo": ["1a5a2a", "1a5a2a", "2a6a3a", "6a9a6a"],
+			"quota_secondo": [0.5, 0.95, 0.7, 0.4]
+		}
+	},
+	"montagna": {
+		"nome": "Montagna",
+		"neve": true,
+		"zone": {"prateria": "alpeggio", "pineta": "pineta alpina", "palude": "torbiere alpine", "rupi": "creste rocciose"},
+		"risorse": {"grano": "Orzo alpino", "semi_grano": "Semi di orzo alpino", "farina": "Farina di orzo"},
+		"icone": {},
+		"colture": {
+			"grano": {"nome": "Orzo alpino", "colore": "c8b880"}
+		},
+		"edifici": {
+			"tenda": "Tenda di pelli", "casa": "Casa di pietra", "casa+1": "Casa di pietra grande", "casa+2": "Casa in pietra col camino",
+			"raccoglitore": "Raccoglitore di mirtilli", "raccoglitore+2": "Dispensa alpina",
+			"pescatore": "Pescatore di torrente", "cacciatore": "Cacciatore di stambecchi", "cacciatore+2": "Riserva alpina",
+			"chiesa": "Chiesa di pietra", "chiesa+1": "Chiesa di pietra col campanile"
+		},
+		"suolo": {
+			"erba": ["6a8a5a", "7a9a6a", "8a9a7a", "eef2f4"],
+			"acqua": ["4a80a8", "4a80a8", "4a7898", "d0e4ee"],
+			"fiume": ["5a90b8", "5a90b8", "5a88b0", "a8c8dc"],
+			"roccia": ["7a7a7a", "8a8a8a", "868686", "e8eef2"],
+			"radura": "6a7a5a",
+			"tinte_zone": ["000000", "2e4a34", "5a6a50", "9aa8b0"]
+		},
+		"alberi": {
+			"primo": "abete", "secondo": "pino", "tronco": [1.6, 1.0],
+			"colori_primo": ["2a5a40", "2a5a40", "2a5a40", "d0e0e0"],
+			"colori_secondo": ["2f6b40", "2f6b40", "2f6b40", "c4d6d0"],
+			"quota_secondo": [0.3, 0.85, 0.2, 0.5]
+		}
+	},
+	"mediterraneo": {
+		"nome": "Mediterraneo",
+		"neve": false,
+		"zone": {"prateria": "prateria costiera", "pineta": "pineta mediterranea", "palude": "stagno costiero", "rupi": "scogliere"},
+		"risorse": {"orzo": "Orzo", "grano": "Grano duro", "rape": "Olive",
+			"semi_orzo": "Semi di orzo", "semi_grano": "Semi di grano duro", "semi_rape": "Noccioli di oliva", "farina": "Farina di grano duro"},
+		"icone": {"rape": "olive", "semi_rape": "olive"},
+		"colture": {
+			"orzo": {"nome": "Orzo", "stagioni": ["autunno", "inverno"], "colore": "c8b060"},
+			"grano": {"nome": "Grano duro", "stagioni": ["primavera", "estate"], "colore": "e0c040"},
+			"rape": {"nome": "Olive", "stagioni": ["autunno", "inverno"], "colore": "4a5a2a"}
+		},
+		"edifici": {
+			"falo": "Fuoco della piazza", "dimora": "Casa del signore", "piazza": "Piazza del mercato", "tenda": "Tenda da pastore",
+			"casa": "Casa di pietra", "casa+1": "Casa a corte", "casa+2": "Villa con portico",
+			"magazzino": "Magazzino di pietra", "magazzino+1": "Magazzino grande", "magazzino+2": "Magazzino con portico",
+			"taglialegna": "Tagliatore di ulivi", "forestale": "Piantatore di ulivi",
+			"raccoglitore": "Raccoglitore di olive", "raccoglitore+2": "Dispensa del uliveto",
+			"pescatore": "Pescatore costiero", "cacciatore": "Cacciatore di cinghiali", "cacciatore+2": "Riserva mediterranea",
+			"mulino": "Macina", "mulino+1": "Macina a due pietre", "mulino+2": "Grande macina",
+			"forno": "Forno di pietra", "taverna": "Osteria", "mercato": "Mercato del pesce",
+			"chiesa": "Chiesa", "chiesa+1": "Chiesa con campanile", "chiesa+2": "Cattedrale"
+		},
+		"suolo": {
+			"erba": ["9a9a4a", "aa9a4a", "b8a050", "c8b060"],
+			"acqua": ["4a90c8", "4a90c8", "4a86b8", "b8d8ea"],
+			"fiume": ["5aa6dc", "5aa6dc", "5a9cd0", "7aaccc"],
+			"roccia": ["b8a888", "b8a888", "b0a080", "e8e0d0"],
+			"radura": "a89848",
+			"tinte_zone": ["000000", "6a7a30", "8a8a50", "b8a070"]
+		},
+		"alberi": {
+			"primo": "olivo", "secondo": "cipresso", "tronco": [1.4, 1.0],
+			"colori_primo": ["6a8a4a", "7a8a4a", "8a8a50", "7a7a48"],
+			"colori_secondo": ["2a5a3a", "2a5a3a", "2a5a3a", "c4d6d0"],
+			"quota_secondo": [0.3, 0.8, 0.5, 0.4]
+		}
+	},
+	"steppa": {
+		"nome": "Steppa",
+		"neve": false,
+		"zone": {"prateria": "steppa erbosa", "pineta": "boschetto", "palude": "stagno salato", "rupi": "colline rocciose"},
+		"risorse": {"orzo": "Orzo", "grano": "Grano", "rape": "Girasoli",
+			"semi_orzo": "Semi di orzo", "semi_grano": "Semi di grano", "semi_rape": "Semi di girasole", "farina": "Farina di grano"},
+		"icone": {"rape": "girasoli", "semi_rape": "girasoli"},
+		"colture": {
+			"orzo": {"nome": "Orzo", "stagioni": ["primavera", "estate"], "colore": "c8b060"},
+			"grano": {"nome": "Grano", "stagioni": ["estate", "autunno"], "colore": "e0c040"},
+			"rape": {"nome": "Girasoli", "stagioni": ["estate", "autunno"], "colore": "e0c030"}
+		},
+		"edifici": {
+			"falo": "Fuoco del villaggio", "dimora": "Casa del capo", "piazza": "Piazza del pozzo", "tenda": "Tenda di feltro",
+			"casa": "Casa di terra", "casa+1": "Casa grande di terra", "casa+2": "Casa di mattoni",
+			"magazzino": "Granaio", "magazzino+1": "Granaio grande", "magazzino+2": "Granaio di mattoni",
+			"taglialegna": "Tagliatore di betulle", "forestale": "Piantatore di betulle",
+			"raccoglitore": "Raccoglitore di bacche", "raccoglitore+2": "Dispensa della steppa",
+			"pescatore": "Pescatore di stagno", "cacciatore": "Cacciatore di saighe", "cacciatore+2": "Riserva della steppa",
+			"mulino": "Macina", "mulino+1": "Macina a due pietre", "mulino+2": "Grande macina",
+			"forno": "Forno di terra", "taverna": "Casa del kumis", "mercato": "Mercato della steppa",
+			"chiesa": "Santuario", "chiesa+1": "Santuario con torre", "chiesa+2": "Grande santuario"
+		},
+		"suolo": {
+			"erba": ["b8a850", "c8b860", "b8a850", "c8b860"],
+			"acqua": ["4a90b8", "4a8ab0", "4a86a8", "4a8ab0"],
+			"fiume": ["5aa0cc", "5a9cc4", "5a98bc", "5a9cc4"],
+			"roccia": ["a89878", "b0a080", "a89878", "a09070"],
+			"radura": "b0a050",
+			"tinte_zone": ["000000", "7a8a40", "8a9a50", "b0a070"]
+		},
+		"alberi": {
+			"primo": "betulla", "secondo": "pioppo", "tronco": [1.4, 0.9],
+			"colori_primo": ["8ab04a", "9ab04a", "e0b030", "9a8a70"],
+			"colori_secondo": ["4a8a4a", "4a8a4a", "5a9a4a", "7a9a7a"],
+			"quota_secondo": [0.2, 0.6, 0.1, 0.3]
+		}
+	},
+	"foresta_cristallo": {
+		"nome": "Foresta di Cristallo",
+		"neve": false,
+		"zone": {"prateria": "radura di cristallo", "pineta": "foresta di cristallo", "palude": "pozza di cristallo", "rupi": "scogliere di cristallo"},
+		"risorse": {"orzo": "Cristalli di mana", "grano": "Frutti di cristallo", "rape": "Gemme di cristallo",
+			"semi_orzo": "Semi di cristallo", "semi_grano": "Semi di frutto di cristallo", "semi_rape": "Gemme di cristallo", "farina": "Farina di cristallo"},
+		"icone": {"orzo": "cristalli", "grano": "frutti", "rape": "gemme"},
+		"colture": {
+			"orzo": {"nome": "Cristalli di mana", "stagioni": ["inverno", "primavera"], "colore": "a0d0ff"},
+			"grano": {"nome": "Frutti di cristallo", "stagioni": ["primavera", "estate"], "colore": "d0a0ff"},
+			"rape": {"nome": "Gemme di cristallo", "stagioni": ["estate", "autunno"], "colore": "ffd0a0"}
+		},
+		"edifici": {
+			"falo": "Fuoco di cristallo", "dimora": "Palazzo di cristallo", "piazza": "Piazza dei cristalli", "tenda": "Tenda di cristallo",
+			"casa": "Casa di cristallo", "casa+1": "Casa grande di cristallo", "casa+2": "Casa di cristallo luminoso",
+			"magazzino": "Magazzino di cristallo", "magazzino+1": "Magazzino grande di cristallo", "magazzino+2": "Magazzino di cristallo luminoso",
+			"taglialegna": "Tagliatore di cristalli", "forestale": "Piantatore di cristalli",
+			"raccoglitore": "Raccoglitore di gemme", "raccoglitore+2": "Dispensa di cristallo",
+			"pescatore": "Pescatore di cristalli", "cacciatore": "Cacciatore di creature di cristallo", "cacciatore+2": "Riserva di cristallo",
+			"mulino": "Macina di cristallo", "mulino+1": "Macina a due pietre di cristallo", "mulino+2": "Grande macina di cristallo",
+			"forno": "Forno di cristallo", "taverna": "Taverna di cristallo", "mercato": "Mercato di cristallo",
+			"chiesa": "Tempio di cristallo", "chiesa+1": "Tempio di cristallo con torre", "chiesa+2": "Grande tempio di cristallo"
+		},
+		"suolo": {
+			"erba": ["a0d0ff", "b0e0ff", "c0f0ff", "e0f8ff"],
+			"acqua": ["80c0e0", "80c0e0", "80b8d8", "c0e8f8"],
+			"fiume": ["90d0f0", "90d0f0", "90c8e8", "b0e0f8"],
+			"roccia": ["c0c0d0", "c0c0d0", "b8b8c8", "e8e8f0"],
+			"radura": "b0d0e0",
+			"tinte_zone": ["000000", "4a6a8a", "6a8aaa", "a0c0d0"]
+		},
+		"alberi": {
+			"primo": "cristallo", "secondo": "cristallo_luminoso", "tronco": [2.0, 1.2],
+			"colori_primo": ["a0d0ff", "b0e0ff", "c0f0ff", "e0f8ff"],
+			"colori_secondo": ["ffd0a0", "ffd0a0", "ffd0a0", "fff0d0"],
+			"quota_secondo": [0.6, 0.9, 0.4, 0.7]
+		}
+	},
+	"deserto_cenere": {
+		"nome": "Deserto di Cenere",
+		"neve": false,
+		"zone": {"prateria": "piana di cenere", "pineta": "foresta carbonizzata", "palude": "pozza di lava", "rupi": "rocce vulcaniche"},
+		"risorse": {"orzo": "Ceneri fertili", "grano": "Grano carbonizzato", "rape": "Radici di fuoco",
+			"semi_orzo": "Semi di cenere", "semi_grano": "Semi di grano carbonizzato", "semi_rape": "Radici di fuoco", "farina": "Farina nera"},
+		"icone": {"orzo": "cenere", "grano": "grano nero", "rape": "radici"},
+		"colture": {
+			"orzo": {"nome": "Ceneri fertili", "stagioni": ["estate", "autunno"], "colore": "4a4a4a"},
+			"grano": {"nome": "Grano carbonizzato", "stagioni": ["autunno", "inverno"], "colore": "3a3a3a"},
+			"rape": {"nome": "Radici di fuoco", "stagioni": ["primavera", "estate"], "colore": "a03a1a"}
+		},
+		"edifici": {
+			"falo": "Fuoco di lava", "dimora": "Casa del signore delle ceneri", "piazza": "Piazza delle ceneri", "tenda": "Tenda di pelle di salamandra",
+			"casa": "Casa di pietra lavica", "casa+1": "Casa di ossidiana", "casa+2": "Casa di pietra fusa",
+			"magazzino": "Magazzino di ossidiana", "magazzino+1": "Magazzino grande di ossidiana", "magazzino+2": "Magazzino di pietra fusa",
+			"taglialegna": "Tagliatore di alberi carbonizzati", "forestale": "Piantatore di alberi di fuoco",
+			"raccoglitore": "Raccoglitore di radici di fuoco", "raccoglitore+2": "Dispensa del deserto di cenere",
+			"pescatore": "Pescatore di pesci di lava", "cacciatore": "Cacciatore di salamandre", "cacciatore+2": "Riserva del deserto di cenere",
+			"mulino": "Macina di ossidiana", "mulino+1": "Macina a due pietre di ossidiana", "mulino+2": "Grande macina di ossidiana",
+			"forno": "Forno di lava", "taverna": "Taverna del fuoco", "mercato": "Mercato delle ceneri",
+			"chiesa": "Tempio del fuoco", "chiesa+1": "Tempio del fuoco con torre", "chiesa+2": "Grande tempio del fuoco"
+		},
+		"suolo": {
+			"erba": ["4a4a4a", "5a5a5a", "3a3a3a", "6a6a6a"],
+			"acqua": ["a03a1a", "a03a1a", "902a0a", "c05a3a"],
+			"fiume": ["b04a2a", "b04a2a", "a03a1a", "d06a4a"],
+			"roccia": ["2a2a2a", "3a3a3a", "1a1a1a", "4a4a4a"],
+			"radura": "5a4a3a",
+			"tinte_zone": ["000000", "3a2a2a", "5a3a2a", "7a5a4a"]
+		},
+		"alberi": {
+			"primo": "carbonizzato", "secondo": "fuoco", "tronco": [2.4, 1.0],
+			"colori_primo": ["2a2a2a", "3a3a3a", "4a4a4a", "5a5a5a"],
+			"colori_secondo": ["a03a1a", "b04a2a", "c05a3a", "d06a4a"],
+			"quota_secondo": [0.7, 0.95, 0.5, 0.8]
+		}
+	},
+	"giungla_funghi": {
+		"nome": "Giungla di Funghi",
+		"neve": false,
+		"zone": {"prateria": "radura di funghi", "pineta": "foresta di funghi", "palude": "pozza di spore", "rupi": "scogliere di funghi"},
+		"risorse": {"orzo": "Spore nutrienti", "grano": "Funghi giganti", "rape": "Radici di fungo",
+			"semi_orzo": "Spore", "semi_grano": "Semi di fungo", "semi_rape": "Radici di fungo", "farina": "Farina di funghi"},
+		"icone": {"orzo": "spore", "grano": "funghi", "rape": "radici"},
+		"colture": {
+			"orzo": {"nome": "Spore nutrienti", "stagioni": ["primavera", "estate"], "colore": "c8a0e0"},
+			"grano": {"nome": "Funghi giganti", "stagioni": ["estate", "autunno"], "colore": "a0d0a0"},
+			"rape": {"nome": "Radici di fungo", "stagioni": ["autunno", "inverno"], "colore": "8a6a4a"}
+		},
+		"edifici": {
+			"falo": "Fuoco di funghi", "dimora": "Casa del capo fungo", "piazza": "Piazza delle spore", "tenda": "Tenda di fungo",
+			"casa": "Casa di fungo", "casa+1": "Casa grande di fungo", "casa+2": "Casa di fungo gigante",
+			"magazzino": "Magazzino di fungo", "magazzino+1": "Magazzino grande di fungo", "magazzino+2": "Magazzino di fungo gigante",
+			"taglialegna": "Tagliatore di funghi", "forestale": "Piantatore di funghi",
+			"raccoglitore": "Raccoglitore di spore", "raccoglitore+2": "Dispensa della giungla di funghi",
+			"pescatore": "Pescatore di funghi d'acqua", "cacciatore": "Cacciatore di creature fungine", "cacciatore+2": "Riserva della giungla di funghi",
+			"mulino": "Macina di funghi", "mulino+1": "Macina a due pietre di funghi", "mulino+2": "Grande macina di funghi",
+			"forno": "Forno di funghi", "taverna": "Taverna delle spore", "mercato": "Mercato dei funghi",
+			"chiesa": "Tempio dei funghi", "chiesa+1": "Tempio dei funghi con torre", "chiesa+2": "Grande tempio dei funghi"
+		},
+		"suolo": {
+			"erba": ["8a6a9a", "9a7aaa", "aa8aba", "ba9aca"],
+			"acqua": ["6a8a7a", "6a8a7a", "6a8272", "8aaaaa"],
+			"fiume": ["7a9a8a", "7a9a8a", "7a9282", "9ababa"],
+			"roccia": ["7a6a7a", "7a6a7a", "766676", "9a8a9a"],
+			"radura": "8a7a8a",
+			"tinte_zone": ["000000", "4a3a5a", "6a5a7a", "8a7a9a"]
+		},
+		"alberi": {
+			"primo": "fungo", "secondo": "fungo_gigante", "tronco": [2.0, 1.2],
+			"colori_primo": ["c8a0e0", "d0a8e8", "d8b0f0", "e0b8f8"],
+			"colori_secondo": ["a0d0a0", "a0d0a0", "a0d0a0", "c0e0c0"],
+			"quota_secondo": [0.5, 0.9, 0.6, 0.7]
+		}
+	},
+	"tundra_lunare": {
+		"nome": "Tundra Lunare",
+		"neve": true,
+		"zone": {"prateria": "piana lunare", "pineta": "foresta di cristalli lunari", "palude": "cratere ghiacciato", "rupi": "montagne lunari"},
+		"risorse": {"grano": "Grano lunare", "semi_grano": "Semi di grano lunare", "farina": "Farina lunare"},
+		"icone": {},
+		"colture": {
+			"grano": {"nome": "Grano lunare", "colore": "c0d0e0"}
+		},
+		"edifici": {
+			"tenda": "Tenda lunare", "casa": "Casa di pietra lunare", "casa+1": "Casa di pietra lunare grande", "casa+2": "Casa di pietra lunare con cupola",
+			"raccoglitore": "Raccoglitore di cristalli lunari", "raccoglitore+2": "Dispensa lunare",
+			"pescatore": "Pescatore di pesci lunari", "cacciatore": "Cacciatore di creature lunari", "cacciatore+2": "Riserva lunare",
+			"chiesa": "Tempio lunare", "chiesa+1": "Tempio lunare con torre"
+		},
+		"suolo": {
+			"erba": ["c0c0d0", "d0d0e0", "e0e0f0", "f0f0ff"],
+			"acqua": ["a0a0c0", "a0a0c0", "a098b8", "c0c0e0"],
+			"fiume": ["b0b0d0", "b0b0d0", "b0a8c8", "d0d0f0"],
+			"roccia": ["9090a0", "9090a0", "8a8a9a", "b0b0c0"],
+			"radura": "a0a0b0",
+			"tinte_zone": ["000000", "4a4a6a", "6a6a8a", "9a9aba"]
+		},
+		"alberi": {
+			"primo": "cristallo_lunare", "secondo": "abete_lunare", "tronco": [1.8, 1.0],
+			"colori_primo": ["c0d0e0", "d0e0f0", "e0f0ff", "f0f8ff"],
+			"colori_secondo": ["2a5a40", "2a5a40", "2a5a40", "d0e0e0"],
+			"quota_secondo": [0.6, 0.95, 0.4, 0.7]
+		}
+	},
+	"savana_cristalli": {
+		"nome": "Savana di Cristalli",
+		"neve": false,
+		"zone": {"prateria": "piana di cristalli", "pineta": "boscaglia di cristalli", "palude": "pozza di cristalli", "rupi": "altopiano di cristalli"},
+		"risorse": {"orzo": "Cristalli di sole", "grano": "Cristalli di luna", "rape": "Cristalli di stelle",
+			"semi_orzo": "Semi di cristallo di sole", "semi_grano": "Semi di cristallo di luna", "semi_rape": "Cristalli di stelle", "farina": "Farina di cristallo"},
+		"icone": {"orzo": "cristalli", "grano": "cristalli", "rape": "cristalli"},
+		"colture": {
+			"orzo": {"nome": "Cristalli di sole", "stagioni": ["estate", "autunno"], "colore": "ffd700"},
+			"grano": {"nome": "Cristalli di luna", "stagioni": ["autunno", "inverno"], "colore": "c0c0ff"},
+			"rape": {"nome": "Cristalli di stelle", "stagioni": ["primavera", "estate"], "colore": "ffa0ff"}
+		},
+		"edifici": {
+			"falo": "Fuoco di cristallo", "dimora": "Palazzo di cristallo", "piazza": "Piazza dei cristalli", "tenda": "Tenda di cristallo",
+			"casa": "Casa di cristallo", "casa+1": "Casa grande di cristallo", "casa+2": "Casa di cristallo luminoso",
+			"magazzino": "Magazzino di cristallo", "magazzino+1": "Magazzino grande di cristallo", "magazzino+2": "Magazzino di cristallo luminoso",
+			"taglialegna": "Tagliatore di cristalli", "forestale": "Piantatore di cristalli",
+			"raccoglitore": "Raccoglitore di cristalli", "raccoglitore+2": "Dispensa di cristallo",
+			"pescatore": "Pescatore di cristalli", "cacciatore": "Cacciatore di creature di cristallo", "cacciatore+2": "Riserva di cristallo",
+			"mulino": "Macina di cristallo", "mulino+1": "Macina a due pietre di cristallo", "mulino+2": "Grande macina di cristallo",
+			"forno": "Forno di cristallo", "taverna": "Taverna di cristallo", "mercato": "Mercato di cristallo",
+			"chiesa": "Tempio di cristallo", "chiesa+1": "Tempio di cristallo con torre", "chiesa+2": "Grande tempio di cristallo"
+		},
+		"suolo": {
+			"erba": ["ffd700", "ffe040", "ffd700", "fff0a0"],
+			"acqua": ["a0c0ff", "a0c0ff", "a0b8f8", "c0d8ff"],
+			"fiume": ["b0d0ff", "b0d0ff", "b0c8f8", "d0e8ff"],
+			"roccia": ["c0a0e0", "c0a0e0", "b898d8", "e0c0f8"],
+			"radura": "e0c080",
+			"tinte_zone": ["000000", "8a7a30", "a89a50", "d0c080"]
+		},
+		"alberi": {
+			"primo": "cristallo_sole", "secondo": "cristallo_luna", "tronco": [2.0, 1.2],
+			"colori_primo": ["ffd700", "ffe040", "fff0a0", "ffffd0"],
+			"colori_secondo": ["c0c0ff", "c0c0ff", "c0c0ff", "e0e0ff"],
+			"quota_secondo": [0.3, 0.7, 0.4, 0.6]
+		}
 	}
 }
