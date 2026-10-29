@@ -907,9 +907,10 @@ func _crea_mercato() -> void:
 		scorta.custom_minimum_size.x = 28
 		scorta.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		griglia.add_child(scorta)
-		var tendenza := Label.new()
-		tendenza.custom_minimum_size.x = 30
-		tendenza.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		# la tendenza del prezzo: una freccia disegnata (il font non ha i triangoli)
+		var tendenza := IconaUi.new("pari", 8.0)
+		tendenza.custom_minimum_size = Vector2(30, 8)
+		tendenza.mouse_filter = Control.MOUSE_FILTER_PASS
 		griglia.add_child(tendenza)
 		var compra := _bottone("", 100, 14)
 		compra.pressed.connect(func(): Audio.effetto("moneta" if GameState.compra(r2) else "errore"))
@@ -1026,8 +1027,11 @@ func _aggiorna_mercato() -> void:
 		var riga: Array = _mercato_righe[r]
 		riga[0].text = str(int(GameState.risorse.get(r, 0.0)))
 		var t := m.tendenza(r, GameState.stagione)
-		riga[1].text = "▲" if t > 0 else ("▼" if t < 0 else "—")
-		riga[1].add_theme_color_override("font_color", COLORE_ERRORE if t > 0 else (COLORE_OK if t < 0 else Color(1, 1, 1, 0.4)))
+		var freccia: IconaUi = riga[1]
+		freccia.tipo = "su" if t > 0 else ("giu" if t < 0 else "pari")
+		freccia.colore = COLORE_ERRORE if t > 0 else (COLORE_OK if t < 0 else Color(1, 1, 1, 0.4))
+		freccia.tooltip_text = "Il prezzo è salito" if t > 0 else ("Il prezzo è sceso" if t < 0 else "Prezzo stabile")
+		freccia.queue_redraw()
 		var costo := GameState.costo_lotto(r)
 		var ricavo := GameState.ricavo_lotto(r)
 		var unit := float(costo) / lotto

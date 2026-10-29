@@ -650,7 +650,7 @@ func _forma_chioma(forma: String, h: float) -> Mesh:
 		"pino":
 			k.forma(LowPoly.cilindro(0.95, 0.0, 1.6, 7), LowPoly.t(Vector3(0, h + 0.3, 0)), Color.WHITE)
 			k.forma(LowPoly.cilindro(0.7, 0.0, 1.3, 7), LowPoly.t(Vector3(0, h + 1.1, 0)), Color.WHITE)
-		"abete":
+		"abete", "abete_lunare":
 			k.forma(LowPoly.cilindro(1.0, 0.0, 1.4, 7), LowPoly.t(Vector3(0, h + 0.2, 0)), Color.WHITE)
 			k.forma(LowPoly.cilindro(0.8, 0.0, 1.2, 7), LowPoly.t(Vector3(0, h + 0.9, 0)), Color.WHITE)
 			k.forma(LowPoly.cilindro(0.55, 0.0, 1.0, 7), LowPoly.t(Vector3(0, h + 1.5, 0)), Color.WHITE)
@@ -672,6 +672,40 @@ func _forma_chioma(forma: String, h: float) -> Mesh:
 			k.forma(LowPoly.sfera(0.22, 0.3, 5, 3), LowPoly.t(Vector3(0, h + 0.1, 0)), Color.WHITE)
 		"betulla":
 			k.forma(LowPoly.sfera(0.6, 1.9, 6, 4), LowPoly.t(Vector3(0, h + 0.7, 0)), Color.WHITE)
+		"pioppo":
+			k.forma(LowPoly.sfera(0.55, 2.4, 6, 4), LowPoly.t(Vector3(0, h + 0.9, 0)), Color.WHITE)
+		"cipresso":
+			k.forma(LowPoly.sfera(0.45, 2.8, 6, 4), LowPoly.t(Vector3(0, h + 1.0, 0)), Color.WHITE)
+		"olivo":
+			# chioma bassa e spettinata, a ciuffi
+			k.forma(LowPoly.sfera(0.65, 0.6, 6, 3), LowPoly.t(Vector3(0.35, h + 0.2, 0.1)), Color.WHITE)
+			k.forma(LowPoly.sfera(0.6, 0.55, 6, 3), LowPoly.t(Vector3(-0.35, h + 0.3, -0.15)), Color.WHITE)
+			k.forma(LowPoly.sfera(0.5, 0.5, 6, 3), LowPoly.t(Vector3(0, h + 0.5, 0.3)), Color.WHITE)
+		"kapok":
+			# gigante della foresta: chioma larga a piani
+			k.forma(LowPoly.sfera(1.35, 0.9, 8, 3), LowPoly.t(Vector3(0, h + 0.3, 0)), Color.WHITE)
+			k.forma(LowPoly.sfera(0.95, 0.8, 7, 3), LowPoly.t(Vector3(0.2, h + 0.9, -0.1)), Color.WHITE)
+		"fungo", "fungo_gigante":
+			# un cappello largo e schiacciato sopra il gambo
+			var r := 1.25 if forma == "fungo" else 1.7
+			k.forma(LowPoly.sfera(r, r * 0.55, 9, 3), LowPoly.t(Vector3(0, h + 0.1, 0)), Color.WHITE)
+		"cristallo", "cristallo_luminoso", "cristallo_lunare", "cristallo_sole", "cristallo_luna":
+			# punte di cristallo: piramidi a quattro facce, una grande e due piccole storte
+			var alto := 2.2 if forma == "cristallo_luminoso" else 1.8
+			k.forma(LowPoly.cilindro(0.55, 0.0, alto, 4), LowPoly.t(Vector3(0, h + alto / 2.0 - 0.3, 0), Vector3.ONE, 0.3), Color.WHITE)
+			k.forma(LowPoly.cilindro(0.3, 0.0, 1.0, 4), Transform3D(Basis(Vector3.FORWARD, 0.5), Vector3(0.45, h - 0.1, 0.1)), Color.WHITE)
+			k.forma(LowPoly.cilindro(0.25, 0.0, 0.9, 4), Transform3D(Basis(Vector3.RIGHT, -0.5), Vector3(-0.2, h - 0.2, -0.4)), Color.WHITE)
+		"carbonizzato":
+			# albero morto: solo rami spogli
+			for i in 3:
+				var verso := TAU * i / 3.0
+				var base := Basis(Vector3.UP, verso) * Basis(Vector3.FORWARD, 0.7)
+				k.forma(LowPoly.cilindro(0.07, 0.03, 1.0, 4), Transform3D(base, Vector3(0, h - 0.1, 0) + Vector3(cos(verso), 0, sin(verso)) * 0.2), Color.WHITE)
+		"fuoco":
+			# fiamme a punta che salgono dal tronco
+			k.forma(LowPoly.cilindro(0.7, 0.0, 1.4, 6), LowPoly.t(Vector3(0, h + 0.4, 0)), Color.WHITE)
+			k.forma(LowPoly.cilindro(0.4, 0.0, 1.0, 5), LowPoly.t(Vector3(0.35, h + 0.3, 0.2)), Color.WHITE)
+			k.forma(LowPoly.cilindro(0.35, 0.0, 0.9, 5), LowPoly.t(Vector3(-0.3, h + 0.25, -0.25)), Color.WHITE)
 		_:
 			k.forma(LowPoly.sfera(0.95, 1.7, 7, 4), LowPoly.t(Vector3(0, h + 0.6, 0)), Color.WHITE)
 	return k.mesh()

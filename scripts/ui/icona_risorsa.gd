@@ -51,6 +51,11 @@ const NOMI := {
 }
 
 
+## Il disegno da usare per questa risorsa nel clima della partita (es. "rape" nel deserto: "datteri").
+func tipo_disegno() -> String:
+	return GameState.icona_di(tipo)
+
+
 func imposta_valore(v: float) -> void:
 	if not is_equal_approx(v, valore):
 		valore = v
@@ -69,6 +74,58 @@ func _draw() -> void:
 			for p in [Vector2(3.4, 4.2), Vector2(6.6, 4.2), Vector2(5, 5.0), Vector2(3.0, 6.6), Vector2(7.0, 6.6), Vector2(5, 7.4), Vector2(4.0, 8.8), Vector2(6.0, 8.8)]:
 				draw_circle(p, 1.25, Color("7a3a1e"))
 				draw_circle(p - Vector2(0.4, 0.4), 0.45, Color("b0603a"))
+		"banane":
+			# un casco di banane gialle
+			for i in 3:
+				var off := float(i - 1) * 1.8
+				var punti := PackedVector2Array()
+				for passo in 7:
+					var t := float(passo) / 6.0
+					punti.append(Vector2(2.6 + off + t * 4.4, 8.4 - sin(t * PI) * 3.6 - t * 3.0))
+				draw_polyline(punti, Color("e8c838"), 1.7, true)
+			draw_line(Vector2(7.2, 2.4), Vector2(8.2, 1.2), Color("6a5a2a"), 0.9)
+		"olive":
+			draw_line(Vector2(1.6, 2.2), Vector2(8.6, 5.4), C_LEGNA_SCURA, 0.6)
+			_poligono([Vector2(3.2, 2.6), Vector2(5.4, 1.6), Vector2(4.6, 3.6)], C_VERDE)
+			for p in [Vector2(3.6, 5.6), Vector2(6.2, 7.0), Vector2(7.6, 4.4)]:
+				draw_circle(p, 1.35, Color("4a5a2a"))
+				draw_circle(p - Vector2(0.4, 0.4), 0.45, Color("8a9a5a"))
+		"girasoli":
+			draw_line(Vector2(5, 9.6), Vector2(5, 5), C_VERDE_SCURO, 0.9)
+			for petalo in 10:
+				var a := TAU * petalo / 10.0
+				draw_circle(Vector2(5, 4.4) + Vector2.from_angle(a) * 2.6, 1.0, Color("f0c020"))
+			draw_circle(Vector2(5, 4.4), 1.9, Color("6a3a1a"))
+			draw_circle(Vector2(4.6, 4.0), 0.5, Color("9a6a3a"))
+		"cristalli", "gemme":
+			var c := Color("a0d0ff") if tipo_disegno() == "cristalli" else Color("e070c0")
+			_poligono([Vector2(5, 0.8), Vector2(7.6, 4.0), Vector2(5, 9.2), Vector2(2.4, 4.0)], c)
+			_poligono([Vector2(5, 0.8), Vector2(5, 9.2), Vector2(2.4, 4.0)], c.lightened(0.3))
+			_poligono([Vector2(7.2, 5.6), Vector2(9.2, 7.2), Vector2(8.0, 9.4), Vector2(6.6, 8.0)], c.darkened(0.2))
+		"frutti":
+			for p in [Vector2(3.6, 6.0), Vector2(6.6, 6.4), Vector2(5.0, 3.8)]:
+				draw_circle(p, 2.0, Color("ff9a5a"))
+				draw_circle(p - Vector2(0.6, 0.6), 0.6, Color("ffd0a0"))
+		"cenere":
+			_poligono([Vector2(1, 9), Vector2(3.4, 5.0), Vector2(5.6, 6.0), Vector2(7.4, 4.2), Vector2(9.2, 9)], Color("5a5a5a"))
+			draw_circle(Vector2(4.2, 7.6), 0.6, Color("e05a2a"))
+			draw_circle(Vector2(6.8, 7.2), 0.5, Color("f08a3a"))
+		"grano nero":
+			_spiga(Color("4a3a3a"))
+		"radici":
+			draw_line(Vector2(5, 1), Vector2(5, 5), Color("8a5a3a"), 1.2)
+			for d in [Vector2(-3, 4), Vector2(3, 4), Vector2(-1.2, 4.6), Vector2(1.6, 4.4)]:
+				draw_line(Vector2(5, 5), Vector2(5, 5) + d, Color("a06a3a"), 0.8)
+			draw_circle(Vector2(5, 2.2), 1.2, Color("e05a2a"))
+		"spore":
+			for p in [Vector2(3, 3), Vector2(6.6, 2.6), Vector2(4.6, 6), Vector2(7.6, 6.8), Vector2(2.4, 7.8)]:
+				draw_circle(p, 1.1, Color("c8a0e0"))
+				draw_circle(p, 0.45, Color("f0e0ff"))
+		"funghi":
+			draw_rect(Rect2(4.0, 5.0, 2.0, 4.2), Color("e8e0d0"))
+			_poligono([Vector2(1, 5.4), Vector2(2.4, 2.2), Vector2(5, 1.2), Vector2(7.6, 2.2), Vector2(9, 5.4)], Color("c03a3a"))
+			draw_circle(Vector2(3.6, 3.4), 0.6, Color.WHITE)
+			draw_circle(Vector2(6.4, 3.0), 0.5, Color.WHITE)
 		"arachidi":
 			# due baccelli di arachide
 			for c in [Vector2(3.6, 4.0), Vector2(6.4, 6.4)]:

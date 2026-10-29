@@ -333,8 +333,16 @@ func _ready() -> void:
 	for i in 60:
 		GameState._tick()
 	GameState._consegna_raccolti()
-	# migliorato: 3 posti di lavoro e +30%; con 2 lavoratori su 3 rende 40 × 1,3 × 2/3
-	_verifica(absf(GameState.risorse.cibo - 40.0 * 1.3 * 2.0 / 3.0) < 0.2, "raccoglitore migliorato: più posti e più efficienza (%.1f)" % GameState.risorse.cibo)
+	# migliorato: +30%, e ogni lavoratore produce la sua parte: con gli stessi 2 lavoratori 40 × 1,3
+	_verifica(absf(GameState.risorse.cibo - 40.0 * 1.3) < 0.2, "raccoglitore migliorato: rende di più anche con gli stessi lavoratori (%.1f)" % GameState.risorse.cibo)
+	rc.lavoratori = 3
+	GameState.risorse.cibo = 0.0
+	GameState.tick_in_stagione = 0
+	for i in 60:
+		GameState._tick()
+	GameState._consegna_raccolti()
+	# con il terzo lavoratore: 20 a testa × 3 × 1,3
+	_verifica(absf(GameState.risorse.cibo - 20.0 * 3.0 * 1.3) < 0.3, "e con il posto in più ancora di più (%.1f)" % GameState.risorse.cibo)
 
 	# Pietra nei costi: la casa la chiede.
 	_verifica(GameState.edifici.casa.costo.has("pietra"), "le case costano anche pietra")
@@ -1383,7 +1391,7 @@ func _ready() -> void:
 	GameState.in_corso = false
 	GameState.versione_mappa = 1
 	GameState.avvia()
-	_verifica(GameState.versione_mappa == 3, "la versione della mappa si salva")
+	_verifica(GameState.versione_mappa == 4, "la versione della mappa si salva")
 	GameState.cancella_salvataggio()
 
 	# Climi: ogni regione ne ha uno; il feudo prende quello della sua regione, con nomi e colture adatti.
@@ -1394,6 +1402,28 @@ func _ready() -> void:
 			climi_visti[reg_c.clima] = true
 	_verifica(climi_visti.size() == 4, "sulla mappa ci sono climi diversi %s" % str(climi_visti.keys()))
 	_verifica(Regioni.genera(3, 2).regioni.all(func(r): return r.clima == "temperato"), "nelle partite di prima è tutto temperato")
+	var climi_v4 := {}
+	for seme_c in 30:
+		for reg_c in Regioni.genera(seme_c, 4).regioni:
+			climi_v4[reg_c.clima] = true
+	_verifica(climi_v4.size() > 6, "con la versione 4 escono anche i climi nuovi (%d)" % climi_v4.size())
+	# ogni clima di data/climi.json ha tutto quello che serve (così un clima aggiunto a mano non rompe il gioco)
+	var mancanze: Array[String] = []
+	for k_c in GameState.climi:
+		var dc: Dictionary = GameState.climi[k_c]
+		for voce in ["nome", "fascia", "suolo", "alberi"]:
+			if not dc.has(voce):
+				mancanze.append("%s: manca %s" % [k_c, voce])
+		for colore_s in ["erba", "acqua", "fiume", "roccia", "tinte_zone"]:
+			if dc.get("suolo", {}).get(colore_s, []).size() != 4:
+				mancanze.append("%s: suolo.%s deve avere 4 colori" % [k_c, colore_s])
+		for voce_a in ["colori_primo", "colori_secondo", "quota_secondo"]:
+			if dc.get("alberi", {}).get(voce_a, []).size() != 4:
+				mancanze.append("%s: alberi.%s deve avere 4 valori" % [k_c, voce_a])
+		for coltura in dc.get("colture", {}):
+			if not GameState.nomi_colture().has(coltura):
+				mancanze.append("%s: la coltura %s non esiste" % [k_c, coltura])
+	_verifica(mancanze.is_empty(), "i climi in data/climi.json sono completi %s" % str(mancanze))
 	GameState.clima_forzato = "deserto"
 	GameState.nuova_partita(5)
 	_verifica(GameState.clima == "deserto" and GameState.nome_risorsa("rape") == "Datteri" and GameState.colture.rape.nome == "Datteri",

@@ -2,6 +2,7 @@
 	"temperato": {
 		"nome": "Temperato",
 		"neve": true,
+		"fascia": "temperata", "peso": 1,
 		"zone": {"prateria": "prateria", "pineta": "pineta", "palude": "palude", "rupi": "rupi"},
 		"risorse": {},
 		"icone": {},
@@ -25,6 +26,7 @@
 	"savana": {
 		"nome": "Savana",
 		"neve": false,
+		"fascia": "calda", "peso": 1,
 		"zone": {"prateria": "savana", "pineta": "boscaglia di acacie", "palude": "pozze", "rupi": "altopiano"},
 		"risorse": {"orzo": "Miglio", "grano": "Sorgo", "rape": "Arachidi",
 			"semi_orzo": "Semi di miglio", "semi_grano": "Semi di sorgo", "semi_rape": "Arachidi da semina", "farina": "Farina di sorgo"},
@@ -63,6 +65,7 @@
 	"deserto": {
 		"nome": "Deserto",
 		"neve": false,
+		"fascia": "arida", "peso": 1,
 		"zone": {"prateria": "steppa", "pineta": "palmeto", "palude": "oasi", "rupi": "rocce rosse"},
 		"risorse": {"orzo": "Ceci", "grano": "Frumento", "rape": "Datteri",
 			"semi_orzo": "Ceci da semina", "semi_grano": "Semi di frumento", "semi_rape": "Noccioli di dattero"},
@@ -101,6 +104,7 @@
 	"tundra": {
 		"nome": "Tundra",
 		"neve": true,
+		"fascia": "fredda", "peso": 1,
 		"zone": {"prateria": "tundra", "pineta": "taiga", "palude": "torbiera", "rupi": "rocce gelate"},
 		"risorse": {"grano": "Segale", "semi_grano": "Semi di segale", "farina": "Farina di segale"},
 		"icone": {},
@@ -131,6 +135,7 @@
 	"foresta_pluviale": {
 		"nome": "Foresta Pluviale",
 		"neve": false,
+		"fascia": "calda", "peso": 1,
 		"zone": {"prateria": "radura umida", "pineta": "giungla", "palude": "acquitrino", "rupi": "alture boscose"},
 		"risorse": {"orzo": "Riso", "grano": "Mais", "rape": "Banane",
 			"semi_orzo": "Semi di riso", "semi_grano": "Semi di mais", "semi_rape": "Piantine di banano", "farina": "Farina di mais"},
@@ -169,6 +174,7 @@
 	"montagna": {
 		"nome": "Montagna",
 		"neve": true,
+		"fascia": "fredda", "peso": 1,
 		"zone": {"prateria": "alpeggio", "pineta": "pineta alpina", "palude": "torbiere alpine", "rupi": "creste rocciose"},
 		"risorse": {"grano": "Orzo alpino", "semi_grano": "Semi di orzo alpino", "farina": "Farina di orzo"},
 		"icone": {},
@@ -199,6 +205,7 @@
 	"mediterraneo": {
 		"nome": "Mediterraneo",
 		"neve": false,
+		"fascia": "temperata", "peso": 1,
 		"zone": {"prateria": "prateria costiera", "pineta": "pineta mediterranea", "palude": "stagno costiero", "rupi": "scogliere"},
 		"risorse": {"orzo": "Orzo", "grano": "Grano duro", "rape": "Olive",
 			"semi_orzo": "Semi di orzo", "semi_grano": "Semi di grano duro", "semi_rape": "Noccioli di oliva", "farina": "Farina di grano duro"},
@@ -237,6 +244,7 @@
 	"steppa": {
 		"nome": "Steppa",
 		"neve": false,
+		"fascia": "temperata", "peso": 1,
 		"zone": {"prateria": "steppa erbosa", "pineta": "boschetto", "palude": "stagno salato", "rupi": "colline rocciose"},
 		"risorse": {"orzo": "Orzo", "grano": "Grano", "rape": "Girasoli",
 			"semi_orzo": "Semi di orzo", "semi_grano": "Semi di grano", "semi_rape": "Semi di girasole", "farina": "Farina di grano"},
@@ -275,6 +283,7 @@
 	"foresta_cristallo": {
 		"nome": "Foresta di Cristallo",
 		"neve": false,
+		"fascia": "temperata", "peso": 0.35,
 		"zone": {"prateria": "radura di cristallo", "pineta": "foresta di cristallo", "palude": "pozza di cristallo", "rupi": "scogliere di cristallo"},
 		"risorse": {"orzo": "Cristalli di mana", "grano": "Frutti di cristallo", "rape": "Gemme di cristallo",
 			"semi_orzo": "Semi di cristallo", "semi_grano": "Semi di frutto di cristallo", "semi_rape": "Gemme di cristallo", "farina": "Farina di cristallo"},
@@ -313,6 +322,7 @@
 	"deserto_cenere": {
 		"nome": "Deserto di Cenere",
 		"neve": false,
+		"fascia": "arida", "peso": 0.35,
 		"zone": {"prateria": "piana di cenere", "pineta": "foresta carbonizzata", "palude": "pozza di lava", "rupi": "rocce vulcaniche"},
 		"risorse": {"orzo": "Ceneri fertili", "grano": "Grano carbonizzato", "rape": "Radici di fuoco",
 			"semi_orzo": "Semi di cenere", "semi_grano": "Semi di grano carbonizzato", "semi_rape": "Radici di fuoco", "farina": "Farina nera"},
@@ -351,6 +361,7 @@
 	"giungla_funghi": {
 		"nome": "Giungla di Funghi",
 		"neve": false,
+		"fascia": "calda", "peso": 0.35,
 		"zone": {"prateria": "radura di funghi", "pineta": "foresta di funghi", "palude": "pozza di spore", "rupi": "scogliere di funghi"},
 		"risorse": {"orzo": "Spore nutrienti", "grano": "Funghi giganti", "rape": "Radici di fungo",
 			"semi_orzo": "Spore", "semi_grano": "Semi di fungo", "semi_rape": "Radici di fungo", "farina": "Farina di funghi"},
@@ -389,6 +400,7 @@
 	"tundra_lunare": {
 		"nome": "Tundra Lunare",
 		"neve": true,
+		"fascia": "fredda", "peso": 0.35,
 		"zone": {"prateria": "piana lunare", "pineta": "foresta di cristalli lunari", "palude": "cratere ghiacciato", "rupi": "montagne lunari"},
 		"risorse": {"grano": "Grano lunare", "semi_grano": "Semi di grano lunare", "farina": "Farina lunare"},
 		"icone": {},
@@ -419,6 +431,7 @@
 	"savana_cristalli": {
 		"nome": "Savana di Cristalli",
 		"neve": false,
+		"fascia": "calda", "peso": 0.35,
 		"zone": {"prateria": "piana di cristalli", "pineta": "boscaglia di cristalli", "palude": "pozza di cristalli", "rupi": "altopiano di cristalli"},
 		"risorse": {"orzo": "Cristalli di sole", "grano": "Cristalli di luna", "rape": "Cristalli di stelle",
 			"semi_orzo": "Semi di cristallo di sole", "semi_grano": "Semi di cristallo di luna", "semi_rape": "Cristalli di stelle", "farina": "Farina di cristallo"},

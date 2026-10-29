@@ -111,6 +111,12 @@ func _draw() -> void:
 			_pieno([Vector2(5, 9.4), Vector2(6.4, 7.8), Vector2(3.6, 7.8)])
 			_pieno([Vector2(0.6, 5), Vector2(2.2, 3.6), Vector2(2.2, 6.4)])
 			_pieno([Vector2(9.4, 5), Vector2(7.8, 3.6), Vector2(7.8, 6.4)])
+		"su":
+			_pieno([Vector2(5, 2.4), Vector2(8.2, 7.4), Vector2(1.8, 7.4)])
+		"giu":
+			_pieno([Vector2(5, 7.6), Vector2(8.2, 2.6), Vector2(1.8, 2.6)])
+		"pari":
+			_linea(Vector2(2.4, 5), Vector2(7.6, 5))
 		"chiudi":
 			_linea(Vector2(2.6, 2.6), Vector2(7.4, 7.4))
 			_linea(Vector2(7.4, 2.6), Vector2(2.6, 7.4))

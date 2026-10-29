@@ -136,6 +136,9 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   3 fino a 8.
 - **Miglioramenti**: case fino a 8 abitanti (Casa grande 6, Casa in pietra 8); tutte le strutture con lavoratori si
   migliorano due volte, fino a 4 posti di lavoro, e ogni livello rende di più (+30%, poi +60%). Costano legna e pietra.
+  **Ogni lavoratore produce la sua parte** (es. raccoglitore: 20 cibo a testa a stagione) e il livello la moltiplica:
+  migliorare non fa mai rendere meno, e ogni posto in più occupato aggiunge produzione (raccoglitore al massimo:
+  4 × 20 × 1,6 = 128 cibo). Anche taverna, chiesa e mercato migliorati danno più felicità.
 - **Musica e suoni**: tre musiche (il borgo, la mappa e il menu, la battaglia) ed effetti per pulsanti, cantieri,
   edifici finiti, monete, campana delle stagioni, carte, corno dei banditi, frecce, spade, vittoria e sconfitta.
   Si spengono dalle Opzioni o dal pannello Info. Tutto è generato da `tools/genera_audio.py` (niente file esterni).
@@ -201,6 +204,9 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   frumento e datteri; tundra: segale), le zone (palmeto, oasi e rocce rosse nel deserto; boscaglia di acacie, pozze e
   altopiano in savana; taiga, torbiera e rocce gelate nella tundra), i colori del suolo e gli alberi (acacie, baobab,
   palme, betulle, abeti). In savana e nel deserto non nevica. Tutto è in `data/climi.json`.
+  Ci sono anche foresta pluviale, montagna, mediterraneo, steppa e cinque climi fantastici più rari (foresta di
+  cristallo, deserto di cenere, giungla di funghi, tundra lunare, savana di cristalli). Per aggiungerne uno basta un
+  blocco nuovo nel file, con `fascia` (fredda, temperata, calda, arida) e `peso`; i test controllano che sia completo.
 - **Biomi**: attorno all'accampamento c'è la prateria; in tre direzioni diverse una **pineta** (bosco fitto di conifere,
   taglialegna +25%, caccia +15%, campi -15%), una **palude** (stagni e canne, pesca +25%, raccolta +20%, campi -20%) e
   delle **rupi** (colline e rocce, cava e miniera +30%, campi -25%). I valori sono in `bilanciamento.json` (`biomi`);

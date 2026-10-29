@@ -6,6 +6,7 @@ extends RefCounted
 
 ## {siti: Array[Vector2] (0..1), regioni: Array[Dictionary], mia: int}
 ## versione 1 (partite vecchie): la nostra regione è quella al centro; dalla 2 è una qualsiasi.
+## Climi: dalla 3 temperato, savana, deserto, tundra; dalla 4 tutti quelli di data/climi.json.
 static func genera(seme: int, versione := -1) -> Dictionary:
 	if versione < 0:
 		versione = GameState.versione_mappa
@@ -68,7 +69,11 @@ static func genera(seme: int, versione := -1) -> Dictionary:
 	for i in n:
 		var latitudine := siti[i].y + rng_c.randf_range(-0.18, 0.18)
 		var c := "temperato"
-		if versione >= 3:
+		if versione >= 4:
+			# fasce da nord a sud; dentro la fascia un clima a caso, pesato (data/climi.json: fascia, peso)
+			var fascia := "fredda" if latitudine < 0.25 else ("temperata" if latitudine < 0.6 else ("calda" if latitudine < 0.82 else "arida"))
+			c = _clima_della_fascia(fascia, rng_c)
+		elif versione >= 3:
 			if latitudine < 0.25:
 				c = "tundra"
 			elif latitudine < 0.6:
@@ -79,6 +84,21 @@ static func genera(seme: int, versione := -1) -> Dictionary:
 				c = "deserto"
 		regioni[i].clima = c
 	return {"siti": siti, "regioni": regioni, "mia": mia}
+
+
+static func _clima_della_fascia(fascia: String, rng: RandomNumberGenerator) -> String:
+	var climi: Dictionary = (load("res://data/climi.json") as JSON).data
+	var totale := 0.0
+	for k in climi:
+		if str(climi[k].get("fascia", "temperata")) == fascia:
+			totale += float(climi[k].get("peso", 1.0))
+	var x := rng.randf() * totale
+	for k in climi:
+		if str(climi[k].get("fascia", "temperata")) == fascia:
+			x -= float(climi[k].get("peso", 1.0))
+			if x <= 0.0:
+				return k
+	return "temperato"
 
 
 ## I confini ondulati: ogni lato del poligono diviso in tratti brevi, ogni punto spostato da un

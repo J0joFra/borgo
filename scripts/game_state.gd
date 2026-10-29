@@ -103,7 +103,7 @@ var soldati := 0              # abitanti arruolati (totale): non lavorano, difen
 var truppe: Dictionary = {}   # tipo di soldato (fanti, arcieri, balestrieri, cavalieri) -> quanti
 ## Mercato automatico: risorsa -> {vendi_sopra, compra_sotto} (0 = spento); e l'oro da non spendere.
 var mercato_auto: Dictionary = {}
-var versione_mappa := 3  # 1: partite vecchie (feudo quadrato al centro, regione al centro); 2: forme ondulate; 3: climi
+var versione_mappa := 4  # 1: partite vecchie (feudo quadrato al centro, regione al centro); 2: forme ondulate; 3: climi; 4: tutti i climi
 var clima := "temperato"  # il clima della nostra regione: nomi, colture, terreno e alberi (data/climi.json)
 var climi: Dictionary = {}
 var clima_forzato := ""  # se non vuoto, ogni partita nuova ha questo clima (i test usano "temperato")
@@ -302,7 +302,7 @@ func ricomincia() -> void:
 	terreno = null
 
 
-func nuova_partita(seme: int = -1, versione := 3) -> void:
+func nuova_partita(seme: int = -1, versione := 4) -> void:
 	versione_mappa = versione
 	risorse = {}
 	for r in RISORSE:
@@ -491,7 +491,8 @@ func stima_produzione(tipo: String, cella: Vector2i, livello_b := 1, coltura := 
 	var raccolto: bool = stagioni.values().any(func(v): return float(v) == 0.0) and float(stagioni.get("autunno", 1.0)) > 0.0
 	var parti: Array[String] = []
 	for r in produce:
-		var valore := float(produce[r]) * float(info.resa) * float(d.get("produzione", 1.0)) * bonus_guida(r)
+		# a pieno regime: tutti i posti del livello occupati
+		var valore := float(produce[r]) * float(info.resa) * float(d.get("produzione", 1.0)) * bonus_guida(r) * _posti_su_base(tipo, d)
 		parti.append("%d %s" % [roundi(valore), nome_risorsa(r).to_lower()])
 	var quando := "al raccolto d'autunno" if raccolto else "a stagione"
 	var testo := "Resa: %s %s · %s" % [", ".join(parti), quando, info.testo]
@@ -516,7 +517,7 @@ func _stima_campo(d: Dictionary, cella: Vector2i, nome: String) -> String:
 	var info := terreno.info_zona("campo", cella, stagione)
 	var t := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
 	var selvatico := terreno.selvatica_sotto(cella, t) == nome
-	var valore := float(c.resa) * float(info.resa) * float(d.get("produzione", 1.0)) * bonus_guida(c.risorsa)
+	var valore := float(c.resa) * float(info.resa) * float(d.get("produzione", 1.0)) * bonus_guida(c.risorsa) * _posti_su_base("campo", d)
 	if selvatico:
 		valore *= float(colture.bonus_selvatico)
 	var semi := "%s selvatico qui: niente semi" % c.nome.to_lower() if selvatico else "semina con %d semi (ne hai %d)" % [int(c.semi_per_semina), int(risorse[c.semi])]
@@ -772,9 +773,14 @@ func fattori_felicita() -> Dictionary:
 	var visti := {}
 	for b in buildings:
 		var d := def_di(b)
-		if d.has("felicita") and _attivo(b) and not visti.has(b.tipo) and int(d.felicita) != 0:
-			visti[b.tipo] = true
-			fattori[d.nome] = d.felicita
+		if d.has("felicita") and _attivo(b) and int(d.felicita) != 0:
+			# per ogni tipo conta il migliore (due chiese non fanno il doppio)
+			var f_b := felicita_di(b)
+			if not visti.has(b.tipo) or absi(f_b) > absi(int(fattori.get(visti[b.tipo], 0))):
+				if visti.has(b.tipo):
+					fattori.erase(visti[b.tipo])
+				visti[b.tipo] = d.nome
+				fattori[d.nome] = f_b
 	fattori["Tasse " + tasse] = bil.tasse[tasse].felicita
 	if tratto(capo).has("felicita"):
 		fattori["Guida " + tratto(capo).nome.to_lower()] = tratto(capo).felicita
@@ -787,6 +793,29 @@ func fattori_felicita() -> Dictionary:
 	if abitanti > 0 and float(disoccupati()) / abitanti > f.soglia_disoccupazione:
 		fattori["Disoccupati"] = f.disoccupazione
 	return fattori
+
+
+## I posti di lavoro di un livello rispetto a quelli del livello base (per le stime a pieno regime).
+func _posti_su_base(tipo: String, d: Dictionary) -> float:
+	var base := int(edifici[tipo].get("lavoratori", 0))
+	return 1.0 if base == 0 else float(d.get("lavoratori", base)) / base
+
+
+## Quanto lavora un edificio: i lavoratori presenti sui posti del livello base (1 = come appena
+## costruito e pieno). Ogni lavoratore in più aggiunge la sua parte, e i miglioramenti (che danno
+## più posti e "produzione") moltiplicano: migliorare non fa mai rendere meno.
+func quota_lavoro(b: Dictionary) -> float:
+	var base := int(edifici[b.tipo].get("lavoratori", 0))
+	if base == 0:
+		return 1.0
+	return float(b.lavoratori) / base
+
+
+## La felicità che dà un edificio: chi è migliorato ne dà di più (×"produzione" del livello).
+func felicita_di(b: Dictionary) -> int:
+	var d := def_di(b)
+	var f := float(d.get("felicita", 0))
+	return roundi(f * float(d.get("produzione", 1.0))) if f > 0.0 else int(f)
 
 
 func _attivo(b: Dictionary) -> bool:
@@ -848,8 +877,7 @@ func _tick() -> void:
 		if b.progresso < 1.0:
 			continue
 		var d := def_di(b)
-		var max_l := int(d.lavoratori)
-		var molt := 1.0 if max_l == 0 else float(b.lavoratori) / max_l
+		var molt := quota_lavoro(b)
 		molt *= float(b.bonus) * float(d.get("stagioni", {}).get(CHIAVI_STAGIONI[stagione], 1.0))
 		molt *= resa_di(b) * float(d.get("produzione", 1.0)) * efficienza(b)
 		if d.get("coltura", false):
@@ -1051,7 +1079,7 @@ func _fine_colture() -> void:
 			continue
 		if CHIAVI_STAGIONI[stagione] == c.stagioni[c.stagioni.size() - 1]:
 			b.seminato = false
-			var quota := 1.0 if int(def_di(b).lavoratori) == 0 else float(b.lavoratori) / int(def_di(b).lavoratori)
+			var quota := quota_lavoro(b)
 			risorse[c.semi] = minf(capacita(), risorse[c.semi] + float(c.semi_al_raccolto) * quota)
 
 
@@ -1073,7 +1101,7 @@ func _lavora_forestali() -> void:
 			continue
 		if float(d.get("stagioni", {}).get(CHIAVI_STAGIONI[stagione], 1.0)) <= 0.0:
 			continue  # d'inverno non si pianta
-		var quota := float(b.lavoratori) / int(d.lavoratori)
+		var quota := quota_lavoro(b)
 		var n := maxi(1, roundi(float(d.pianta) * quota * float(d.get("produzione", 1.0))))
 		var t := Vector2i(int(d.taglia[0]), int(d.taglia[1]))
 		cambiate.append_array(terreno.pianta(b.cella, t, int(d.zona.raggio), n, int(bil.piantine.stagioni_per_crescere)))
@@ -2663,7 +2691,7 @@ func _disbosca() -> void:
 			continue
 		var iniziale := int(b.get("bosco_iniziale", 0))
 		var per_stagione := maxi(1, ceili(float(iniziale) / float(bil.disboscamento.stagioni_per_esaurire)))
-		var quota := float(b.lavoratori) / float(d.lavoratori)
+		var quota := quota_lavoro(b)
 		tagliate.append_array(terreno.taglia_bosco(b.cella, taglia_di(b), int(d.zona.raggio), maxi(1, roundi(per_stagione * quota))))
 	if not tagliate.is_empty():
 		terreno_cambiato.emit(tagliate)
