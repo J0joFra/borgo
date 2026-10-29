@@ -46,6 +46,12 @@ static func attivi() -> Array:
 		lista.append(_c("cibo", 95, "Il cibo finisce prima che arrivi il raccolto %s. Compralo al mercato o costruisci un forno." % gs.quando_consegna()))
 	elif d_cibo < 0.0 and a_fine + d_cibo * tps / 2.0 < 0.0:
 		lista.append(_c("cibo", 90, "Anche con il prossimo raccolto il cibo non basterà fino a quello dopo. Serve un altro edificio del cibo."))
+	var bc := gs.bilancio_stagione("cibo")
+	if gs.stagione != gs.INVERNO and bc.consumato > bc.prodotto * 1.1 and gs.abitanti >= 8:
+		# un raccoglitore dà 20 cibo a stagione per lavoratore
+		var servono := ceili((bc.consumato - bc.prodotto) / 20.0)
+		lista.append(_c("cibo", 85, "Ogni stagione produciamo %d cibo e ne mangiamo %d: servono circa %d lavoratori in più sul cibo (o un campo). D'inverno raccoglitori e pescatori rendono meno: mettiamo da parte." % [
+			roundi(bc.prodotto), roundi(bc.consumato), servono]))
 
 	# Legna e inverno
 	if not _esiste(["taglialegna"]):

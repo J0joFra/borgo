@@ -795,6 +795,31 @@ func fattori_felicita() -> Dictionary:
 	return fattori
 
 
+## Quanto si produce (e si consuma) di una risorsa in questa stagione, a stagione intera, con i
+## lavoratori di adesso: per far vedere al giocatore se tiene il passo. I campi contano al raccolto.
+func bilancio_stagione(r: String) -> Dictionary:
+	var prodotto := 0.0
+	var consumato := 0.0
+	for b in buildings:
+		if b.progresso < 1.0:
+			continue
+		var d := def_di(b)
+		if d.get("coltura", false):
+			continue
+		var molt := quota_lavoro(b) * float(b.bonus) * float(d.get("stagioni", {}).get(CHIAVI_STAGIONI[stagione], 1.0))
+		molt *= resa_di(b) * float(d.get("produzione", 1.0)) * efficienza(b)
+		prodotto += float(d.get("produce", {}).get(r, 0.0)) * molt * bonus_guida(r)
+		consumato += float(d.get("consuma", {}).get(r, 0.0)) * molt
+	var tps := float(bil.tick_per_stagione)
+	if r == "cibo":
+		consumato += abitanti * float(bil.cibo_per_abitante_tick) * tps
+	elif r == "legna" and stagione == INVERNO:
+		for b in buildings:
+			if b.progresso >= 1.0:
+				consumato += float(def_di(b).get("riscaldamento", 0))
+	return {"prodotto": prodotto, "consumato": consumato}
+
+
 ## I posti di lavoro di un livello rispetto a quelli del livello base (per le stime a pieno regime).
 func _posti_su_base(tipo: String, d: Dictionary) -> float:
 	var base := int(edifici[tipo].get("lavoratori", 0))

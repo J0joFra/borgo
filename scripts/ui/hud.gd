@@ -1133,6 +1133,10 @@ func _aggiorna() -> void:
 		_numeri[r].add_theme_color_override("font_color", COLORE_ERRORE if allarme else TESTO)
 		var nome: String = GameState.nome_risorsa(r)
 		_numeri[r].tooltip_text = "%s\nHai: %d\nVariazione: %+.1f a stagione" % [nome, int(valore), delta * tps]
+		var bs := GameState.bilancio_stagione(r)
+		if bs.prodotto >= 1.0 or bs.consumato >= 1.0:
+			_numeri[r].tooltip_text += "\nQuesta stagione: +%d prodotti, -%d %s" % [roundi(bs.prodotto), roundi(bs.consumato),
+				"mangiati" if r == "cibo" else "usati"]
 		if float(arrivo.get(r, 0.0)) >= 1.0:
 			_numeri[r].tooltip_text += "\nIn arrivo %s: circa %d" % [GameState.quando_consegna(), int(arrivo[r])]
 	_numeri.abitanti.text = "%d/%d" % [GameState.abitanti, GameState.alloggi()]

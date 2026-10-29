@@ -116,7 +116,7 @@ func _draw() -> void:
 		"giu":
 			_pieno([Vector2(5, 7.6), Vector2(8.2, 2.6), Vector2(1.8, 2.6)])
 		"pari":
-			_linea(Vector2(2.4, 5), Vector2(7.6, 5))
+			pass  # prezzo stabile: niente segno, si vedono solo le frecce quando cambia
 		"chiudi":
 			_linea(Vector2(2.6, 2.6), Vector2(7.4, 7.4))
 			_linea(Vector2(7.4, 2.6), Vector2(2.6, 7.4))

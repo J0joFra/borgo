@@ -3,7 +3,7 @@
 	"tick_per_stagione": 60,
 	"partenza": {"falo": "falo", "tenda": "tenda", "distanza_tende": 4},
 	"risorse_iniziali": {"legna": 60, "pietra": 30, "cibo": 80, "oro": 20},
-	"capacita_base": 100,
+	"capacita_base": 150,
 	"cibo_per_abitante_tick": 0.1,
 	"felicita_base": 50,
 	"felicita": {"senza_casa": -5, "cibo_vario": 10, "pane": 10, "fame": -15, "freddo": -13, "disoccupazione": -7, "soglia_disoccupazione": 0.2},
