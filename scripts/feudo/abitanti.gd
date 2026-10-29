@@ -68,7 +68,7 @@ func _ricalcola() -> void:
 			case.append(b.id)
 		for i in int(b.lavoratori):
 			lavori.append(b.id)
-		if int(GameState.def_di(b).get("formazioni", 0)) > 0:
+		if int(GameState.def_di(b).get("posti_soldati", 0)) > 0:
 			caserme.append(b.id)
 	var soldati_visti := 0 if caserme.is_empty() else mini(GameState.soldati_presenti(), MASSIMO / 3)
 	var in_caserma: Array = []
@@ -153,7 +153,7 @@ func _prossima_meta(p: Dictionary) -> Vector3:
 			if b.tipo == "dimora":
 				return _punto_attorno(b.id)
 		for b in GameState.buildings:
-			if int(GameState.def_di(b).get("formazioni", 0)) > 0:
+			if int(GameState.def_di(b).get("posti_soldati", 0)) > 0:
 				return _punto_attorno(b.id)
 		return _punto_falo()
 	if p.lavoro >= 0 and (p.verso_lavoro or p.casa < 0):

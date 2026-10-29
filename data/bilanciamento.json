@@ -37,13 +37,18 @@
 	},
 	"banditi": {"dal_livello": 1, "dall_anno": 3, "probabilita": 0.35, "in_piu_per_anno": 0.05, "probabilita_massima": 0.7, "preavviso": 10, "preavviso_con_torre": 25, "forza_base": 8, "forza_per_anno": 4, "oro_per_forza": 10, "variazione": 0.25, "milizia_per_abitante": 0.3, "bonus_armi": 1.5, "bottino_massimo": 0.5, "felicita_vittoria": 5, "felicita_sconfitta": -12, "incendio_sotto": 0.5},
 	"esercito": {
-		"per_formazione": 5,
-		"cibo_al_mese": 3,
-		"mesi_per_stagione": 3,
 		"difesa_per_soldato": 5,
 		"forza_per_soldato": 5,
-		"tipi": {"fanti": {"armeria": 0, "costo": {}, "cibo_al_mese": 3, "descrizione": "lancia e scudo"}, "arcieri": {"armeria": 1, "costo": {"armi": 5}, "cibo_al_mese": 3, "descrizione": "tirano da 2 celle"}, "balestrieri": {"armeria": 2, "costo": {"armi": 10, "ferro": 5}, "cibo_al_mese": 3, "descrizione": "tirano forte da 2 celle, lenti"}, "cavalieri": {"armeria": 3, "costo": {"armi": 10, "oro": 20}, "cibo_al_mese": 5, "descrizione": "forti e veloci, 4 mosse"}}
+		"costo_ogni": 10,
+		"tipi": {
+			"fanti": {"armeria": 1, "costo": {"legna": 2, "pietra": 1}, "giorni": 3, "descrizione": "lancia e scudo"},
+			"spadaccini": {"armeria": 2, "costo": {"legna": 1, "ferro": 2}, "giorni": 4, "descrizione": "spada: i più forti nel corpo a corpo"},
+			"arcieri": {"armeria": 2, "costo": {"legna": 3}, "giorni": 4, "descrizione": "tirano da 2 celle"},
+			"balestrieri": {"armeria": 3, "costo": {"legna": 2, "ferro": 2}, "giorni": 5, "descrizione": "tirano forte da 2 celle, lenti"},
+			"cavalieri": {"armeria": 4, "costo": {"ferro": 3, "oro": 5}, "giorni": 7, "descrizione": "forti e veloci, 4 mosse"}
+		}
 	},
+
 	"diplomazia": {
 		"dal_livello": 1,
 		"costo_spia": 15,
@@ -85,7 +90,7 @@
 			{"nome": "Collina", "costo": 2, "attacco": 1.2, "difesa": 1.2},
 			{"nome": "Acqua", "costo": 99, "attacco": 1.0, "difesa": 1.0}
 		],
-		"unita": {"fanti": {"nome": "Fanti", "forza": 5, "mosse": 3, "gittata": 1}, "arcieri": {"nome": "Arcieri", "forza": 4, "mosse": 3, "gittata": 2}, "vassalli": {"nome": "Uomini dei vassalli", "forza": 4, "mosse": 3, "gittata": 1}, "cavalieri": {"nome": "Cavalieri", "forza": 6, "mosse": 4, "gittata": 1}, "balestrieri": {"nome": "Balestrieri", "forza": 4, "mosse": 2, "gittata": 2}, "predoni": {"nome": "Predoni", "forza": 4, "mosse": 4, "gittata": 1}, "contadini": {"nome": "Contadini armati", "forza": 3, "mosse": 3, "gittata": 1}},
+		"unita": {"fanti": {"nome": "Lancieri", "forza": 5, "mosse": 3, "gittata": 1}, "spadaccini": {"nome": "Spadaccini", "forza": 7, "mosse": 3, "gittata": 1}, "arcieri": {"nome": "Arcieri", "forza": 4, "mosse": 3, "gittata": 2}, "vassalli": {"nome": "Uomini dei vassalli", "forza": 4, "mosse": 3, "gittata": 1}, "cavalieri": {"nome": "Cavalieri", "forza": 6, "mosse": 4, "gittata": 1}, "balestrieri": {"nome": "Balestrieri", "forza": 4, "mosse": 2, "gittata": 2}, "predoni": {"nome": "Predoni", "forza": 4, "mosse": 4, "gittata": 1}, "contadini": {"nome": "Contadini armati", "forza": 3, "mosse": 3, "gittata": 1}},
 		"eserciti": {"signore": ["cavalieri", "balestrieri", "cavalieri"], "banditi": ["predoni"], "libera": ["contadini"]}
 	},
 	"tributo_case": [[4, 1], [6, 2], [8, 3]],

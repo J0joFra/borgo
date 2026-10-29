@@ -69,6 +69,8 @@ var _conferma_no: Button
 var _conferma_azione: Callable = Callable()
 var _coltura_scelta := ""
 var _truppe_righe: Dictionary = {}
+var _coda_testo: Label
+var _btn_annulla_coda: Button
 var _mercato_notizia: Label
 var _mercato_righe: Dictionary = {}
 var _mercato_nota: Label
@@ -698,14 +700,25 @@ func _crea_esercito() -> void:
 		var numero := Label.new()
 		numero.custom_minimum_size.x = 40
 		griglia.add_child(numero)
-		var arruola := _bottone("", 0, 15)
-		arruola.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		arruola.pressed.connect(func(): GameState.arruola(tipo))
-		griglia.add_child(arruola)
-		var congeda := _bottone("Congeda", 0, 15, "Rimanda a casa i soldati di questo tipo")
+		var addestra := _bottone("", 0, 18)
+		addestra.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		addestra.pressed.connect(func(): Audio.effetto("moneta" if GameState.addestra(tipo) else "errore"))
+		griglia.add_child(addestra)
+		var congeda := _bottone("Congeda", 0, 18, "Rimanda a casa un soldato di questo tipo")
 		congeda.pressed.connect(func(): GameState.congeda(tipo))
 		griglia.add_child(congeda)
-		_truppe_righe[tipo] = [numero, arruola, congeda]
+		_truppe_righe[tipo] = [numero, addestra, congeda, nome]
+	# la coda dell'armeria
+	var riga_coda := HBoxContainer.new()
+	col.add_child(riga_coda)
+	_coda_testo = Label.new()
+	_coda_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_coda_testo.custom_minimum_size.x = 240
+	_coda_testo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	riga_coda.add_child(_coda_testo)
+	_btn_annulla_coda = _bottone("Togli l'ultimo", 0, 18, "Toglie l'ultimo soldato in coda e restituisce il materiale")
+	_btn_annulla_coda.pressed.connect(func(): GameState.annulla_addestramento())
+	riga_coda.add_child(_btn_annulla_coda)
 	var chiudi := _bottone("Chiudi")
 	chiudi.pressed.connect(func(): _esercito.visible = false)
 	col.add_child(chiudi)
@@ -714,12 +727,13 @@ func _crea_esercito() -> void:
 func _aggiorna_esercito() -> void:
 	var e: Dictionary = GameState.bil.esercito
 	var righe: Array[String] = []
-	righe.append("Soldati: %d (%d formazioni su %d posti in caserma) · a casa %d, in marcia %d" % [GameState.soldati,
-		GameState.formazioni(), GameState.formazioni_massime(), GameState.soldati_presenti(), GameState.soldati_in_marcia()])
-	righe.append("Ogni formazione è di %d persone senza lavoro e mangia %d cibo al mese: ora %d cibo al mese (%d a stagione)." % [
-		int(e.per_formazione), int(e.tipi.fanti.cibo_al_mese), GameState.cibo_esercito_al_mese(), GameState.cibo_esercito_al_mese() * int(e.mesi_per_stagione)])
-	righe.append("In difesa ogni soldato vale %d (x%.1f con le armi); in attacco l'esercito vale %d." % [int(e.difesa_per_soldato),
-		float(GameState.bil.banditi.bonus_armi), roundi(GameState.forza_esercito(GameState.soldati_presenti()))])
+	righe.append("Soldati: %d su %d posti in caserma · a casa %d, in marcia %d" % [GameState.soldati,
+		GameState.posti_esercito(), GameState.soldati_presenti(), GameState.soldati_in_marcia()])
+	var costo := GameState.costo_annuale_esercito()
+	righe.append("Non sono abitanti: li addestra l'armeria, uno alla volta. Costano una volta l'anno, all'arrivo dell'inverno: ora %d cibo e %d oro." % [
+		int(costo.cibo), int(costo.oro)])
+	righe.append("Armeria: livello %d (lancieri; dal 2 spadaccini e arcieri; dal 3 balestrieri; dal 4 cavalieri). L'esercito a casa vale %d." % [
+		GameState.livello_armeria(), roundi(GameState.forza_esercito(GameState.soldati_presenti()))])
 	for m in GameState.missioni:
 		var r: Dictionary = GameState.regni[m.regione]
 		var cosa: String = {"spia": "Spia verso", "alleanza": "Messaggero verso", "attacco": "Esercito (%d) in marcia su" % int(m.get("soldati", 0))}[m.tipo]
@@ -734,20 +748,30 @@ func _aggiorna_esercito() -> void:
 		var celle: Array = _truppe_righe[tipo]
 		var t: Dictionary = e.tipi[tipo]
 		celle[0].text = "%d (%d)" % [int(GameState.truppe.get(tipo, 0)), int(presenti.get(tipo, 0))]
-		var perche := GameState.perche_non_arruolare(tipo)
-		var costo: Array[String] = []
-		for r in t.costo:
-			costo.append("%d %s" % [int(t.costo[r]), r])
-		var testo := "Arruola %d" % int(e.per_formazione)
-		if perche != "":
-			testo += " (%s)" % perche
-		elif not costo.is_empty():
-			testo += " (%s)" % ", ".join(costo)
+		var perche: String = GameState.perche_non_addestrare(tipo)
+		var prezzo := GameState._elenco(t.costo)
+		var testo := "Addestra 1 (%s)" % (perche if perche != "" else prezzo)
 		celle[1].text = testo
 		celle[1].disabled = perche != ""
-		celle[1].tooltip_text = perche if perche != "" else "Costo: %s" % ", ".join(costo)
+		celle[1].tooltip_text = "%s · %s · %d giorni" % [str(t.get("descrizione", "")), prezzo, int(t.get("giorni", 3))]
+		# i tipi non ancora sbloccati dall'armeria restano visibili ma spenti
+		celle[3].modulate.a = 1.0 if GameState.livello_armeria() >= int(t.armeria) else 0.45
 		celle[2].disabled = int(presenti.get(tipo, 0)) <= 0
 		celle[2].tooltip_text = "" if not celle[2].disabled else "Nessun soldato di questo tipo da congedare"
+	var coda: Array = GameState.coda_esercito
+	if coda.is_empty():
+		_coda_testo.text = "Nessuno in addestramento."
+	else:
+		var conta := {}
+		for tipo in coda:
+			conta[tipo] = int(conta.get(tipo, 0)) + 1
+		var parti: Array[String] = []
+		for tipo in conta:
+			parti.append("%d %s" % [conta[tipo], GameState.bil.battaglia.unita[tipo].nome.to_lower()])
+		var giorni := GameState.giorni_al_prossimo_soldato()
+		_coda_testo.text = "In addestramento: %s. %s" % [", ".join(parti),
+			("Il prossimo è pronto domani." if giorni <= 1 else "Il prossimo è pronto tra %d giorni." % giorni) if giorni >= 0 else "L'armeria è ferma: servono lavoratori."]
+	_btn_annulla_coda.disabled = coda.is_empty()
 
 
 # --- Menu costruzione --------------------------------------------------------------
@@ -1254,8 +1278,6 @@ func _da_mostrare(r: String) -> bool:
 		var d: Dictionary = GameState.edifici[b.tipo]
 		if GameState.coltura_di(b).get("risorsa", "") == r or d.get("produce", {}).has(r) or d.get("consuma", {}).has(r):
 			return true
-		if r == "armi" and d.has("arcieri"):
-			return true
 	return false
 
 
@@ -1407,8 +1429,8 @@ func _aggiorna_pannello() -> void:
 		_btn_migliora.tooltip_text = "" if not _btn_migliora.disabled else "Non hai abbastanza risorse"
 		testo += "\nProssimo livello: %s" % prossimo.nome
 	if d.has("arcieri"):
-		testo = "Arcieri sulla torre: %d su %d. Tirano ai banditi che passano entro %d celle (riquadro giallo); se il centro del borgo è nel raggio combattono anche lì (%d ciascuno, x%.1f con le armi). Avvistano i banditi prima. Se un arciere muore, ne sale uno nuovo a ogni stagione." % [
-			int(b.get("arcieri", 0)), int(d.arcieri), int(d.raggio_tiro), int(d.difesa_per_arciere), float(GameState.bil.banditi.bonus_armi)]
+		testo = "Arcieri sulla torre: %d su %d. Tirano ai banditi che passano entro %d celle (riquadro giallo); se il centro del borgo è nel raggio combattono anche lì (%d ciascuno). Avvistano i banditi prima. Se un arciere muore, ne sale uno nuovo a ogni stagione." % [
+			int(b.get("arcieri", 0)), int(d.arcieri), int(d.raggio_tiro), int(d.difesa_per_arciere)]
 	elif d.has("difesa"):
 		testo = "Difesa +%.1f contro i banditi" % float(d.difesa)
 	elif b.tipo == "rovine":

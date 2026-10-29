@@ -95,19 +95,27 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   nostri (ne sale uno nuovo a ogni stagione). Se le frecce bastano, la banda scappa prima di arrivare. Gli arcieri
   combattono anche nella battaglia finale se il centro del borgo è nel loro raggio. La torre avvista la banda prima.
   La difesa è la somma di milizia, arcieri, soldati, **palizzate**, **mura**, alleati e truppe dei vassalli.
-  L'**armeria** fa armi con ferro e legna (×1,5 per arcieri e soldati armati).
+  L'**armeria** addestra i soldati (vedi Esercito).
 - **Mura in pietra** (menu Difese, dal Borgo): si tracciano come le strade ma occupano le celle, 4 pietra l'una. Ogni
   cella dà un po' di difesa; se le mura **chiudono il borgo** tutto attorno (i banditi non trovano un passaggio) la
   difesa vale il 50% in più. Dove una strada passa fra due celle di mura si apre una **porta**: la gente passa, ma in
   guerra le porte restano chiuse. I banditi camminano attorno ad acqua e mura. Se vinciamo la gente festeggia; se perdiamo rubano una parte delle scorte (tanto più quanto eravamo deboli),
   qualcuno muore e, se eravamo molto deboli, bruciano un edificio (restano le rovine da sgomberare).
-- **Esercito** (pulsante "Esercito", serve una **caserma**, dal Borgo): si arruola una formazione di 5 persone senza
-  lavoro alla volta; ogni caserma ne ospita 2, la **caserma grande** (miglioramento) 3, cioè 15 soldati. Ogni formazione
-  mangia **3 cibo al mese** (3 mesi a stagione); se il cibo non basta, una formazione se ne va.
-  Che soldati si arruolano dipende dall'**armeria**: lancieri sempre; arcieri con l'armeria (5 armi), balestrieri con
-  l'armeria fornita (10 armi, 5 ferro), cavalieri con l'arsenale (10 armi, 20 oro; mangiano 5 cibo al mese).
-  In battaglia ogni tipo scende in campo con le sue unità. I soldati a casa difendono dai banditi (5 a testa, ×1,5 con le armi) e si vedono
-  attorno alla caserma, in rosso con la lancia; servono per attaccare gli altri regni.
+- **Esercito** (pulsante "Esercito"): i soldati **non sono abitanti**. L'**armeria** li addestra **uno alla volta** da
+  una coda (si paga quando li si mette in coda; "Togli l'ultimo" restituisce il materiale); più gente lavora
+  nell'armeria e più è migliorata, più in fretta. Sopra l'armeria un anello mostra l'avanzamento.
+  | Livello armeria | Soldati | Costo | Giorni |
+  |---|---|---|---|
+  | 1 Armeria | lancieri | 2 legna, 1 pietra | 3 |
+  | 2 Armeria fornita | spadaccini · arcieri | 1 legna, 2 ferro · 3 legna | 4 · 4 |
+  | 3 Arsenale | balestrieri | 2 legna, 2 ferro | 5 |
+  | 4 Grande arsenale | cavalieri | 3 ferro, 5 oro | 7 |
+
+  La **caserma** tiene i soldati: 10, poi migliorandola 15, 20 e 25. L'esercito costa **una volta l'anno, all'arrivo
+  dell'inverno**: i soldati / 10 arrotondato, metà in cibo e metà in oro (se è dispari l'oro paga uno in più; es. 88
+  soldati → 9 → 4 cibo e 5 oro). Se non si paga tutto, se ne va la parte non pagata. I soldati a casa difendono dai
+  banditi con la forza del loro tipo e si vedono attorno alla caserma; servono per attaccare gli altri regni.
+  Tipi, costi e giorni sono in `bilanciamento.json` (`esercito.tipi`).
 - **Regni vicini** (dal Borgo, sulla mappa del Regno): toccando un'altra regione si apre la sua scheda.
   - **Spia** (15 oro, torna dopo un mese): dice quanto è forte il regno e cosa pensa di noi; a volte viene scoperta.
   - **Alleanza** (dono di 30 oro, solo con un signore): più è amichevole, più è facile che accetti. Un alleato manda

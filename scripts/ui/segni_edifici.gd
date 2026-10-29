@@ -59,6 +59,12 @@ func _draw() -> void:
 			_anello(p, b.progresso, ORO)
 			_martello(p)
 			continue
+		# l'armeria che addestra: un anello fino al prossimo soldato, con la spada
+		if d.get("addestra", false) and not GameState.coda_esercito.is_empty() and int(b.lavoratori) > 0:
+			var giorni := float(GameState.bil.esercito.tipi[GameState.coda_esercito[0]].get("giorni", 3))
+			_anello(p, clampf(GameState._addestramento / giorni, 0.0, 1.0), ORO)
+			_icona(b.id, "armi", p, usate)
+			continue
 		var stagionale: bool = d.get("a_fine_stagione", false) and int(b.lavoratori) > 0
 		if stagionale:
 			_anello(p, _avanzamento(), ORO)

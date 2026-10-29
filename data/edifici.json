@@ -351,13 +351,13 @@
 		"taglia": [2, 2],
 		"costo": {"legna": 15, "pietra": 20},
 		"lavoratori": 2,
-		"consuma": {"ferro": 8, "legna": 6},
-		"produce": {"armi": 12},
+		"addestra": true,
 		"riscaldamento": 3,
 		"colore": "5a4a3a",
 		"miglioramenti": [
 			{"nome": "Armeria fornita", "costo": {"legna": 9, "pietra": 12}, "lavoratori": 3, "produzione": 1.3},
-			{"nome": "Arsenale", "costo": {"legna": 15, "pietra": 25}, "lavoratori": 4, "produzione": 1.6}
+			{"nome": "Arsenale", "costo": {"legna": 15, "pietra": 25}, "lavoratori": 4, "produzione": 1.6},
+			{"nome": "Grande arsenale", "costo": {"legna": 20, "pietra": 35, "ferro": 10}, "lavoratori": 4, "produzione": 2.0}
 		]
 	},
 	"rovine": {
@@ -377,12 +377,13 @@
 		"taglia": [3, 2],
 		"costo": {"legna": 20, "pietra": 25},
 		"lavoratori": 0,
-		"alloggi": 10,
+		"posti_soldati": 10,
 		"riscaldamento": 4,
-		"formazioni": 2,
 		"colore": "6a4a3a",
 		"miglioramenti": [
-			{"nome": "Caserma grande", "costo": {"legna": 20, "pietra": 30}, "formazioni": 3, "alloggi": 15}
+			{"nome": "Caserma ampliata", "costo": {"legna": 15, "pietra": 20}, "posti_soldati": 15},
+			{"nome": "Caserma grande", "costo": {"legna": 20, "pietra": 30}, "posti_soldati": 20},
+			{"nome": "Fortezza", "costo": {"legna": 25, "pietra": 45}, "posti_soldati": 25}
 		]
 	}
 }

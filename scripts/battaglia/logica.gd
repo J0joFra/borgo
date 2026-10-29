@@ -14,9 +14,10 @@ const LARGHEZZA := 12
 const ALTEZZA := 9
 
 
-## Una battaglia nuova: terreno dal seme, le nostre unità (soldati, arcieri se ci sono armi,
-## uomini dei vassalli) e quelle del regno nemico, con la sua bandiera.
-## truppe: tipo di soldato (fanti, arcieri, balestrieri, cavalieri) -> quanti.
+## Una battaglia nuova: terreno dal seme, le nostre unità (soldati per tipo, uomini dei vassalli)
+## e quelle del regno nemico, con la sua bandiera.
+## truppe: tipo di soldato (fanti, spadaccini, arcieri, balestrieri, cavalieri) -> quanti.
+## armi: non più usato (le armi non ci sono più), resta per non cambiare chi la chiama.
 static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi: int, aiuti: int, nemici: int, seme: int, cfg: Dictionary) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seme
@@ -44,7 +45,7 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 	var per := int(cfg.per_unita)
 	var soldati := 0
 	var gruppi := []  # [tipo, uomini]
-	for tipo in ["fanti", "cavalieri", "balestrieri", "arcieri"]:
+	for tipo in ["fanti", "spadaccini", "cavalieri", "balestrieri", "arcieri"]:
 		for g in _gruppi(int(truppe.get(tipo, 0)), per):
 			gruppi.append([tipo, g])
 		soldati += int(truppe.get(tipo, 0))
@@ -55,14 +56,6 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 		var tipo: String = gruppi[k][0]
 		var dietro := int(cfg.unita[tipo].gittata) > 1 or tipo == "vassalli"
 		_aggiungi(b, "noi", tipo, gruppi[k][1], Vector2i(0 if dietro else 1, righe[k]), cfg)
-	# le armi armano i fanti: combattono meglio (bonus_armati)
-	var restano := armi
-	b.armi_usate = 0
-	for u in b.unita:
-		if u.tipo == "fanti" and restano >= int(u.uomini):
-			u.armati = true
-			restano -= int(u.uomini)
-			b.armi_usate = int(b.armi_usate) + int(u.uomini)
 	b.nostri_inizio = soldati
 	b.truppe_inizio = truppe.duplicate()
 	# le unità nemiche attorno alla bandiera
@@ -286,9 +279,9 @@ static func attacca(b: Dictionary, id: int, bersaglio: int, cfg: Dictionary, rng
 	return esito
 
 
-## La forza di un uomo dell'unità (con le armi, per i fanti armati).
+## La forza di un uomo dell'unità.
 static func forza(u: Dictionary, cfg: Dictionary) -> float:
-	return float(cfg.unita[u.tipo].forza) * (float(cfg.bonus_armati) if u.get("armati", false) else 1.0)
+	return float(cfg.unita[u.tipo].forza)
 
 
 static func _diario(b: Dictionary, testo: String) -> void:

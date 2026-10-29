@@ -16,7 +16,7 @@ const COLORI_NEMICI := {"signore": Color("3f6f9f"), "banditi": Color("3a3636"), 
 const TUNICHE := {"fanti": Color("a8322a"), "arcieri": Color("3f6b3a"), "vassalli": Color("d0802c"),
 	"cavalieri": Color("3f6f9f"), "balestrieri": Color("2f5a85"), "predoni": Color("2e2a2a"), "contadini": Color("8a6a3a")}
 ## Le nostre unità sono sempre nei toni del rosso, quelle nemiche nei colori del loro esercito.
-const TUNICHE_NOSTRE := {"fanti": Color("a8322a"), "arcieri": Color("8a3a2a"), "balestrieri": Color("7a2a22"),
+const TUNICHE_NOSTRE := {"fanti": Color("a8322a"), "spadaccini": Color("962a2a"), "arcieri": Color("8a3a2a"), "balestrieri": Color("7a2a22"),
 	"cavalieri": Color("c0402e"), "vassalli": Color("d0802c")}
 const FIGURE_MASSIME := 5
 
@@ -193,7 +193,12 @@ func _mesh_di(tipo: String, lato := "loro") -> ArrayMesh:
 		k.forma(LowPoly.cubo(Vector3(0.28, 0.3, 0.18)), LowPoly.t(Vector3(0, 0.15, 0)), Color("3a2e26"))
 		k.forma(LowPoly.cilindro(0.23, 0.18, 0.6, 6), LowPoly.t(Vector3(0, 0.6, 0)), tunica)
 		k.forma(LowPoly.sfera(0.16, 0.32, 6, 3), LowPoly.t(Vector3(0, 1.06, 0)), Color("e0b08a"))
-		if tipo in ["fanti", "cavalieri", "vassalli"]:
+		if tipo == "spadaccini":
+			# elmo, spada corta e scudo tondo
+			k.forma(LowPoly.sfera(0.19, 0.2, 6, 3), LowPoly.t(Vector3(0, 1.17, 0)), Color("8a9098"))
+			k.forma(LowPoly.cubo(Vector3(0.05, 0.55, 0.08)), LowPoly.t(Vector3(0.28, 0.75, 0.12)), Color("c8ccd0"))
+			k.forma(LowPoly.cilindro(0.22, 0.22, 0.06, 8), Transform3D(Basis(Vector3.FORWARD, PI / 2.0), Vector3(-0.26, 0.65, 0.05)), tunica.darkened(0.3))
+		elif tipo in ["fanti", "cavalieri", "vassalli"]:
 			k.forma(LowPoly.sfera(0.19, 0.2, 6, 3), LowPoly.t(Vector3(0, 1.17, 0)), Color("8a9098"))
 			k.forma(LowPoly.cilindro(0.03, 0.03, 1.6, 4), LowPoly.t(Vector3(0.28, 0.85, 0.05)), Color("6b4a2e"))
 			k.forma(LowPoly.cubo(Vector3(0.08, 0.45, 0.35)), LowPoly.t(Vector3(-0.25, 0.65, 0.05)), tunica.darkened(0.3))
@@ -548,7 +553,7 @@ func _aggiorna() -> void:
 		var d: Dictionary = _cfg.unita[u.tipo]
 		var t: Dictionary = _cfg.terreni[LogicaBattaglia.terreno_a(b, LogicaBattaglia.cella(u))]
 		_scheda.text = "%s%s\nUomini %d/%d · forza %.1f a testa\nMosse %d · gittata %d\nSu %s (attacco ×%.1f, difesa ×%.2f)\n%s" % [
-			d.nome, " (armati)" if u.get("armati", false) else "", int(u.uomini), int(u.max), LogicaBattaglia.forza(u, _cfg),
+			d.nome, "", int(u.uomini), int(u.max), LogicaBattaglia.forza(u, _cfg),
 			int(u.mosse), LogicaBattaglia.gittata(b, u, _cfg), t.nome.to_lower(), float(t.attacco), float(t.difesa),
 			"Ha già attaccato in questo turno." if bool(u.attaccato) else ("Nemici a tiro: %d" % _bersagli.size() if not _bersagli.is_empty() else "")]
 	_btn_fine.disabled = _occupato or b.fase != "noi"

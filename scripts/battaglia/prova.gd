@@ -8,8 +8,8 @@ const INCHIOSTRO := Color("3b2a1e")
 const NEMICI := [["signore", "Un signore (cavalieri e balestrieri)"], ["banditi", "Un covo di banditi (predoni)"],
 	["libera", "Una terra libera (contadini armati)"]]
 ## [chiave, nome, minimo, massimo, passo]
-const VALORI := [["fanti", "Lancieri", 0, 40, 5], ["arcieri", "Arcieri", 0, 30, 5], ["balestrieri", "Balestrieri", 0, 30, 5],
-	["cavalieri", "Cavalieri", 0, 30, 5], ["armi", "Armi (lancieri armati)", 0, 40, 5],
+const VALORI := [["fanti", "Lancieri", 0, 40, 5], ["spadaccini", "Spadaccini", 0, 30, 5], ["arcieri", "Arcieri", 0, 30, 5],
+	["balestrieri", "Balestrieri", 0, 30, 5], ["cavalieri", "Cavalieri", 0, 30, 5],
 	["vassalli", "Uomini dei vassalli", 0, 30, 5], ["nemici", "Uomini del nemico", 5, 60, 5]]
 
 var _p: Dictionary
@@ -128,7 +128,7 @@ func _aggiorna() -> void:
 
 
 func _combatti() -> void:
-	if int(_p.fanti) + int(_p.arcieri) + int(_p.balestrieri) + int(_p.cavalieri) <= 0:
+	if int(_p.fanti) + int(_p.get("spadaccini", 0)) + int(_p.arcieri) + int(_p.balestrieri) + int(_p.cavalieri) <= 0:
 		_p.fanti = 5  # almeno qualcuno deve combattere
 	GameState.inizia_prova_battaglia(_p)
 	get_tree().change_scene_to_file("res://scenes/battaglia.tscn")

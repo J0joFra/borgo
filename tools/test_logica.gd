@@ -570,7 +570,7 @@ func _ready() -> void:
 		"il magazzino girato occupa 2x3 celle")
 	GameState.terreno = null
 
-	# Esercito: formazioni in caserma, cibo al mese, difesa.
+	# Esercito: i soldati non sono abitanti; l'armeria li addestra uno alla volta, la caserma li tiene.
 	GameState.nuova_partita(30)
 	_verifica(GameState.regni.size() == 9, "nove regni attorno al nostro")
 	GameState.capo = 0
@@ -578,39 +578,72 @@ func _ready() -> void:
 	GameState.abitanti = 14
 	for i in 4:
 		GameState.aggiungi_gratis("casa", Vector2i(i * 3, 0), 1.0)
-	_verifica(GameState.perche_non_arruolare() == "serve una caserma", "senza caserma niente soldati")
-	GameState.aggiungi_gratis("caserma", Vector2i(0, 4), 1.0)
+	_verifica(GameState.perche_non_addestrare() == "serve una caserma", "senza caserma niente soldati")
+	var caserma_b := GameState.aggiungi_gratis("caserma", Vector2i(0, 4), 1.0)
+	_verifica(GameState.perche_non_addestrare() == "serve un'armeria", "i lancieri vogliono un'armeria")
+	var armeria_b := GameState.aggiungi_gratis("armeria", Vector2i(10, 8), 1.0)
+	armeria_b.lavoratori = 2
+	GameState.risorse.legna = 100.0
+	GameState.risorse.pietra = 100.0
+	GameState.risorse.ferro = 10.0
 	var liberi := GameState.disoccupati()
-	_verifica(GameState.arruola() and GameState.soldati == 5 and GameState.disoccupati() == liberi - 5, "arruolata una formazione di 5")
-	_verifica(GameState.arruola() and not GameState.arruola(), "la caserma tiene 2 formazioni")
-	_verifica(GameState.cibo_esercito_al_mese() == 6, "2 formazioni: 6 cibo al mese")
-	_verifica(is_equal_approx(GameState.difesa().forza_soldati, 50.0), "10 soldati difendono con 50")
-	GameState.risorse.cibo = 100.0
-	GameState.tick_in_stagione = 19
-	GameState._tick()
-	_verifica(absf(GameState.risorse.cibo - (100.0 - 6.0 - 14 * 0.1)) < 0.01, "a fine mese i soldati mangiano 6 cibo")
+	_verifica(GameState.addestra() and GameState.risorse.legna == 98.0 and GameState.risorse.pietra == 99.0 and GameState.soldati == 0,
+		"un lanciere in coda: si pagano 2 legna e 1 pietra, ma non è ancora pronto")
+	for i in 3:
+		GameState._addestra_un_giorno()
+	_verifica(GameState.soldati == 1 and int(GameState.truppe.fanti) == 1 and GameState.disoccupati() == liberi and GameState.abitanti == 14,
+		"dopo 3 giorni il lanciere è in caserma, e non toglie nessuno al villaggio")
+	_verifica(GameState.perche_non_addestrare("arcieri") == "serve l'armeria fornita" and GameState.perche_non_addestrare("spadaccini") == "serve l'armeria fornita",
+		"arcieri e spadaccini dal livello 2 dell'armeria")
+	armeria_b.livello = 2
+	_verifica(GameState.addestra("spadaccini") and GameState.addestra("arcieri") and GameState.risorse.ferro == 8.0 and GameState.risorse.legna == 94.0,
+		"con l'armeria fornita spadaccini (1 legna, 2 ferro) e arcieri (3 legna)")
+	_verifica(GameState.annulla_addestramento() and GameState.coda_esercito.size() == 1 and GameState.risorse.legna == 97.0,
+		"togliendo l'ultimo dalla coda si riavrà il materiale")
+	armeria_b.lavoratori = 0
+	for i in 10:
+		GameState._addestra_un_giorno()
+	_verifica(GameState.coda_esercito.size() == 1 and GameState.giorni_al_prossimo_soldato() == -1, "senza lavoratori l'armeria non addestra")
+	armeria_b.lavoratori = 2
+	for i in 4:
+		GameState._addestra_un_giorno()
+	_verifica(int(GameState.truppe.get("spadaccini", 0)) == 1 and GameState.coda_esercito.is_empty(), "lo spadaccino è pronto dopo 4 giorni")
+	_verifica(GameState.perche_non_addestrare("balestrieri") == "serve l'arsenale" and GameState.perche_non_addestrare("cavalieri") == "serve il grande arsenale",
+		"balestrieri dal livello 3, cavalieri dal 4")
+	GameState.truppe = {"fanti": 10}
+	GameState.soldati = 10
+	_verifica(GameState.perche_non_addestrare() == "le caserme sono piene", "una caserma tiene 10 soldati")
+	_verifica(is_equal_approx(GameState.difesa().forza_soldati, 50.0), "10 lancieri a casa difendono con 50")
+	caserma_b.livello = 4
+	_verifica(GameState.posti_esercito() == 25 and GameState.alloggi() == 16, "la caserma migliorata 3 volte tiene 25 soldati (e non ospita abitanti)")
+	# il costo: una volta l'anno, soldati / 10 arrotondato, metà cibo e metà oro (l'oro paga il dispari)
+	GameState.truppe = {"fanti": 88}
+	GameState.soldati = 88
+	var costo_e := GameState.costo_annuale_esercito()
+	_verifica(int(costo_e.cibo) == 4 and int(costo_e.oro) == 5, "88 soldati costano 9 l'anno: 4 cibo e 5 oro")
+	GameState.truppe = {"fanti": 84}
+	GameState.soldati = 84
+	costo_e = GameState.costo_annuale_esercito()
+	_verifica(int(costo_e.cibo) == 4 and int(costo_e.oro) == 4, "84 soldati: 8, cioè 4 e 4")
 	for cibo_r in GameState.CIBI:
 		GameState.risorse[cibo_r] = 0.0
-	GameState._paga_soldati()
-	_verifica(GameState.soldati == 5, "senza cibo una formazione se ne va")
-
-	# Caserma grande (15 posti) e tipi di soldati secondo il livello dell'armeria.
-	GameState.abitanti = 40
-	var caserma_b: Dictionary = GameState.buildings.filter(func(x): return x.tipo == "caserma")[0]
-	caserma_b.livello = 2
-	_verifica(GameState.formazioni_massime() == 3, "la caserma grande tiene 15 soldati")
-	_verifica(GameState.perche_non_arruolare("arcieri") == "serve un'armeria", "gli arcieri vogliono un'armeria")
-	GameState.aggiungi_gratis("armeria", Vector2i(10, 8), 1.0)
-	var armeria_b: Dictionary = GameState.buildings.filter(func(x): return x.tipo == "armeria")[0]
-	GameState.risorse.armi = 5.0
-	_verifica(GameState.arruola("arcieri") and int(GameState.truppe.arcieri) == 5 and GameState.risorse.armi == 0.0, "con l'armeria si arruolano arcieri per 5 armi")
-	_verifica(GameState.perche_non_arruolare("balestrieri") == "serve l'armeria fornita", "i balestrieri vogliono l'armeria fornita")
-	armeria_b.livello = 3
-	GameState.risorse.armi = 10.0
-	GameState.risorse.oro = 20.0
-	_verifica(GameState.arruola("cavalieri") and GameState.soldati == 15 and GameState.perche_non_arruolare("fanti") == "le caserme sono piene", "con l'arsenale i cavalieri; poi la caserma è piena")
-	_verifica(GameState.cibo_esercito_al_mese() == 11, "i cavalieri mangiano di più")
-	_verifica(GameState.congeda("arcieri") and int(GameState.truppe.arcieri) == 0 and GameState.soldati == 10, "si congedano gli arcieri")
+	GameState.risorse.cibo = 50.0
+	GameState.risorse.oro = 50.0
+	GameState.stagione = GameState.AUTUNNO
+	GameState._fine_stagione()
+	_verifica(GameState.stagione == GameState.INVERNO and GameState.soldati == 84 and GameState.risorse.cibo <= 46.0 and GameState.risorse.oro <= 50.0 + 40.0,
+		"all'arrivo dell'inverno l'esercito si paga")
+	GameState.truppe = {"fanti": 88}
+	GameState.soldati = 88
+	for cibo_r in GameState.CIBI:
+		GameState.risorse[cibo_r] = 0.0
+	GameState.risorse.cibo = 4.0
+	GameState.risorse.oro = 0.0
+	GameState._paga_esercito()
+	_verifica(GameState.soldati == 88 - ceili(88.0 * 5.0 / 9.0), "senza oro se ne va la parte non pagata (%d restano)" % GameState.soldati)
+	_verifica(GameState.congeda("fanti") and GameState.soldati == 88 - ceili(88.0 * 5.0 / 9.0) - 1, "si congeda un soldato alla volta")
+	GameState.truppe = {}
+	GameState.soldati = 0
 
 	# Mercato automatico: si vende l'eccesso e si compra quel che manca, tenendo da parte l'oro.
 	GameState.imposta_auto("legna", "vendi_sopra", 100)
@@ -677,7 +710,6 @@ func _ready() -> void:
 	GameState.soldati = 20
 	GameState.truppe = {"fanti": 15, "arcieri": 5}
 	GameState.abitanti = 30
-	GameState.risorse.armi = 20.0
 	_verifica(GameState.attacca(libera) and GameState.soldati_presenti() == 0, "l'esercito parte tutto")
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
 		GameState._avanza_missioni()
@@ -686,7 +718,7 @@ func _ready() -> void:
 	var noi_b := LogicaBattaglia.vive(bt, "noi")
 	var loro_b := LogicaBattaglia.vive(bt, "loro")
 	_verifica(not bt.is_empty() and GameState.velocita == 0 and bt.fase == "noi" and noi_b.size() == 4 and loro_b.size() >= 1, "arrivato l'esercito si schiera sul campo: il tempo si ferma")
-	_verifica(noi_b.any(func(u): return u.tipo == "arcieri") and noi_b.any(func(u): return u.get("armati", false)), "con le armi: arcieri e fanti armati")
+	_verifica(noi_b.any(func(u): return u.tipo == "arcieri") and noi_b.any(func(u): return u.tipo == "fanti"), "in campo lancieri e arcieri")
 	_verifica(GameState.soldati_presenti() == 0, "in battaglia i soldati non sono a casa")
 	_verifica(LogicaBattaglia.distanza(Vector2i(0, 0), Vector2i(2, 0)) == 2 and LogicaBattaglia.vicini(Vector2i(3, 3)).size() == 6, "esagoni: distanze e vicini")
 	var fante: Dictionary = noi_b.filter(func(u): return u.tipo == "fanti")[0]
@@ -715,7 +747,6 @@ func _ready() -> void:
 	# la bandiera: chi la tiene per un turno vince
 	GameState.soldati = 10
 	GameState.abitanti = 30
-	GameState.risorse.armi = 0.0
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
 		GameState._avanza_missioni()
@@ -913,7 +944,7 @@ func _ready() -> void:
 	GameState.nuova_partita(60)
 	var soldati_pr := GameState.soldati
 	var abitanti_pr := GameState.abitanti
-	GameState.inizia_prova_battaglia({"nemico": "banditi", "fanti": 10, "arcieri": 5, "armi": 10, "vassalli": 5, "nemici": 12})
+	GameState.inizia_prova_battaglia({"nemico": "banditi", "fanti": 10, "arcieri": 5, "vassalli": 5, "nemici": 12})
 	var bp: Dictionary = GameState.battaglia
 	_verifica(bp.prova and LogicaBattaglia.vive(bp, "noi").size() == 4 and LogicaBattaglia.vive(bp, "loro").size() == 3, "la prova schiera gli eserciti scelti")
 	for u in LogicaBattaglia.vive(bp, "noi"):
@@ -1029,11 +1060,17 @@ func _ready() -> void:
 		var casa_r := GameState.aggiungi_gratis("casa", muro_case, 1.0)
 		var attorno: Array[Vector2i] = []
 		var tc_r := GameState.taglia_di(casa_r)
-		for arrivo in [muro_case + tc_r + Vector2i(1, 1), muro_case + Vector2i(-1, -1), muro_case + Vector2i(tc_r.x + 1, -1),
-				muro_case + Vector2i(-1, tc_r.y + 1), muro_case + tc_r + Vector2i(2, 0), muro_case + Vector2i(-2, 0)]:
-			attorno = GameState.strada_verso([arrivo])
+		# un punto qualsiasi attorno alla casa (a 1-3 celle dal bordo) a cui si arriva
+		for d in range(1, 4):
 			if attorno.size() >= 2:
 				break
+			for dy in range(-d, tc_r.y + d + 1):
+				for dx in range(-d, tc_r.x + d + 1):
+					if attorno.size() >= 2:
+						break
+					if dx > -d and dx < tc_r.x + d and dy > -d and dy < tc_r.y + d:
+						continue
+					attorno = GameState.strada_verso([muro_case + Vector2i(dx, dy)])
 		var dentro := false
 		for k in TerrenoFeudo.lati_di(attorno):
 			var cc: Array[Vector2i] = TerrenoFeudo.celle_del_lato(k)
@@ -1236,8 +1273,6 @@ func _ready() -> void:
 	GameState.aggiungi_gratis("palizzata", Vector2i(4, 4), 1.0)
 	GameState.aggiungi_gratis("palizzata", Vector2i(5, 4), 1.0)
 	_verifica(is_equal_approx(GameState.difesa().totale, 3.0 + 12.0 + 3.0), "torre vicina con 2 arcieri (+12) e 2 palizzate (+3)")
-	GameState.risorse.armi = 2.0
-	_verifica(is_equal_approx(GameState.difesa().forza_arcieri, 18.0), "arcieri armati: x1,5")
 	GameState._avvista_banditi()
 	var bd: Dictionary = GameState.banditi
 	_verifica(not bd.is_empty() and TerrenoFeudo.area.has_point(bd.entrata) and int(bd.mancano) == int(GameState.bil.banditi.preavviso_con_torre),
@@ -1253,7 +1288,6 @@ func _ready() -> void:
 	_verifica(esiti.size() == 1 and esiti[0].vinto and GameState.banditi.is_empty(), "arrivati i banditi, la difesa li respinge")
 	_verifica(GameState.felicita > fel_b, "una vittoria fa piacere")
 	GameState.buildings.erase(torre)
-	GameState.risorse.armi = 0.0
 	GameState.risorse.oro = 100.0
 	GameState.risorse.legna = 100.0
 	var gente_b := GameState.abitanti

@@ -212,7 +212,8 @@ func _via() -> void:
 			pal.progresso = 1.0
 	var arm := GameState.piazza("armeria", t.trova_posto("armeria", dimora_v.cella + Vector2i(4, 5)), 1.0)
 	arm.progresso = 1.0
-	GameState.risorse.armi = 4.0
+	arm.livello = 2
+	arm.lavoratori = 2
 	f.hud._apri_categoria("difese")
 	await _attendi(0.5)
 	await _scatta("19_menu_difese")
@@ -284,9 +285,13 @@ func _via() -> void:
 		if not casa_x.is_empty():
 			casa_x.progresso = 1.0
 	GameState.risorse.cibo = 200.0
-	GameState.risorse.armi = 20.0
-	GameState.arruola()
-	GameState.arruola("arcieri")
+	# un piccolo esercito già pronto, e due soldati in addestramento all'armeria
+	GameState.truppe = {"fanti": 6, "arcieri": 2}
+	GameState.soldati = 8
+	GameState.risorse.legna = maxf(GameState.risorse.legna, 50.0)
+	GameState.risorse.ferro = 10.0
+	GameState.addestra("fanti")
+	GameState.addestra("spadaccini")
 	var pc2: Vector3 = f.vista.centro_area(cas.cella, Vector2i(3, 2))
 	f.camera.position = Vector3(pc2.x, 0, pc2.z)
 	await _attendi(4.0)
