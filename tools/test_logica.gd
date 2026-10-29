@@ -732,7 +732,7 @@ func _ready() -> void:
 	_verifica(bt.fase == "noi" and not GameState.battaglia_schiera(int(primo_b.id), cella_1), "iniziata la battaglia lo schieramento è chiuso")
 	_verifica(noi_b.any(func(u): return u.tipo == "arcieri") and noi_b.any(func(u): return u.tipo == "fanti"), "in campo lancieri e arcieri")
 	_verifica(GameState.soldati_presenti() == 0, "in battaglia i soldati non sono a casa")
-	_verifica(LogicaBattaglia.distanza(Vector2i(0, 0), Vector2i(2, 0)) == 2 and LogicaBattaglia.vicini(Vector2i(3, 3)).size() == 6, "esagoni: distanze e vicini")
+	_verifica(LogicaBattaglia.distanza(Vector2i(0, 0), Vector2i(2, 1)) == 2 and LogicaBattaglia.vicini(Vector2i(3, 3)).size() == 8, "griglia: le diagonali contano come un passo, otto vicini")
 	var fante: Dictionary = noi_b.filter(func(u): return u.tipo == "fanti")[0]
 	var dove_b: Dictionary = LogicaBattaglia.raggiungibili(bt, fante, cfg_b)
 	var meta_b: Vector2i = dove_b.keys()[0]
@@ -790,9 +790,14 @@ func _ready() -> void:
 	for u in LogicaBattaglia.vive(bl, "loro"):
 		for v in LogicaBattaglia.vive(bl, "noi"):
 			vicino_l = mini(vicino_l, LogicaBattaglia.distanza(LogicaBattaglia.cella(u), LogicaBattaglia.cella(v)))
-	_verifica(bl.finita or vicino_l <= 2, "dopo qualche turno il nemico va all'assalto (distanza %d)" % vicino_l)
+	if bl.get("assedio", false):
+		var band_l := Vector2i(int(bl.bandiera[0]), int(bl.bandiera[1]))
+		_verifica(bl.finita or LogicaBattaglia.vive(bl, "loro").all(func(u): return LogicaBattaglia.distanza(LogicaBattaglia.cella(u), band_l) <= 2), "chi è assediato resta dietro le mura")
+	else:
+		_verifica(bl.finita or vicino_l <= 2, "dopo qualche turno il nemico va all'assalto (distanza %d)" % vicino_l)
 	GameState.chiudi_battaglia()
 	_prova_forze()
+	_prova_assedio()
 	var soldati_r := GameState.soldati
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
@@ -1574,3 +1579,47 @@ func _prova_forze() -> void:
 	_verifica(is_equal_approx(float(LogicaBattaglia.forze(b, a, d, cfg).fd), 10 * LogicaBattaglia.forza(d, cfg) * float(cfg.lance_contro_cavalli)), "e i cavalli contro le lance soffrono")
 	var p := LogicaBattaglia.anteprima(b, 1, 2, cfg)
 	_verifica(int(p.morti_difensore) > 0 and int(p.morti_attaccante) >= 0 and not p.da_lontano, "l'anteprima dice le perdite previste")
+
+
+## Assedio: contro un signore il castello ha le mura e la porta.
+func _prova_assedio() -> void:
+	var cfg: Dictionary = GameState.bil.battaglia
+	var rng := RandomNumberGenerator.new()
+	var b := LogicaBattaglia.crea("prova", "signore", {"fanti": 15, "arcieri": 5}, 0, 0, 20, 7, cfg)
+	var porta: Dictionary = b.unita.filter(func(u): return u.tipo == LogicaBattaglia.PORTA)[0]
+	var bandiera := Vector2i(int(b.bandiera[0]), int(b.bandiera[1]))
+	var mura := 0
+	for t in b.terreno:
+		if int(t) == LogicaBattaglia.Terreno.MURA:
+			mura += 1
+	_verifica(b.assedio and mura >= 12 and LogicaBattaglia.terreno_a(b, LogicaBattaglia.cella(porta)) == LogicaBattaglia.Terreno.PIANURA, "contro un signore c'è il castello con mura e porta")
+	var sulle_mura := LogicaBattaglia.vive(b, "loro").filter(func(u): return LogicaBattaglia.terreno_a(b, LogicaBattaglia.cella(u)) == LogicaBattaglia.Terreno.MURA)
+	_verifica(not sulle_mura.is_empty() and sulle_mura.all(func(u): return int(cfg.unita[u.tipo].gittata) > 1), "i balestrieri difendono dalle mura")
+	_verifica(LogicaBattaglia.gittata(b, sulle_mura[0], cfg) == int(cfg.unita[sulle_mura[0].tipo].gittata) + 1, "dalle mura si tira più lontano")
+	# un nostro fante davanti alla porta: non passa, non sale sulle mura, ma può colpire la porta
+	var fante: Dictionary = LogicaBattaglia.vive(b, "noi").filter(func(u): return u.tipo == "fanti")[0]
+	var davanti := LogicaBattaglia.cella(porta) - Vector2i(1, 0)
+	fante.cella = [davanti.x, davanti.y]
+	fante.mosse = 5
+	var dove := LogicaBattaglia.raggiungibili(b, fante, cfg)
+	_verifica(dove.keys().all(func(c): return LogicaBattaglia.terreno_a(b, c) != LogicaBattaglia.Terreno.MURA and LogicaBattaglia.distanza(c, bandiera) > 1), "le mura non si scavalcano: per entrare serve la porta")
+	var arciere: Dictionary = LogicaBattaglia.vive(b, "noi").filter(func(u): return u.tipo == "arcieri")[0]
+	var lontano := LogicaBattaglia.cella(porta) - Vector2i(2, 0)
+	arciere.cella = [lontano.x, lontano.y]
+	_verifica(not LogicaBattaglia.bersagli(b, arciere, cfg).has(porta), "le frecce non aprono la porta")
+	_verifica(LogicaBattaglia.bersagli(b, fante, cfg).has(porta), "la porta si colpisce da vicino")
+	b.fase = "noi"
+	var colpi := 0
+	while int(porta.uomini) > 0 and colpi < 20:
+		fante.attaccato = false
+		fante.uomini = 5
+		LogicaBattaglia.attacca(b, int(fante.id), int(porta.id), cfg, rng)
+		colpi += 1
+	_verifica(int(porta.uomini) <= 0 and int(fante.uomini) == 5 and not b.finita, "la porta non risponde e alla fine cede (%d colpi)" % colpi)
+	fante.mosse = 5
+	fante.attaccato = false
+	_verifica(LogicaBattaglia.raggiungibili(b, fante, cfg).has(LogicaBattaglia.cella(porta)), "dalla porta sfondata si entra")
+	for u in LogicaBattaglia.vive(b, "loro"):
+		u.uomini = 0
+	LogicaBattaglia._controlla_fine(b)
+	_verifica(b.finita and b.vinta, "distrutti i difensori, il castello è preso")

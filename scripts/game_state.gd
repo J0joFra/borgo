@@ -3167,6 +3167,8 @@ func carica() -> bool:
 		u.cella = [int(u.cella[0]), int(u.cella[1])]
 	if battaglia.has("terreno"):
 		battaglia.terreno = battaglia.terreno.map(func(x): return int(x))
+		if battaglia.terreno.size() != LogicaBattaglia.LARGHEZZA * LogicaBattaglia.ALTEZZA:
+			LogicaBattaglia.ritirata(battaglia)  # una battaglia sul vecchio campo a esagoni: l'esercito torna
 	for m in missioni:
 		m.mancano = int(m.mancano)
 		if m.has("soldati"):

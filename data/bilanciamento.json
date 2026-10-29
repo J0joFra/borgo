@@ -94,9 +94,11 @@
 			{"nome": "Pianura", "costo": 1, "attacco": 1.0, "difesa": 1.0},
 			{"nome": "Bosco", "costo": 2, "attacco": 1.0, "difesa": 1.3},
 			{"nome": "Collina", "costo": 2, "attacco": 1.0, "difesa": 1.15},
-			{"nome": "Acqua", "costo": 99, "attacco": 1.0, "difesa": 1.0}
+			{"nome": "Acqua", "costo": 99, "attacco": 1.0, "difesa": 1.0},
+			{"nome": "Mura", "costo": 1, "attacco": 1.0, "difesa": 1.5}
 		],
-		"unita": {"fanti": {"nome": "Lancieri", "forza": 5, "mosse": 3, "gittata": 1}, "spadaccini": {"nome": "Spadaccini", "forza": 7, "mosse": 3, "gittata": 1}, "arcieri": {"nome": "Arcieri", "forza": 4, "mosse": 3, "gittata": 2}, "vassalli": {"nome": "Uomini dei vassalli", "forza": 4, "mosse": 3, "gittata": 1}, "cavalieri": {"nome": "Cavalieri", "forza": 6, "mosse": 4, "gittata": 1}, "balestrieri": {"nome": "Balestrieri", "forza": 4, "mosse": 2, "gittata": 2}, "predoni": {"nome": "Predoni", "forza": 4, "mosse": 4, "gittata": 1}, "contadini": {"nome": "Contadini armati", "forza": 3, "mosse": 3, "gittata": 1}},
+		"assedio": {"porta": 20},
+		"unita": {"fanti": {"nome": "Lancieri", "forza": 5, "mosse": 3, "gittata": 1}, "spadaccini": {"nome": "Spadaccini", "forza": 7, "mosse": 3, "gittata": 1}, "arcieri": {"nome": "Arcieri", "forza": 4, "mosse": 3, "gittata": 2}, "vassalli": {"nome": "Uomini dei vassalli", "forza": 4, "mosse": 3, "gittata": 1}, "cavalieri": {"nome": "Cavalieri", "forza": 6, "mosse": 4, "gittata": 1}, "balestrieri": {"nome": "Balestrieri", "forza": 4, "mosse": 2, "gittata": 2}, "predoni": {"nome": "Predoni", "forza": 4, "mosse": 4, "gittata": 1}, "contadini": {"nome": "Contadini armati", "forza": 3, "mosse": 3, "gittata": 1}, "porta": {"nome": "Porta del castello", "forza": 0, "mosse": 0, "gittata": 0}},
 		"eserciti": {"signore": ["cavalieri", "balestrieri", "cavalieri"], "banditi": ["predoni"], "libera": ["contadini"]}
 	},
 	"tributo_case": [[4, 1], [6, 2], [8, 3]],

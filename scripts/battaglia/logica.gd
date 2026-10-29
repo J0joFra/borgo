@@ -1,20 +1,24 @@
 class_name LogicaBattaglia
 extends RefCounted
-## Le regole della battaglia tattica, in stile Humankind: un campo a esagoni con pianure, boschi,
-## colline e acqua; le nostre unità a sinistra, quelle del nemico a destra a difesa della loro
+## Le regole della battaglia tattica, in stile Humankind: un piccolo campo a quadretti come il terreno
+## del feudo, con pianure, boschi, colline e acqua (le diagonali contano come passi); le nostre unità a sinistra, quelle del nemico a destra a difesa della loro
 ## bandiera. Prima lo schieramento (le nostre unità si dispongono nelle prime colonne), poi a turni,
 ## senza limite: ogni unità si muove (boschi e colline costano di più) e attacca, corpo a corpo o da
 ## lontano. Contano l'altura (dall'alto si colpisce più forte), i fianchi (più unità attorno al
 ## bersaglio), il supporto (i compagni accanto aiutano a difendersi) e le lance contro i cavalli.
 ## Si vince distruggendo l'esercito nemico o tenendo la loro bandiera per un turno intero; si perde
 ## se cadono tutti i nostri o con la ritirata.
+## Assedio: contro un signore la bandiera sta in un castello con le mura. Sulle mura salgono solo i
+## difensori (più difesa, dall'alto, e gli arcieri tirano più lontano); per entrare si sfonda la porta
+## corpo a corpo (la porta è un'"unità" che non combatte, con dei punti al posto degli uomini).
 ## Tutto lo stato sta in un dizionario (GameState.battaglia), così si salva com'è.
-## Le celle sono coordinate "offset" (colonna, riga) di esagoni a punta in su, righe dispari spostate.
+## Le celle sono (colonna, riga) di una griglia quadrata.
 
-enum Terreno { PIANURA, BOSCO, COLLINA, ACQUA }
+enum Terreno { PIANURA, BOSCO, COLLINA, ACQUA, MURA }
 
-const LARGHEZZA := 12
-const ALTEZZA := 9
+const LARGHEZZA := 16
+const ALTEZZA := 10
+const PORTA := "porta"
 
 
 ## Una battaglia nuova: terreno dal seme, le nostre unità (soldati per tipo, uomini dei vassalli)
@@ -44,11 +48,15 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 			elif f > (0.22 if in_mezzo else 0.45):
 				t = Terreno.BOSCO
 			terreno.append(t)
-	var bandiera := Vector2i(LARGHEZZA - 2, ALTEZZA / 2)
+	var assedio: bool = tipo_nemico == "signore"
+	var bandiera := Vector2i(LARGHEZZA - 2 - (1 if assedio else 0), ALTEZZA / 2)
 	terreno[_i(bandiera)] = Terreno.COLLINA  # la bandiera sta su un'altura
+	var porta := Vector2i(-1, -1)
+	if assedio:
+		porta = _castello(terreno, bandiera)
 	var b := {"regione": regione, "tipo_nemico": tipo_nemico, "turno": 1,
 		"fase": "schieramento", "finita": false, "vinta": false, "perche": "", "terreno": terreno,
-		"bandiera": [bandiera.x, bandiera.y], "unita": [], "diario": [], "prossimo_id": 1}
+		"bandiera": [bandiera.x, bandiera.y], "unita": [], "diario": [], "prossimo_id": 1, "assedio": assedio}
 	# le nostre unità: gruppi di "per_unita" uomini per ogni tipo di soldato; chi tira sta dietro
 	var per := int(cfg.per_unita)
 	var soldati := 0
@@ -73,8 +81,42 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 	for i in loro.size():
 		var tipo_l: String = tipi[i % tipi.size()]
 		_aggiungi(b, "loro", tipo_l, loro[i], posti[i], cfg)
+	if assedio:
+		# chi tira sale sulle mura, dalla parte da cui arriviamo; poi la porta chiude il castello
+		var sulle_mura: Array[Vector2i] = []
+		for i in terreno.size():
+			if terreno[i] == Terreno.MURA:
+				sulle_mura.append(Vector2i(i % LARGHEZZA, i / LARGHEZZA))
+		sulle_mura.sort_custom(func(x, y): return x.x < y.x)
+		for u in b.unita:
+			if u.lato == "loro" and int(cfg.unita[u.tipo].gittata) > 1 and not sulle_mura.is_empty():
+				var posto: Vector2i = sulle_mura.pop_front()
+				u.cella = [posto.x, posto.y]
+		var punti := int(cfg.get("assedio", {}).get("porta", 20))
+		b.unita.append({"id": b.prossimo_id, "lato": "loro", "tipo": PORTA, "uomini": punti, "max": punti,
+			"cella": [porta.x, porta.y], "mosse": 0, "attaccato": true})
+		b.prossimo_id = int(b.prossimo_id) + 1
 	b.loro_inizio = nemici
 	return b
+
+
+## Il castello: un quadrato di mura attorno alla bandiera, con la porta verso di noi; dentro e
+## davanti alla porta il terreno è sgombro. Restituisce la cella della porta.
+static func _castello(terreno: Array, bandiera: Vector2i) -> Vector2i:
+	var raggio := 2
+	for y in range(bandiera.y - raggio - 1, bandiera.y + raggio + 2):
+		for x in range(bandiera.x - raggio - 2, bandiera.x + raggio + 2):
+			var c := Vector2i(x, y)
+			if not dentro(c):
+				continue
+			var lontano := maxi(absi(x - bandiera.x), absi(y - bandiera.y))
+			if lontano == raggio:
+				terreno[_i(c)] = Terreno.MURA
+			elif c != bandiera:
+				terreno[_i(c)] = Terreno.PIANURA
+	var porta := Vector2i(bandiera.x - raggio, bandiera.y)
+	terreno[_i(porta)] = Terreno.PIANURA  # sotto la porta si passa, quando è sfondata
+	return porta
 
 
 static func _gruppi(n: int, per: int) -> Array[int]:
@@ -103,7 +145,7 @@ static func _attorno(centro: Vector2i, n: int, terreno: Array) -> Array[Vector2i
 	while posti.size() < n and not anello.is_empty():
 		var prossimo := []
 		for c in anello:
-			if terreno[_i(c)] != Terreno.ACQUA and posti.size() < n:
+			if not terreno[_i(c)] in [Terreno.ACQUA, Terreno.MURA] and posti.size() < n:
 				posti.append(c)
 			for v in vicini(c):
 				if not visti.has(v):
@@ -127,7 +169,7 @@ static func _aggiungi(b: Dictionary, lato: String, tipo: String, uomini: int, ce
 	b.prossimo_id = int(b.prossimo_id) + 1
 
 
-# --- Esagoni ---------------------------------------------------------------------------
+# --- Griglia ---------------------------------------------------------------------------
 
 static func dentro(c: Vector2i) -> bool:
 	return c.x >= 0 and c.y >= 0 and c.x < LARGHEZZA and c.y < ALTEZZA
@@ -141,28 +183,38 @@ static func cella(u: Dictionary) -> Vector2i:
 	return Vector2i(int(u.cella[0]), int(u.cella[1]))
 
 
-## I sei vicini di un esagono (righe dispari spostate a destra).
+const DIREZIONI := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+	Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+
+
+## Gli otto vicini di una cella (anche in diagonale).
 static func vicini(c: Vector2i) -> Array[Vector2i]:
-	var pari := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(0, 1), Vector2i(-1, 1)]
-	var dispari := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(1, -1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(0, 1)]
 	var v: Array[Vector2i] = []
-	for d in (dispari if c.y % 2 == 1 else pari):
+	for d in DIREZIONI:
 		var n: Vector2i = c + d
 		if dentro(n):
 			v.append(n)
 	return v
 
 
+## Passi fra due celle, contando le diagonali come un passo.
 static func distanza(a: Vector2i, b: Vector2i) -> int:
-	var ca := _cubo(a)
-	var cb := _cubo(b)
-	return int((absi(ca.x - cb.x) + absi(ca.y - cb.y) + absi(ca.z - cb.z)) / 2)
+	return maxi(absi(a.x - b.x), absi(a.y - b.y))
 
 
-static func _cubo(c: Vector2i) -> Vector3i:
-	var x := c.x - (c.y - (c.y & 1)) / 2
-	var z := c.y
-	return Vector3i(x, -x - z, z)
+## Si può passare da una cella alla vicina? In diagonale non si scivola fra due mura o due stagni.
+static func _passo_libero(b: Dictionary, da: Vector2i, a: Vector2i, lato: String) -> bool:
+	if not _calpestabile(b, a, lato):
+		return false
+	if da.x != a.x and da.y != a.y:
+		return _calpestabile(b, Vector2i(a.x, da.y), lato) or _calpestabile(b, Vector2i(da.x, a.y), lato)
+	return true
+
+
+## Acqua mai; le mura solo per chi difende il castello.
+static func _calpestabile(b: Dictionary, c: Vector2i, lato: String) -> bool:
+	var t := terreno_a(b, c)
+	return t != Terreno.ACQUA and (t != Terreno.MURA or lato == "loro")
 
 
 static func terreno_a(b: Dictionary, c: Vector2i) -> int:
@@ -205,7 +257,7 @@ static func raggiungibili(b: Dictionary, u: Dictionary, cfg: Dictionary) -> Dict
 				migliore = k
 		var c: Vector2i = coda.pop_at(migliore)
 		for v in vicini(c):
-			if terreno_a(b, v) == Terreno.ACQUA or occupante(b, v) >= 0:
+			if not _passo_libero(b, c, v, u.lato) or occupante(b, v) >= 0:
 				continue
 			var nuova: int = spesa[c] + costo(b, v, cfg)
 			if nuova <= int(u.mosse) and (not spesa.has(v) or nuova < spesa[v]):
@@ -225,10 +277,10 @@ static func raggiungibili(b: Dictionary, u: Dictionary, cfg: Dictionary) -> Dict
 	return risultato
 
 
-## La gittata vera: dalle colline gli arcieri tirano una cella più lontano.
+## La gittata vera: dalle colline e dalle mura gli arcieri tirano una cella più lontano.
 static func gittata(b: Dictionary, u: Dictionary, cfg: Dictionary) -> int:
 	var g := int(cfg.unita[u.tipo].gittata)
-	if g > 1 and terreno_a(b, cella(u)) == Terreno.COLLINA:
+	if g > 1 and quota(b, cella(u)) > 0:
 		g += 1
 	return g
 
@@ -238,7 +290,8 @@ static func bersagli(b: Dictionary, u: Dictionary, cfg: Dictionary) -> Array:
 	if bool(u.attaccato) or int(u.uomini) <= 0:
 		return []
 	var g := gittata(b, u, cfg)
-	return b.unita.filter(func(v): return v.lato != u.lato and int(v.uomini) > 0 and distanza(cella(u), cella(v)) <= g)
+	# la porta si sfonda solo da vicino: le frecce non la aprono
+	return b.unita.filter(func(v): return v.lato != u.lato and int(v.uomini) > 0 and distanza(cella(u), cella(v)) <= (1 if v.tipo == PORTA else g))
 
 
 # --- Schieramento ------------------------------------------------------------------------
@@ -249,7 +302,7 @@ static func zona_schieramento(b: Dictionary, cfg: Dictionary) -> Array[Vector2i]
 	for r in ALTEZZA:
 		for c in int(cfg.get("zona_schieramento", 3)):
 			var x := Vector2i(c, r)
-			if terreno_a(b, x) != Terreno.ACQUA:
+			if _calpestabile(b, x, "noi"):
 				zona.append(x)
 	return zona
 
@@ -278,9 +331,9 @@ static func inizia(b: Dictionary) -> void:
 
 # --- Forze in campo ------------------------------------------------------------------------
 
-## Quanto è in alto una cella (le colline sono alture).
+## Quanto è in alto una cella (le colline e le mura sono alture).
 static func quota(b: Dictionary, c: Vector2i) -> int:
-	return 1 if terreno_a(b, c) == Terreno.COLLINA else 0
+	return 1 if terreno_a(b, c) in [Terreno.COLLINA, Terreno.MURA] else 0
 
 
 ## Quante unità di un lato stanno attorno a una cella (senza contare chi è escluso).
@@ -288,7 +341,7 @@ static func _vicini_di(b: Dictionary, c: Vector2i, lato: String, escluso: int) -
 	var n := 0
 	for v in vicini(c):
 		var u := trova(b, occupante(b, v))
-		if not u.is_empty() and u.lato == lato and int(u.id) != escluso:
+		if not u.is_empty() and u.lato == lato and int(u.id) != escluso and u.tipo != PORTA:
 			n += 1
 	return n
 
@@ -300,6 +353,9 @@ static func forze(b: Dictionary, a: Dictionary, d: Dictionary, cfg: Dictionary) 
 	var ca := cella(a)
 	var cd := cella(d)
 	var da_lontano := distanza(ca, cd) > 1
+	if d.tipo == PORTA:
+		# la porta non si difende: conta solo quanti colpiscono
+		return {"fa": int(a.uomini) * forza(a, cfg), "fd": 0.0, "voci": ["contro la porta"], "da_lontano": false}
 	var ma := float(cfg.terreni[terreno_a(b, ca)].attacco)
 	var md := float(cfg.terreni[terreno_a(b, cd)].difesa)
 	if not is_equal_approx(md, 1.0):
@@ -389,6 +445,9 @@ static func attacca(b: Dictionary, id: int, bersaglio: int, cfg: Dictionary, rng
 	a.attaccato = true
 	a.mosse = 0
 	var esito := {"tipo": "attacco", "da": id, "a": bersaglio, "morti_attaccante": morti_a, "morti_difensore": morti_d, "da_lontano": da_lontano}
+	if d.tipo == PORTA:
+		_diario(b, "La porta è sfondata: il castello è aperto!" if int(d.uomini) <= 0 else "%s colpiscono la porta (-%d)." % [cfg.unita[a.tipo].nome, morti_d])
+		return esito
 	_diario(b, "%s %s %s: cadono %d dei loro%s." % [cfg.unita[a.tipo].nome, "tirano a" if da_lontano else "attaccano", cfg.unita[d.tipo].nome.to_lower(),
 		morti_d, " e %d dei nostri" % morti_a if morti_a > 0 else ""] if a.lato == "noi" else
 		"%s attaccano %s: cadono %d dei nostri%s." % [cfg.unita[a.tipo].nome, cfg.unita[d.tipo].nome.to_lower(), morti_d,
@@ -421,7 +480,8 @@ static func fine_turno(b: Dictionary, cfg: Dictionary, rng: RandomNumberGenerato
 	for u in vive(b, "loro"):
 		if b.finita:
 			break
-		azioni.append_array(_mossa_nemica(b, u, cfg, rng))
+		if u.tipo != PORTA:
+			azioni.append_array(_mossa_nemica(b, u, cfg, rng))
 	if not b.finita:
 		# chi è sulla loro bandiera dopo il loro turno l'ha tenuta: è nostra
 		var bandiera := Vector2i(int(b.bandiera[0]), int(b.bandiera[1]))
@@ -461,8 +521,9 @@ static func _mossa_nemica(b: Dictionary, u: Dictionary, cfg: Dictionary, rng: Ra
 		if distanza(cella(n), cella(u)) < distanza(cella(vicino), cella(u)):
 			vicino = n
 	# senza limite di turni il nemico non aspetta per sempre: dopo qualche turno va all'assalto
-	var minaccia := distanza(cella(vicino), bandiera) <= int(cfg.allarme_bandiera) or distanza(cella(vicino), cella(u)) <= int(cfg.unita[u.tipo].mosse) + 1 \
-		or int(b.turno) >= int(cfg.get("assalto_dal_turno", 5))
+	# (ma chi è assediato resta dietro le mura)
+	var minaccia: bool = distanza(cella(vicino), bandiera) <= int(cfg.allarme_bandiera) or distanza(cella(vicino), cella(u)) <= int(cfg.unita[u.tipo].mosse) + 1 \
+		or (int(b.turno) >= int(cfg.get("assalto_dal_turno", 5)) and not b.get("assedio", false))
 	var meta := cella(vicino) if minaccia else bandiera
 	var possibili := raggiungibili(b, u, cfg)
 	var gitt := gittata(b, u, cfg)
@@ -485,6 +546,8 @@ static func _punteggio(b: Dictionary, c: Vector2i, meta: Vector2i, gitt: int, mi
 	var d := distanza(c, meta)
 	var p := float(absi(d - gitt)) if minaccia else float(d)
 	match terreno_a(b, c):
+		Terreno.MURA:
+			p -= 0.6
 		Terreno.COLLINA:
 			p -= 0.4
 		Terreno.BOSCO:
@@ -495,7 +558,7 @@ static func _punteggio(b: Dictionary, c: Vector2i, meta: Vector2i, gitt: int, mi
 static func _controlla_fine(b: Dictionary) -> void:
 	if b.finita:
 		return
-	if vive(b, "loro").is_empty():
+	if vive(b, "loro").all(func(u): return u.tipo == PORTA):
 		_fine(b, true, "L'esercito nemico è stato distrutto!")
 	elif vive(b, "noi").is_empty():
 		_fine(b, false, "I nostri sono caduti tutti.")

@@ -121,7 +121,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   - **Alleanza** (dono di 30 oro, solo con un signore): più è amichevole, più è facile che accetti. Un alleato manda
     rinforzi contro i banditi e un piccolo dono ogni stagione.
   - **Attacco e battaglia** (in stile Humankind): parte tutto l'esercito a casa e arriva dopo un mese. Allora si apre
-    il **campo di battaglia a esagoni**, con il terreno del gioco: i colori del suolo, gli alberi e la luce del clima della regione e della stagione, le celle a fetta di terra come nel feudo (colline, boschetti e stagni a macchie): le nostre unità a sinistra (lancieri,
+    il **campo di battaglia**: un piccolo diorama a quadretti come il terreno del feudo (le diagonali contano come un passo), con i colori del suolo, gli alberi e la luce del clima della regione e della stagione, colline a gradoni, boschetti e stagni: le nostre unità a sinistra (lancieri,
     spadaccini, arcieri, balestrieri, cavalieri; uomini dei vassalli), quelle nemiche a destra a difesa della loro
     **bandiera** (cavalieri e balestrieri dei signori, predoni, contadini armati). Prima lo **schieramento**: si tocca
     una nostra unità e poi una cella della zona azzurra (sulle nostre unità si scambiano), poi "Inizia la battaglia".
@@ -133,6 +133,10 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
     difende. Ogni unità ha la barra degli uomini rimasti. "Fine turno" fa muovere il nemico: difende la bandiera e
     attacca chi si avvicina, e dal 5° turno va all'assalto. **Non c'è limite di turni**: si vince distruggendo il loro
     esercito o tenendo la loro bandiera per un turno; si perde se cadono tutti i nostri. Si può sempre ritirarsi.
+    **Assedio**: contro un signore la bandiera sta in un **castello con le mura**. Sulle mura salgono solo i difensori
+    (difesa ×1,5, colpiscono dall'alto e i balestrieri tirano una cella più lontano); le mura non si scavalcano: la
+    **porta** (20 punti) si sfonda corpo a corpo (le frecce non la aprono, e lei non risponde). Gli assediati non
+    escono all'assalto.
     Vincendo la regione è nostra e la governa un **vassallo**. Conquistare un covo di banditi fa arrivare meno incursioni.
     Perdendo torna solo una parte dei soldati.
   - **Vassalli** (scheda di una regione conquistata): la governa un consigliere libero oppure un cavaliere ("Affida a").
@@ -246,7 +250,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Feudo in 3D** con modelli KayKit, telecamera isometrica con zoom e rotazione, stagioni visibili (erba, chiome, neve, luce).
 - **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
 
-**Da fare**: assedi dei castelli con le mura nella battaglia, altre carte evento, bilanciamento con partite vere.
+**Da fare**: altre carte evento, bilanciamento con partite vere.
 
 ## Dove cambiare le cose
 
