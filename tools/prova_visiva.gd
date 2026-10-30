@@ -59,6 +59,12 @@ func _via() -> void:
 			campo_p.camera.camera.size = 13.0
 			await _attendi(0.6)
 			await _scatta("0g_castello_vicino")
+			# la visuale girata di 90°
+			campo_p.camera.camera.size = 36.0
+			campo_p.camera.position = Vector3(LogicaBattaglia.LARGHEZZA * campo_p.CELLA / 2.0, 0, LogicaBattaglia.ALTEZZA * campo_p.CELLA / 2.0)
+			campo_p.camera.ruota(1)
+			await _attendi(0.8)
+			await _scatta("0h_battaglia_girata")
 		GameState.battaglia_ritirata()
 		GameState.chiudi_battaglia()
 	var inizio := Time.get_ticks_msec()
@@ -286,6 +292,21 @@ func _via() -> void:
 		f.camera.position = Vector3(pb.x, 0, pb.z).lerp(pd, 0.3)
 	await _attendi(0.5)
 	await _scatta("20_banditi_in_arrivo")
+	# da vicino: la banda (personaggi 3D con torce, asce, balestre)
+	if not f.banditi._figure.is_empty():
+		var pb2: Vector3 = f.banditi._figure[0].position
+		for fb in f.banditi._figure:
+			var cb := Vector2i(floori(fb.position.x / 2.0), floori(fb.position.z / 2.0))
+			if f.vista.terreno.tipo_a(cb) != TerrenoFeudo.Tipo.BOSCO:
+				pb2 = fb.position
+				break
+		var zoom_prima: float = f.camera.camera.size
+		f.camera.position = Vector3(pb2.x, 0, pb2.z)
+		f.camera.camera.size = 14.0
+		await _attendi(0.6)
+		await _scatta("20a_banditi_vicino")
+		f.camera.camera.size = zoom_prima
+		f.camera.position = Vector3(pb2.x, 0, pb2.z).lerp(pd, 0.3)
 	# quando passano vicino alla torre gli arcieri tirano
 	var pt: Vector3 = f.vista.centro_area(torre.cella, Vector2i(2, 2))
 	f.camera.position = pt

@@ -1039,6 +1039,24 @@ func _crea_interfaccia() -> void:
 	_btn_fine.focus_mode = Control.FOCUS_NONE
 	_btn_fine.pressed.connect(_fine_turno)
 	comandi.add_child(_btn_fine)
+	# girare la visuale (come nel borgo): due frecce sul lato destro; da tastiera Q ed E
+	var giro := HBoxContainer.new()
+	giro.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	giro.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	giro.grow_vertical = Control.GROW_DIRECTION_BOTH
+	giro.offset_right = -4
+	giro.add_theme_constant_override("separation", 3)
+	radice.add_child(giro)
+	for verso in [-1, 1]:
+		var bg := Button.new()
+		bg.custom_minimum_size = Vector2(24, 24)
+		bg.focus_mode = Control.FOCUS_NONE
+		bg.tooltip_text = "Gira la visuale"
+		var icona := IconaUi.new("sinistra" if verso < 0 else "destra", 16)
+		icona.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		bg.add_child(icona)
+		bg.pressed.connect(func(): camera.ruota(verso))
+		giro.add_child(bg)
 	_btn_ritirata = Button.new()
 	_btn_ritirata.text = "Ritirata"
 	_btn_ritirata.custom_minimum_size = Vector2(80, 18)

@@ -4,6 +4,9 @@ extends Node3D
 ## la dimora del signore e ci arriva quando scatta l'incursione (GameState.banditi.mancano).
 ## Poi scappa da dove è venuta: di corsa se è stata respinta, con i sacchi se ha saccheggiato.
 ## Solo grafica: la battaglia la decide GameState.
+## Sono i personaggi KayKit (come soldati e abitanti): ladri incappucciati e barbari col mantello scuro,
+## con la torcia accesa, l'ascia o la balestra; camminano, corrono via (col sacco se hanno
+## saccheggiato), cadono sotto le frecce. Senza i modelli si torna alle figure in codice.
 
 const MANTELLO := Color("2e2a2a")
 const FAZZOLETTO := Color("8a2a20")
@@ -60,14 +63,43 @@ func _compaiono(dati: Dictionary) -> void:
 	_arrivo = _bersaglio()
 	_prepara_cammino(dati.get("percorso", []))
 	for i in int(dati.numero):
-		var nodo := MeshInstance3D.new()
-		nodo.mesh = _mesh
-		nodo.scale = Vector3.ONE * 1.4
+		var nodo := _bandito(i)
 		add_child(nodo)
+		if nodo is Soldato:
+			(nodo as Soldato).cammina(0.9)
 		_figure.append(nodo)
 		var a := TAU * i / float(dati.numero)
-		_scarti.append(Vector3(cos(a), 0, sin(a)) * randf_range(0.3, 1.0))
+		_scarti.append(Vector3(cos(a), 0, sin(a)) * randf_range(0.8, 1.9))
 		nodo.position = _partenza + _scarti[i]
+
+
+## [modello, pezzi da mostrare, torcia in mano]: a turno, per avere una banda varia.
+const ASPETTI := [["Rogue_Hooded", ["Rogue_Cape", "Knife"], true], ["Barbarian", ["Barbarian_Cape", "1H_Axe"], false],
+	["Rogue_Hooded", ["Rogue_Cape", "1H_Crossbow"], false], ["Barbarian", ["Barbarian_Hat", "Barbarian_Cape"], true],
+	["Rogue", ["Rogue_Cape", "Knife", "Knife_Offhand"], false]]
+
+
+## Un bandito: il personaggio 3D o, senza modelli, la figura in codice.
+func _bandito(i: int) -> Node3D:
+	var a: Array = ASPETTI[i % ASPETTI.size()]
+	var s := Soldato.crea_con(str(a[0]), a[1], MANTELLO, "Idle", "", "", null, 1.3)
+	if s == null:
+		var m := MeshInstance3D.new()
+		m.mesh = _mesh
+		m.scale = Vector3.ONE * 1.4
+		return m
+	if a[2]:
+		s.metti_in_mano("Knife" if str(a[0]).begins_with("Rogue") else "1H_Axe", _torcia())
+	return s
+
+
+## La torcia accesa (in mano, lungo l'osso dell'arma), che si vede da lontano anche nel bosco.
+func _torcia() -> ArrayMesh:
+	var k := LowPoly.Costruttore.new()
+	k.forma(LowPoly.cilindro(0.09, 0.07, 1.6, 5), LowPoly.t(Vector3(0, 0.4, 0)), Color("5a3a1a"))
+	k.forma(LowPoly.cilindro(0.3, 0.0, 0.8, 5), LowPoly.t(Vector3(0, 1.5, 0)), Color("ff8a1c"))
+	k.forma(LowPoly.cilindro(0.17, 0.0, 0.55, 5), LowPoly.t(Vector3(0, 1.42, 0)), Color("ffe04a"))
+	return k.mesh()
 
 
 ## Dove vanno: la dimora del signore (o il centro del feudo).
@@ -82,8 +114,13 @@ func _bersaglio() -> Vector3:
 func _scappano(esito: Dictionary) -> void:
 	_in_fuga = true
 	_tempo_fuga = 0.0
-	if not esito.vinto:
-		for f in _figure:
+	var sacco := LowPoly.Costruttore.new().forma(LowPoly.sfera(0.32, 0.44, 6, 3), LowPoly.t(Vector3.ZERO), Color("c8b48a")).mesh()
+	for f in _figure:
+		if f is Soldato:
+			(f as Soldato).corri(1.2)
+			if not esito.vinto:
+				(f as Soldato).porta(sacco, Vector3(0, 0.95, -0.32))
+		elif not esito.vinto:
 			(f as MeshInstance3D).mesh = _mesh_sacco
 
 
@@ -93,13 +130,16 @@ func _process(delta: float) -> void:
 	var dt := delta * maxi(1, GameState.velocita)
 	_tempo += dt
 	var vivi := GameState.banditi_vivi() if not _in_fuga else _figure.size()
+	for f in _figure:
+		if f is Soldato:
+			(f as Soldato).ritmo(maxf(1.0, float(GameState.velocita)))
 	if not _in_fuga:
 		_tira_frecce(delta)
 	for i in _figure.size():
 		var f := _figure[i]
 		if not _in_fuga and i >= vivi and f.visible:
 			_cade(f)
-		if not f.visible:
+		if not f.visible or f.has_meta("caduto"):
 			continue
 		var meta: Vector3
 		if _in_fuga:
@@ -124,7 +164,8 @@ func _process(delta: float) -> void:
 			verso.y = 0.0
 			if verso.length() > 0.01:
 				f.rotation.y = atan2(verso.x, verso.z)
-			f.position = Vector3(meta.x, _quota(meta) + absf(sin(_tempo * 8.0 + i)) * 0.08, meta.z)
+			# i personaggi camminano con le gambe; le figure in codice fanno un saltello
+			f.position = Vector3(meta.x, _quota(meta) + (0.0 if f is Soldato else absf(sin(_tempo * 8.0 + i)) * 0.08), meta.z)
 	# finita la fuga, spariscono oltre il confine
 	if _in_fuga:
 		_tempo_fuga += dt
@@ -190,6 +231,11 @@ func _fatto_da(p: Vector3) -> float:
 
 ## Un bandito colpito dalle frecce cade e sparisce.
 func _cade(f: Node3D) -> void:
+	if f is Soldato:
+		if not f.has_meta("caduto"):
+			f.set_meta("caduto", true)
+			(f as Soldato).muori(false)
+		return
 	var tw := create_tween()
 	tw.tween_property(f, "rotation:x", PI / 2.0, 0.3)
 	tw.tween_callback(func(): f.visible = false)

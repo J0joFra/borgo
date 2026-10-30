@@ -154,11 +154,36 @@ func colpito() -> void:
 		_anim.queue(_fermo)
 
 
-## Cade a terra e poi sparisce.
-func muori() -> void:
+## Cade a terra e poi sparisce (liberato, o solo nascosto se qualcuno lo tiene in un elenco).
+func muori(libera := true) -> void:
 	_suona("Death_A")
 	_caduto = true
 	var tw := create_tween()
 	tw.tween_interval(1.6)
 	tw.tween_property(self, "scale", Vector3(1, 0.05, 1), 0.35)
-	tw.tween_callback(queue_free)
+	tw.tween_callback(queue_free if libera else hide)
+
+
+## Corre (in fuga).
+func corri(velocita := 1.0) -> void:
+	_lavoro = ""
+	_suona("Running_A", velocita)
+
+
+## Mette in mano (nell'attacco dell'osso dato, es. "Knife") un oggetto fatto in codice al posto dell'arma.
+func metti_in_mano(osso: String, mesh: Mesh) -> void:
+	for n in find_children(osso, "BoneAttachment3D", true, false):
+		n.visible = true
+		for figlio in n.get_children():
+			(figlio as Node3D).visible = false
+		var m := MeshInstance3D.new()
+		m.mesh = mesh
+		n.add_child(m)
+
+
+## Aggiunge un oggetto addosso (es. il sacco del bottino sulla schiena), nelle misure del personaggio.
+func porta(mesh: Mesh, dove: Vector3) -> void:
+	var m := MeshInstance3D.new()
+	m.mesh = mesh
+	m.position = dove
+	add_child(m)
