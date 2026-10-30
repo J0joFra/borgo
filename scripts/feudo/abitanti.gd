@@ -5,6 +5,10 @@ extends Node3D
 ## attorno al falò (poi la piazza). Quando ci sono strade vicino a partenza e arrivo,
 ## camminano lungo le strade; altrimenti seguono un cammino a piedi che evita l'acqua.
 ## Al massimo MASSIMO persone visibili, per restare leggeri su telefono.
+## Sono i personaggi KayKit (come i soldati in battaglia): gente comune col mantello colorato, i
+## boscaioli e i cavatori con l'ascia, l'oste col boccale, il cacciatore con la balestra, i soldati
+## della caserma con la lancia. Camminano, lavorano, al falò ogni tanto si siedono. Senza i modelli
+## si torna alle figure in codice.
 
 const MASSIMO := 40
 const VELOCITA := 1.6  # metri al secondo, a velocità x1
@@ -12,6 +16,22 @@ const TUNICHE := [Color("7a4a3a"), Color("4a6a8a"), Color("6a7a3a"), Color("8a6a
 const PELLE := Color("e0b08a")
 const VICINO_STRADA := 3  # celle: entro questa distanza si va a prendere la strada
 const TENTATIVI_PUNTO := 6  # quante volte provare a trovare un punto valido attorno a un edificio
+const ALTEZZA := 1.25  # rispetto ai soldati della battaglia (le celle del feudo sono più piccole)
+## la gente comune: modello e pezzi da mostrare (cappello, cappuccio, mantello), a turno
+const GENTE := [["Barbarian", ["Barbarian_Cape"]], ["Rogue", ["Rogue_Cape"]], ["Barbarian", ["Barbarian_Hat"]],
+	["Rogue_Hooded", ["Rogue_Cape"]], ["Knight", ["Knight_Cape"]], ["Rogue", []]]
+## i mestieri: edificio -> [modello, pezzi, animazione del lavoro]
+const MESTIERI := {
+	"taglialegna": ["Barbarian", ["Barbarian_Cape", "1H_Axe"], "1H_Melee_Attack_Chop"],
+	"forestale": ["Barbarian", ["Barbarian_Hat", "1H_Axe"], "PickUp"],
+	"cava": ["Barbarian", ["2H_Axe"], "2H_Melee_Attack_Chop"],
+	"miniera": ["Barbarian", ["2H_Axe"], "2H_Melee_Attack_Chop"],
+	"taverna": ["Barbarian", ["Barbarian_Hat", "Mug"], "Use_Item"],
+	"cacciatore": ["Rogue_Hooded", ["Rogue_Cape", "1H_Crossbow"], "1H_Ranged_Aiming"],
+	"fabbro": ["Knight", ["Knight_Cape", "1H_Sword"], "1H_Melee_Attack_Chop"],
+	"campo": ["Rogue", ["Rogue_Cape"], "PickUp"],
+	"raccoglitore": ["Rogue", ["Rogue_Cape"], "PickUp"],
+}
 
 var vista: VistaTerreno
 
@@ -89,25 +109,63 @@ func _ricalcola() -> void:
 		p.casa = case[i] if i < case.size() else -1
 		p.lavoro = lavori[i] if i < lavori.size() else -1
 		var soldato := i < soldati_visti
-		(p.nodo as MeshInstance3D).mesh = _mesh_soldato if soldato else _mesh[i % _mesh.size()]
+		var mestiere := ""
+		if soldato:
+			mestiere = "soldato"
+		elif p.lavoro >= 0:
+			mestiere = str(GameState.trova(p.lavoro).get("tipo", ""))
+		_vesti(p, i, mestiere)
+
+
+## Il personaggio giusto per chi è (soldato, mestiere, gente comune): cambia solo se cambia il ruolo.
+func _vesti(p: Dictionary, i: int, mestiere: String) -> void:
+	var aspetto := mestiere if mestiere == "soldato" or MESTIERI.has(mestiere) else "gente%d" % (i % GENTE.size())
+	if p.get("aspetto", "") == aspetto:
+		return
+	p.aspetto = aspetto
+	p.lavoro_anim = ""
+	var tunica: Color = TUNICHE[i % TUNICHE.size()]
+	var nuovo: Node3D
+	if aspetto == "soldato":
+		nuovo = Soldato.crea_con("Knight", ["Knight_Helmet", "Knight_Cape", "Round_Shield", "1H_Sword"], Color("a8322a"), "Idle", "", "fanti", null, ALTEZZA)
+	elif MESTIERI.has(aspetto):
+		var m: Array = MESTIERI[aspetto]
+		nuovo = Soldato.crea_con(str(m[0]), m[1], tunica, "Idle", "", "", null, ALTEZZA)
+		p.lavoro_anim = str(m[2])
+	else:
+		var g: Array = GENTE[i % GENTE.size()]
+		nuovo = Soldato.crea_con(str(g[0]), g[1], tunica, "Idle", "", "", null, ALTEZZA)
+	if nuovo == null:
+		# senza i modelli: le figure in codice
+		var m3 := MeshInstance3D.new()
+		m3.mesh = _mesh_soldato if aspetto == "soldato" else _mesh[i % _mesh.size()]
+		m3.scale = Vector3.ONE * 1.15
+		nuovo = m3
+	add_child(nuovo)
+	if p.nodo:
+		nuovo.transform = p.nodo.transform
+		p.nodo.queue_free()
+	p.nodo = nuovo
 
 
 func _aggiungi_persona() -> void:
-	var nodo := MeshInstance3D.new()
-	nodo.mesh = _mesh[_persone.size() % _mesh.size()]
-	nodo.scale = Vector3.ONE * 1.15
-	add_child(nodo)
 	var partenza := _punto_falo()
-	nodo.position = partenza
-	_persone.append({"nodo": nodo, "casa": -1, "lavoro": -1, "destinazione": partenza, "tappe": [],
-		"attesa": randf_range(0.0, 3.0), "verso_lavoro": true, "fase": randf() * TAU})
+	var p := {"nodo": null, "casa": -1, "lavoro": -1, "destinazione": partenza, "tappe": [],
+		"attesa": randf_range(0.0, 3.0), "verso_lavoro": true, "fase": randf() * TAU}
+	_vesti(p, _persone.size(), "")
+	p.nodo.position = partenza
+	_persone.append(p)
 
 
 func _process(delta: float) -> void:
 	var dt := delta * GameState.velocita
 	_tempo += dt
+	var di_corsa := not GameState.banditi.is_empty()
 	for p in _persone:
-		var nodo: MeshInstance3D = p.nodo
+		var nodo: Node3D = p.nodo
+		var omino := nodo as Soldato
+		if omino:
+			omino.ritmo(float(GameState.velocita) * (1.4 if di_corsa else 1.0))
 		if p.attesa > 0.0:
 			p.attesa -= dt
 			if p.attesa <= 0.0:
@@ -115,8 +173,11 @@ func _process(delta: float) -> void:
 				# se il cammino è vuoto (partenza = arrivo), aspetta di nuovo un attimo
 				if p.tappe.is_empty():
 					p.attesa = _sosta(p)
+					_fermo(p)
 				else:
 					p.destinazione = p.tappe.pop_front()
+					if omino:
+						omino.cammina(1.0)
 			continue
 		var verso: Vector3 = p.destinazione - nodo.position
 		verso.y = 0.0
@@ -125,15 +186,34 @@ func _process(delta: float) -> void:
 			nodo.position = Vector3(p.destinazione.x, _quota(p.destinazione), p.destinazione.z)
 			if p.tappe.is_empty():
 				p.attesa = _sosta(p)
+				_fermo(p)
 			else:
 				p.destinazione = p.tappe.pop_front()
 			continue
+		if omino and not omino.sta_camminando():
+			omino.cammina(1.0)
 		var direzione := verso.normalized()
 		var pos := nodo.position + direzione * passo
-		# un piccolo saltello mentre cammina
-		pos.y = _quota(pos) + absf(sin(_tempo * 9.0 + p.fase)) * 0.08
+		# le figure in codice fanno un piccolo saltello mentre camminano (i personaggi hanno le gambe)
+		pos.y = _quota(pos) + (0.0 if omino else absf(sin(_tempo * 9.0 + p.fase)) * 0.08)
 		nodo.position = pos
 		nodo.rotation.y = atan2(direzione.x, direzione.z)
+
+
+## Arrivato: al lavoro lavora (abbatte, raccoglie, beve...), al falò ogni tanto si siede.
+func _fermo(p: Dictionary) -> void:
+	var omino := p.nodo as Soldato
+	if omino == null:
+		return
+	var al_lavoro: bool = p.get("al_lavoro", false) and GameState.banditi.is_empty()
+	if al_lavoro and str(p.get("lavoro_anim", "")) != "":
+		omino.lavora(str(p.lavoro_anim))
+	elif al_lavoro:
+		omino.lavora("Interact")
+	elif p.lavoro < 0 and GameState.banditi.is_empty() and randf() < 0.35:
+		omino.siedi()
+	else:
+		omino.riposo()
 
 
 ## Quando cambia qualcosa di grosso (arrivano i banditi, se ne vanno) ognuno riparte subito.
@@ -148,6 +228,7 @@ func _tutti_si_muovono() -> void:
 ## Con i banditi in arrivo tutti corrono a rifugiarsi attorno alla dimora del signore (o alla caserma,
 ## o al falò se non c'è altro).
 func _prossima_meta(p: Dictionary) -> Vector3:
+	p.al_lavoro = false
 	if not GameState.banditi.is_empty():
 		for b in GameState.buildings:
 			if b.tipo == "dimora":
@@ -158,6 +239,7 @@ func _prossima_meta(p: Dictionary) -> Vector3:
 		return _punto_falo()
 	if p.lavoro >= 0 and (p.verso_lavoro or p.casa < 0):
 		p.verso_lavoro = randf() < 0.75  # di solito resta a lavorare, ogni tanto torna a casa
+		p.al_lavoro = true
 		return _punto_attorno(p.lavoro)
 	if p.lavoro >= 0:
 		p.verso_lavoro = true

@@ -95,6 +95,21 @@ func _via() -> void:
 	f.camera.position = Vector3((c.x + 1) * 2.0, 0, (c.y + 3) * 2.0)
 	await _attendi(0.5)
 	await _scatta("5_abitanti")
+	# da vicino: gli abitanti (personaggi 3D) attorno al falò e al lavoro
+	var tutorial_prima := GameState.tutorial_passo
+	GameState.tutorial_passo = -1
+	f.hud.visible = false
+	f.camera.position = Vector3((c.x + 1) * 2.0, 0, (c.y + 1) * 2.0)
+	f.camera.camera.size = 12.0
+	await _attendi(1.0)
+	await _scatta("5b_abitanti_vicino")
+	if tl and not tl.is_empty():
+		f.camera.position = Vector3(tl.cella.x * 2.0 + 2.0, 0, tl.cella.y * 2.0 + 2.0)
+		await _attendi(0.6)
+		await _scatta("5c_boscaiolo")
+	f.camera.camera.size = 36.0
+	f.hud.visible = true
+	GameState.tutorial_passo = tutorial_prima
 
 	f._inizia_piazzamento("campo")
 	f._sposta_anteprima(_posto_migliore("campo", c) + Vector2i(1, 1))

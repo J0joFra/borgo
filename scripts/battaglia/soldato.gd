@@ -4,6 +4,8 @@ extends Node3D
 ## cavaliere, barbaro, ladro e ladro col cappuccio, con le armi giuste per il tipo di unità e il
 ## mantello del colore della propria parte. Sa stare fermo, camminare, attaccare, essere colpito
 ## e cadere. Se i modelli non ci sono, crea() restituisce null e il campo usa le figure in codice.
+## Gli stessi personaggi, senza armi o con gli attrezzi del mestiere, sono gli abitanti del borgo
+## (crea_con): camminano, stanno fermi, lavorano.
 
 const CARTELLA := "res://art/models/kaykit/personaggi/"
 const ALTEZZA := 1.3  # quanto è alto un soldato, nelle misure dell'unità
@@ -18,7 +20,7 @@ const TIPI := {
 	"predoni": ["Rogue_Hooded", ["Rogue_Cape", "Knife", "Knife_Offhand"], "Dualwield_Melee_Attack_Stab", "Idle"],
 	"contadini": ["Barbarian", ["2H_Axe"], "2H_Melee_Attack_Chop", "2H_Melee_Idle"],
 }
-const IN_GIRO := ["Idle", "2H_Melee_Idle", "Sit_Chair_Idle", "Walking_A", "Running_A"]
+const IN_GIRO := ["Idle", "2H_Melee_Idle", "Sit_Chair_Idle", "Sit_Floor_Idle", "Walking_A", "Running_A"]
 
 static var _scene: Dictionary = {}  # modello -> PackedScene (o null)
 
@@ -27,20 +29,27 @@ var _anim: AnimationPlayer
 var _fermo := "Idle"
 var _attacco := ""
 var _caduto := false
+var _lavoro := ""  # l'animazione che ripete mentre lavora (abbattere, raccogliere...)
 
 
 ## Un soldato del tipo dato, o null se i modelli non ci sono.
 static func crea(tipo_unita: String, mantello: Color, cavallo: Mesh = null) -> Soldato:
 	var d: Array = TIPI.get(tipo_unita, TIPI.fanti)
-	var scena := _scena(str(d[0]))
+	return crea_con(str(d[0]), d[1], mantello, str(d[3]), str(d[2]), tipo_unita, cavallo)
+
+
+## Un personaggio qualsiasi: modello (Knight, Barbarian, Rogue, Rogue_Hooded), i pezzi da mostrare,
+## il mantello, l'animazione da fermo e quella d'attacco; alto ALTEZZA × altezza.
+static func crea_con(nome_modello: String, pezzi: Array, mantello: Color, fermo := "Idle", attacco := "", tipo_unita := "", cavallo: Mesh = null, altezza := 1.0) -> Soldato:
+	var scena := _scena(nome_modello)
 	if scena == null:
 		return null
 	var s := Soldato.new()
 	s.tipo = tipo_unita
-	s._attacco = str(d[2])
-	s._fermo = str(d[3])
+	s._attacco = attacco
+	s._fermo = fermo
 	var modello := scena.instantiate() as Node3D
-	var scala := ALTEZZA / 2.45
+	var scala := ALTEZZA * altezza / 2.45
 	modello.scale = Vector3.ONE * scala
 	if cavallo:
 		var m := MeshInstance3D.new()
@@ -49,7 +58,7 @@ static func crea(tipo_unita: String, mantello: Color, cavallo: Mesh = null) -> S
 		modello.position = Vector3(0, 0.62, -0.05)
 		modello.scale *= 0.85
 	s.add_child(modello)
-	s._prepara(modello, d[1], mantello)
+	s._prepara(modello, pezzi, mantello)
 	return s
 
 
@@ -85,6 +94,9 @@ func _prepara(modello: Node3D, pezzi: Array, mantello: Color) -> void:
 		for nome in IN_GIRO:
 			if _anim.has_animation(nome):
 				_anim.get_animation(nome).loop_mode = Animation.LOOP_LINEAR
+		_anim.animation_finished.connect(func(_n: StringName) -> void:
+			if _lavoro != "" and not _caduto:
+				_anim.play(_lavoro))
 		riposo()
 		# non tutti insieme: ognuno parte da un punto diverso dell'animazione
 		_anim.seek(randf() * 1.5, true)
@@ -96,11 +108,38 @@ func _suona(nome: String, velocita := 1.0) -> void:
 
 
 func riposo() -> void:
+	_lavoro = ""
 	_suona(_fermo)
 
 
-func cammina() -> void:
-	_suona("Sit_Chair_Idle" if tipo == "cavalieri" else "Walking_A", 1.3)
+func cammina(velocita := 1.3) -> void:
+	_lavoro = ""
+	_suona("Sit_Chair_Idle" if tipo == "cavalieri" else "Walking_A", velocita)
+
+
+## Ripete un'animazione finché non fa altro (abbattere un albero, raccogliere, bere...).
+func lavora(nome: String) -> void:
+	if _anim == null or not _anim.has_animation(nome):
+		riposo()
+		return
+	_lavoro = nome
+	_suona(nome)
+
+
+## Siede a terra (attorno al falò).
+func siedi() -> void:
+	_lavoro = ""
+	_suona("Sit_Floor_Idle")
+
+
+## La velocità delle animazioni (segue quella del gioco; 0 = in pausa).
+func ritmo(v: float) -> void:
+	if _anim:
+		_anim.speed_scale = v
+
+
+func sta_camminando() -> bool:
+	return _anim != null and _anim.current_animation in ["Walking_A", "Running_A"]
 
 
 func attacca() -> void:

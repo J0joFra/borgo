@@ -8,6 +8,7 @@ Il design completo è nel documento "Borgo — Game Design Document".
 ![La battaglia: campo irregolare, fiume con il ponte di pietra, palizzata](docs/battaglia.png)
 ![L'assedio di una città: mura, torri, case, e un fante salito con le scale](docs/assedio.png)
 ![I soldati da vicino](docs/soldati.png)
+![Gli abitanti attorno al falò](docs/abitanti.png)
 ![Vittoria: l'esercito nemico è distrutto](docs/battaglia_fine.png)
 ![Il tutorial dopo il prologo](docs/tutorial.png)
 ![Il primo inverno senza cibo: il castello apre le porte](docs/primo_inverno.png)
@@ -309,7 +310,7 @@ Gli edifici usano il **KayKit Medieval Hexagon Pack** (CC0, di Kay Lousberg) in 
 | `props` | casse, barili, tende, bandiere |
 | `nature` | alberi, rocce, colline, montagne |
 | `info` | licenza, guida e immagini del pacchetto (Godot la ignora) |
-| `personaggi` | i soldati della battaglia: **KayKit Adventurers Character Pack** (CC0, di Kay Lousberg), cavaliere, barbaro, ladro e ladro col cappuccio con le animazioni, più la freccia |
+| `personaggi` | soldati e abitanti: **KayKit Adventurers Character Pack** (CC0, di Kay Lousberg), cavaliere, barbaro, ladro e ladro col cappuccio con le animazioni, più la freccia |
 
 Il gioco cerca i modelli da solo: `data/modelli.json` dice, per ogni edificio, quale parola cercare nel nome del file
 (es. la chiesa cerca `building_church`). Si possono cambiare liberamente:
@@ -329,6 +330,12 @@ In battaglia ogni tipo di unità ha il suo personaggio e le sue armi (`scripts/b
 uomini dei vassalli e contadini (barbaro con l'ascia), predoni (ladro col cappuccio e i pugnali). Il mantello ha il
 colore della propria parte; camminano, attaccano, tirano frecce, vengono colpiti e cadono. Senza i modelli si torna
 alle figure in codice.
+
+Anche gli **abitanti del borgo** sono questi personaggi (`scripts/feudo/abitanti.gd`): la gente comune ha mantelli,
+cappelli e cappucci diversi; chi lavora ha l'attrezzo del mestiere (boscaioli e cavatori con l'ascia, l'oste col
+boccale, il cacciatore con la balestra, il fabbro col martello... cioè la spada) e al lavoro abbatte, raccoglie,
+maneggia; i soldati della caserma hanno elmo, scudo e lancia. Camminano, al falò ogni tanto si siedono, e le
+animazioni seguono la velocità del gioco (in pausa si fermano).
 
 ## Test
 
