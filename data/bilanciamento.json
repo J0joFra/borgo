@@ -113,6 +113,8 @@
 			"signore_0": ["fanti", "contadini", "balestrieri", "fanti", "contadini"], "signore_1": ["fanti", "balestrieri", "cavalieri", "spadaccini", "fanti", "balestrieri"],
 			"signore_2": ["spadaccini", "cavalieri", "balestrieri", "fanti", "cavalieri", "balestrieri", "spadaccini"]}
 	},
+	"vittorie": {"conquista_quota": 0.66, "commercio_patti": 3, "commercio_oro": 800, "diplomazia_alleati": 3,
+		"prosperita_abitanti": 100, "prosperita_felicita": 80, "prosperita_stagioni": 4},
 	"feudi": {
 		"scorte_iniziali": 40, "scorta_massima": 300,
 		"produzione_per_abitante": 0.6, "altre_per_abitante": 0.12, "oro_per_abitante": 0.15,

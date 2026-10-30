@@ -319,6 +319,15 @@ func _via() -> void:
 	await _attendi(0.3)
 	await _scatta("21_info_tasse_difesa")
 	f.hud._info.visible = false
+	# una vittoria (qui per finta): si può continuare a giocare
+	var vinto: Dictionary = GameState.obiettivi()[3]
+	GameState.vittorie.append(vinto.id)
+	vinto.vinto = true
+	f.hud._mostra_vittoria(vinto)
+	await _attendi(0.4)
+	await _scatta("21c_vittoria")
+	f.hud._continua_dopo_vittoria()
+	GameState.vittorie.erase(vinto.id)
 	GameState.banditi.forza = 999.0
 	GameState._incursione()
 	f.camera.position = pd

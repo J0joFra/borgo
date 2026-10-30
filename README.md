@@ -11,6 +11,7 @@ Il design completo è nel documento "Borgo — Game Design Document".
 ![Gli abitanti attorno al falò](docs/abitanti.png)
 ![La banda di banditi in arrivo](docs/banditi.png)
 ![Un signore manda un messaggero con una proposta](docs/proposta.png)
+![Una delle cinque vittorie: si può continuare a giocare](docs/vittoria.png)
 ![Vittoria: l'esercito nemico è distrutto](docs/battaglia_fine.png)
 ![Il tutorial dopo il prologo](docs/tutorial.png)
 ![Il primo inverno senza cibo: il castello apre le porte](docs/primo_inverno.png)
@@ -58,6 +59,21 @@ partite nuove, suggerimenti, schermo intero), **Prova battaglia** e Crediti. Pro
 battaglie senza giocare una partita: si sceglie contro chi (signore, banditi, terra libera), quanti soldati, armi e
 uomini dei vassalli abbiamo e quanti uomini ha il nemico, poi si combatte; alla fine si torna alla prova e la
 partita salvata non cambia. Dalla mappa del regno il pulsante "Menu" ci riporta.
+
+**Come si vince** (basta uno dei cinque modi; dopo una vittoria si può **continuare a giocare** e vincere anche
+negli altri). L'avanzamento di ognuno è in cima alla finestra Info, e il consiglio avverte quando ne manca poco:
+
+| Vittoria | Cosa serve |
+| --- | --- |
+| **La città del maniero** | diventare Città e costruire il maniero |
+| **Signore del regno** | conquistare due terzi delle terre del regno |
+| **Il mercante del regno** | patti commerciali con 3 signori insieme e un tesoro di 800 oro |
+| **Il re eletto** | essere alleati di tutti i signori rimasti (almeno 3): ti eleggono re |
+| **L'età dell'oro** | 100 abitanti con la felicità sopra 80 per 4 stagioni di fila |
+
+**Si perde** se il borgo resta vuoto, se i banditi (o un esercito nemico) lo distruggono, se nessuno resta a casa
+dopo che l'esercito è partito, o se da vassalli non si paga il re per due autunni. I numeri sono in
+`bilanciamento.json`, sezione `vittorie`.
 
 Una partita nuova comincia con il **prologo**: il Regno di Valmora è caduto e, attorno a un falò, restano tre famiglie.
 Scegli quale casata guiderà i sopravvissuti; le altre due diventano il tuo **consiglio** e ti danno suggerimenti
@@ -277,7 +293,7 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
 - **Mappa del regno**: 10 regioni stile carta antica con i confini ondulati, ognuna con nome, risorsa speciale e
   proprietario; la nostra può stare in un punto qualsiasi della carta. Zoom animato per entrare nel feudo.
 - **Feudo in 3D** con modelli KayKit, telecamera isometrica con zoom e rotazione, stagioni visibili (erba, chiome, neve, luce).
-- **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, vittoria e sconfitta, salvataggio automatico.
+- **Economia**: tick ogni 2 secondi, filiere, lavoratori, felicità, livelli, tasse al re, cinque modi di vincere e le sconfitte, salvataggio automatico.
 
 **Da fare**: altre carte evento, bilanciamento con partite vere.
 

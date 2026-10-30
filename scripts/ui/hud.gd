@@ -125,6 +125,9 @@ var _tempo_avviso := 0.0
 var _fine: PanelContainer
 var _fine_titolo: Label
 var _fine_testo: Label
+var _fine_nuova: Button
+var _fine_continua: Button
+var _velocita_prima_vittoria := 1
 var _carta: PanelContainer
 var _carta_chi: Label
 var _carta_titolo: Label
@@ -169,6 +172,9 @@ func _ready() -> void:
 	GameState.message.connect(mostra_avviso)
 	GameState.consiglio.connect(_nuovo_consiglio)
 	GameState.game_ended.connect(_mostra_fine)
+	GameState.obiettivo_raggiunto.connect(_mostra_vittoria)
+	if not GameState.vittoria_da_mostrare.is_empty():
+		_mostra_vittoria.call_deferred(GameState.vittoria_da_mostrare)
 	_aggiorna()
 	if not GameState.evento_attivo.is_empty():
 		_mostra_carta(GameState.evento_attivo)
@@ -1192,9 +1198,16 @@ func _crea_fine() -> void:
 	_fine_testo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_fine_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_fine_testo)
-	var b := _bottone("Nuova partita", 0, 20, "Ricomincia da capo")
-	b.pressed.connect(func(): nuova_partita.emit())
-	col.add_child(b)
+	var riga := HBoxContainer.new()
+	riga.alignment = BoxContainer.ALIGNMENT_CENTER
+	riga.add_theme_constant_override("separation", 6)
+	col.add_child(riga)
+	_fine_continua = _bottone("Continua a giocare", 110, 20, "Torna al borgo: puoi vincere anche negli altri modi")
+	_fine_continua.pressed.connect(_continua_dopo_vittoria)
+	riga.add_child(_fine_continua)
+	_fine_nuova = _bottone("Nuova partita", 90, 20, "Ricomincia da capo")
+	_fine_nuova.pressed.connect(func(): nuova_partita.emit())
+	riga.add_child(_fine_nuova)
 
 
 # --- Aggiornamenti ----------------------------------------------------------------
@@ -1465,6 +1478,10 @@ func _stato_campo(b: Dictionary) -> String:
 
 func _aggiorna_info() -> void:
 	var righe: Array[String] = []
+	# gli scopi della partita: si vince in uno qualsiasi di questi modi
+	righe.append("Come si vince (basta uno; poi si può continuare):")
+	for o in GameState.obiettivi():
+		righe.append("  - %s: %s %s (%s)" % [o.nome, "VINTO." if o.vinto else "%d%%." % roundi(float(o.progresso) * 100), o.descrizione, o.dettaglio])
 	var livelli: Array = GameState.bil.livelli
 	righe.append("Livello: %s · clima: %s" % [livelli[GameState.livello].nome, str(GameState.dati_clima().get("nome", GameState.clima)).to_lower()])
 	if GameState.livello + 1 < livelli.size():
@@ -1683,4 +1700,31 @@ func _mostra_fine(vittoria: bool, motivo: String) -> void:
 	_consiglio.visible = false
 	_fine_titolo.text = "Vittoria!" if vittoria else "Partita persa"
 	_fine_testo.text = motivo
+	_fine_continua.visible = false
 	_fine.visible = true
+
+
+## Un obiettivo raggiunto: la vittoria, e il tempo si ferma finché non si sceglie se continuare.
+func _mostra_vittoria(o: Dictionary) -> void:
+	if o.is_empty() or GameState.finita:
+		return
+	_carta.visible = false
+	nascondi_pannello()
+	_chiudi_menu()
+	_info.visible = false
+	_consiglio.visible = false
+	if GameState.velocita > 0:
+		_velocita_prima_vittoria = GameState.velocita
+	GameState.velocita = 0
+	_fine_titolo.text = "Vittoria! %s" % o.nome
+	_fine_testo.text = GameState.testo_vittoria(o)
+	_fine_continua.visible = true
+	_fine.visible = true
+
+
+func _continua_dopo_vittoria() -> void:
+	_fine.visible = false
+	GameState.vittoria_da_mostrare = {}
+	GameState.velocita = maxi(1, _velocita_prima_vittoria)
+	GameState.salva()
+	_aggiorna()

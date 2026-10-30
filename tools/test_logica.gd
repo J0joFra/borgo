@@ -801,6 +801,7 @@ func _ready() -> void:
 	_prova_sviluppo_regni()
 	_prova_fiume()
 	_prova_feudi()
+	_prova_obiettivi()
 	var soldati_r := GameState.soldati
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
@@ -1894,3 +1895,70 @@ func _prova_feudi() -> void:
 	rb.alleati_di = []
 	f.probabilita_proposta = prob_prima
 	GameState.livello = livello_prima
+
+
+## Gli scopi della partita: cinque modi di vincere, e dopo una vittoria si continua.
+func _prova_obiettivi() -> void:
+	var regni_prima: Dictionary = GameState.regni.duplicate(true)
+	var oro_prima: float = GameState.risorse.oro
+	var abitanti_prima := GameState.abitanti
+	var felicita_prima := GameState.felicita
+	var buildings_prima := GameState.buildings.duplicate()
+	GameState.vittorie = []
+	GameState.vittoria_da_mostrare = {}
+	GameState._obiettivi_annunciati = []
+	var vo: Dictionary = GameState.bil.vittorie
+	var ob := GameState.obiettivi()
+	_verifica(ob.size() == 5 and ob.all(func(o): return not o.fatto or o.id == "citta"), "cinque modi di vincere, nessuno ancora raggiunto")
+	# la città col maniero: si vince ma non finisce
+	GameState.buildings.append({"id": 9999, "tipo": "maniero", "cella": Vector2i(0, 0), "progresso": 1.0, "lavoratori": 0})
+	GameState._controlla_vittorie()
+	_verifica("citta" in GameState.vittorie and GameState.vittoria_da_mostrare.get("id", "") == "citta" and not GameState.finita, "il maniero vince, e si può continuare a giocare")
+	GameState.buildings = buildings_prima
+	# la conquista
+	var servono := ceili(GameState.regni.size() * float(vo.conquista_quota))
+	var n := 0
+	for k in GameState.regni:
+		if n < servono:
+			GameState.regni[k].conquistato = true
+			n += 1
+	GameState._controlla_vittorie()
+	_verifica("conquista" in GameState.vittorie, "conquistati %d regni su %d: signore del regno" % [servono, GameState.regni.size()])
+	GameState.regni = regni_prima.duplicate(true)
+	# il commercio
+	var signori := GameState.signori_attivi()
+	var patti := 0
+	for k in signori:
+		if patti < int(vo.commercio_patti):
+			GameState.regni[k].commercio = true
+			patti += 1
+	GameState.risorse.oro = float(vo.commercio_oro) - 1.0
+	GameState._controlla_vittorie()
+	_verifica(not "commercio" in GameState.vittorie, "senza il tesoro il commercio non basta")
+	GameState.risorse.oro = float(vo.commercio_oro)
+	GameState._controlla_vittorie()
+	_verifica(patti >= int(vo.commercio_patti) and "commercio" in GameState.vittorie, "patti con %d signori e %d oro: il mercante del regno" % [patti, int(vo.commercio_oro)])
+	GameState.regni = regni_prima.duplicate(true)
+	# la diplomazia
+	for k in GameState.signori_attivi():
+		GameState.regni[k].alleato = true
+	GameState._controlla_vittorie()
+	_verifica("diplomazia" in GameState.vittorie, "alleati di tutti i signori: il re eletto")
+	GameState.regni = regni_prima.duplicate(true)
+	# l'età dell'oro: le stagioni prospere si contano a fine stagione
+	GameState.abitanti = int(vo.prosperita_abitanti)
+	GameState.felicita = float(vo.prosperita_felicita) + 5.0
+	GameState.stagioni_prospere = int(vo.prosperita_stagioni) - 1
+	GameState._controlla_vittorie()
+	_verifica(not "prosperita" in GameState.vittorie and "prosperita" in GameState._obiettivi_annunciati, "quasi l'età dell'oro: il consiglio lo dice")
+	GameState.stagioni_prospere = int(vo.prosperita_stagioni)
+	GameState._controlla_vittorie()
+	_verifica("prosperita" in GameState.vittorie and GameState.vittorie.size() == 5, "e l'età dell'oro: tutte e cinque le vittorie")
+	_verifica(GameState.testo_vittoria(GameState.obiettivi()[0]).contains("5 su 5"), "il testo della vittoria dice a che punto siamo")
+	GameState.regni = regni_prima
+	GameState.risorse.oro = oro_prima
+	GameState.abitanti = abitanti_prima
+	GameState.felicita = felicita_prima
+	GameState.vittorie = []
+	GameState.vittoria_da_mostrare = {}
+	GameState.stagioni_prospere = 0

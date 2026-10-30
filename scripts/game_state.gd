@@ -10,6 +10,7 @@ signal building_moved(b: Dictionary)  # spostato o girato: il modello 3D va rifa
 signal building_finished(id: int)
 signal message(testo: String)
 signal game_ended(vittoria: bool, motivo: String)
+signal obiettivo_raggiunto(obiettivo: Dictionary)  # una vittoria: si può continuare a giocare
 signal capo_scelto(indice: int)
 signal consiglio(famiglia: int, testo: String)
 signal evento(carta: Dictionary)
@@ -59,6 +60,10 @@ var velocita: int = 1  # 0 = pausa
 var seme_mappa: int = 0
 var buildings: Array = []  # {id, tipo, cella: Vector2i, lavoratori, progresso 0..1, bonus}
 var finita: bool = false
+var vittorie: Array = []            # gli obiettivi raggiunti (dopo una vittoria si può continuare)
+var vittoria_da_mostrare: Dictionary = {}  # raggiunta fuori dal borgo (es. in battaglia): la mostra il borgo
+var stagioni_prospere := 0          # stagioni di fila con tanti abitanti felici (età dell'oro)
+var _obiettivi_annunciati: Array = []  # quelli vicini già detti dal consiglio
 var terreno: TerrenoFeudo     # celle del feudo; creato da avvia()
 var in_corso: bool = false    # c'è una partita caricata o iniziata
 var nel_feudo: bool = false   # il tempo scorre solo dentro il feudo
@@ -365,6 +370,10 @@ func nuova_partita(seme: int = -1, versione := 4) -> void:
 	_scegli_famiglie()
 	buildings = []
 	finita = false
+	vittorie = []
+	vittoria_da_mostrare = {}
+	stagioni_prospere = 0
+	_obiettivi_annunciati = []
 	terreno = null
 	_prossimo_id = 1
 	_accumulo = 0.0
@@ -693,7 +702,7 @@ func _completa(b: Dictionary) -> void:
 	message.emit("%s completato" % d.nome)
 	changed.emit()
 	if d.get("vittoria", false):
-		_fine(true, "Il maniero è pronto: il tuo borgo è diventato una città!")
+		_controlla_vittorie()
 
 
 # --- Conteggi ----------------------------------------------------------------
@@ -882,7 +891,7 @@ func testo_effetto(tipo: String) -> String:
 	if d.has("su"):
 		parti.append("solo su " + d.su)
 	if d.get("vittoria", false):
-		parti.append("vince la partita")
+		parti.append("uno dei modi di vincere")
 	return " · ".join(parti)
 
 
@@ -2367,6 +2376,7 @@ func _effetto_feudo(e: Dictionary) -> void:
 	var sc: Dictionary = e.get("scorte", {})
 	for m in sc:
 		r.scorte[m] = maxf(0.0, float(r.scorte.get(m, 0)) + float(sc[m]))
+	_controlla_vittorie.call_deferred()
 	if e.get("aiuto", false) and r.guerra_con != "":
 		var nemico: Dictionary = regni[str(r.guerra_con)]
 		nemico.abitanti = maxi(8, roundi(int(nemico.abitanti) * 0.9))
@@ -2493,6 +2503,7 @@ func _risposta_patto(m: Dictionary) -> void:
 		r.commercio = true
 		r.atteggiamento = mini(100, int(r.atteggiamento) + 8)
 		_racconta("oro", "%s accetta il patto commerciale: ogni stagione arriverà il suo carico." % r.signore)
+		_controlla_vittorie()
 	else:
 		r.atteggiamento = int(r.atteggiamento) - 3
 		_racconta("oro", "%s non vuole un patto commerciale con noi, per ora." % r.signore)
@@ -2705,6 +2716,7 @@ func _risposta_alleanza(m: Dictionary) -> void:
 		r.alleato = true
 		r.atteggiamento = mini(100, int(r.atteggiamento) + 30)
 		_racconta("oro", "%s accetta l'alleanza! Ci manderà rinforzi contro i banditi e un dono ogni stagione." % r.signore)
+		_controlla_vittorie()
 	else:
 		r.atteggiamento = int(r.atteggiamento) - 10
 		_racconta("oro", "%s ha tenuto il dono ma rifiuta l'alleanza." % r.signore)
@@ -2863,6 +2875,7 @@ func _fine_battaglia(vinta: bool, perche: String) -> void:
 		message.emit("%s Tornano %d soldati su %d." % [perche, vivi, int(b.nostri_inizio)])
 		felicita = maxf(0.0, felicita - 8.0)
 	esito.battaglia = b.duplicate()
+	_controlla_vittorie()
 	battaglia_finita.emit(esito)
 	missione_finita.emit(esito)
 	changed.emit()
@@ -3394,6 +3407,9 @@ func _fine_stagione() -> void:
 	_riscuoti_tributi()
 	_sviluppa_regni()
 	_turno_feudi()
+	var vo: Dictionary = bil.vittorie
+	stagioni_prospere = stagioni_prospere + 1 if abitanti >= int(vo.prosperita_abitanti) and felicita >= float(vo.prosperita_felicita) else 0
+	_controlla_vittorie()
 	if finita:
 		return
 	if abitanti <= 0:
@@ -3594,6 +3610,85 @@ func _togli_abitanti(n: int) -> void:
 		eccesso -= tolti
 
 
+# --- Gli scopi della partita -----------------------------------------------------------
+## Si vince in uno qualsiasi di cinque modi (e poi si può continuare, per vincere anche negli altri):
+## la città col maniero, la conquista del regno, il commercio, la diplomazia, l'età dell'oro.
+
+## Gli obiettivi con quanto manca: [{id, nome, descrizione, progresso 0..1, dettaglio, fatto}].
+func obiettivi() -> Array:
+	var vo: Dictionary = bil.vittorie
+	var lista := []
+	# la città col maniero
+	var maniero := conta_completati("maniero") > 0
+	var ult: int = bil.livelli.size() - 1
+	lista.append({"id": "citta", "nome": "La città del maniero", "descrizione": "Diventa una città e costruisci il maniero.",
+		"progresso": 1.0 if maniero else 0.8 * livello / float(ult), "fatto": maniero,
+		"dettaglio": "maniero costruito" if maniero else ("%s; poi il maniero" % bil.livelli[livello].nome.to_lower())})
+	# la conquista del regno
+	var conquistati := 0
+	for k in regni:
+		if regni[k].conquistato:
+			conquistati += 1
+	var servono := maxi(1, ceili(regni.size() * float(vo.conquista_quota)))
+	lista.append({"id": "conquista", "nome": "Signore del regno", "descrizione": "Conquista %d terre del regno su %d." % [servono, regni.size()],
+		"progresso": minf(1.0, conquistati / float(servono)), "fatto": conquistati >= servono, "dettaglio": "%d conquistate su %d" % [conquistati, servono]})
+	# il commercio
+	var patti := 0
+	for k in regni:
+		if regni[k].get("commercio", false) and not regni[k].conquistato:
+			patti += 1
+	var p_patti := minf(1.0, patti / float(vo.commercio_patti))
+	var p_oro := minf(1.0, risorse.oro / float(vo.commercio_oro))
+	lista.append({"id": "commercio", "nome": "Il mercante del regno", "descrizione": "Patti commerciali con %d signori insieme e un tesoro di %d oro." % [int(vo.commercio_patti), int(vo.commercio_oro)],
+		"progresso": (p_patti + p_oro) / 2.0, "fatto": p_patti >= 1.0 and p_oro >= 1.0, "dettaglio": "%d patti, %d oro" % [patti, int(risorse.oro)]})
+	# la diplomazia
+	var attivi := signori_attivi()
+	var alleati := attivi.filter(func(k): return regni[k].alleato).size()
+	var servono_a := maxi(int(vo.diplomazia_alleati), attivi.size())
+	lista.append({"id": "diplomazia", "nome": "Il re eletto", "descrizione": "Alleati di tutti i signori rimasti (almeno %d): ti eleggeranno re." % int(vo.diplomazia_alleati),
+		"progresso": minf(1.0, alleati / float(servono_a)), "fatto": alleati >= servono_a, "dettaglio": "%d alleati su %d" % [alleati, servono_a]})
+	# l'età dell'oro
+	var stagioni := int(vo.prosperita_stagioni)
+	var ora := minf(1.0, minf(abitanti / float(vo.prosperita_abitanti), felicita / float(vo.prosperita_felicita)))
+	lista.append({"id": "prosperita", "nome": "L'età dell'oro", "descrizione": "%d abitanti con la felicità sopra %d per %d stagioni di fila." % [int(vo.prosperita_abitanti), int(vo.prosperita_felicita), stagioni],
+		"progresso": minf(1.0, stagioni_prospere / float(stagioni)) if stagioni_prospere > 0 else ora * 0.2, "fatto": stagioni_prospere >= stagioni,
+		"dettaglio": "%d stagioni su %d" % [stagioni_prospere, stagioni] if stagioni_prospere > 0 else "%d abitanti, felicità %d" % [abitanti, int(felicita)]})
+	for o in lista:
+		o.vinto = o.id in vittorie
+	return lista
+
+
+## Controlla se un obiettivo è raggiunto (vittoria!) o vicino (lo dice il consiglio).
+func _controlla_vittorie() -> void:
+	if finita or capo < 0:
+		return
+	for o in obiettivi():
+		if o.vinto:
+			continue
+		if o.fatto:
+			vittorie.append(o.id)
+			vittoria_da_mostrare = o
+			obiettivo_raggiunto.emit(o)
+			salva()
+			return
+		if float(o.progresso) >= 0.75 and not o.id in _obiettivi_annunciati:
+			_obiettivi_annunciati.append(o.id)
+			_racconta("oro", "Ci manca poco per vincere: «%s». %s (%s)" % [o.nome, o.descrizione, o.dettaglio])
+
+
+## Il testo della vittoria, con com'è andata.
+func testo_vittoria(o: Dictionary) -> String:
+	var come := {"citta": "Il maniero domina la città: il tuo borgo è diventato la capitale delle terre dei sopravvissuti.",
+		"conquista": "Le bandiere della tua casata sventolano su quasi tutto il regno: sei il signore delle terre dei sopravvissuti.",
+		"commercio": "Le carovane partono e arrivano ogni stagione, l'oro riempie i forzieri: sei il mercante più ricco del regno.",
+		"diplomazia": "I signori del regno, tutti tuoi alleati, si riuniscono e ti eleggono re.",
+		"prosperita": "Anni di pace e di raccolti: la gente canta nelle piazze. È l'età dell'oro del tuo borgo."}
+	return "%s
+
+Anno %d, %d abitanti, felicità %d. Vittorie: %d su 5. Puoi continuare a giocare e vincere anche negli altri modi." % [
+		come.get(o.id, ""), anno, abitanti, int(felicita), vittorie.size()]
+
+
 func _fine(vittoria: bool, motivo: String) -> void:
 	finita = true
 	cancella_salvataggio()
@@ -3627,6 +3722,7 @@ func salva() -> void:
 		"seme_mappa": seme_mappa, "prossimo_id": _prossimo_id, "buildings": lista,
 		"tick_senza_casa": tick_senza_casa, "modificatori": modificatori,
 		"eventi_usati": eventi_usati, "tick_evento": _tick_evento,
+		"vittorie": vittorie, "stagioni_prospere": stagioni_prospere, "obiettivi_annunciati": _obiettivi_annunciati,
 		"evento_attivo": evento_attivo.get("id", ""),
 		"banditi": _banditi_salvati(), "tick_banditi": _tick_banditi,
 		"soldati": soldati, "truppe": truppe, "coda_esercito": coda_esercito, "addestramento": _addestramento, "mercato_auto": mercato_auto, "riserva_oro": riserva_oro, "regni": regni, "missioni": missioni, "battaglia": battaglia,
@@ -3697,6 +3793,9 @@ func carica() -> bool:
 	modificatori = dati.get("modificatori", [])
 	eventi_usati = dati.get("eventi_usati", [])
 	_tick_evento = int(dati.get("tick_evento", -1))
+	vittorie = Array(dati.get("vittorie", []))
+	stagioni_prospere = int(dati.get("stagioni_prospere", 0))
+	_obiettivi_annunciati = Array(dati.get("obiettivi_annunciati", []))
 	_tick_banditi = int(dati.get("tick_banditi", -1))
 	soldati = int(dati.get("soldati", 0))
 	truppe = {}
