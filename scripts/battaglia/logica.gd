@@ -126,7 +126,9 @@ static func crea(regione: String, tipo_nemico: String, truppe: Dictionary, armi:
 	b.nostri_inizio = soldati
 	b.truppe_inizio = truppe.duplicate()
 	# le unità nemiche attorno alla bandiera
-	var tipi: Array = cfg.eserciti[tipo_nemico]
+	# un signore schiera l'esercito del suo livello (contadini e lancieri nei villaggi, spadaccini e
+	# cavalieri nelle città); i banditi hanno un capobanda e i briganti con la balestra
+	var tipi: Array = cfg.eserciti.get("%s_%d" % [tipo_nemico, clampi(difese if difese >= 0 else 1, 0, 2)], cfg.eserciti[tipo_nemico]) if assedio else cfg.eserciti[tipo_nemico]
 	var loro := _gruppi(nemici, per)
 	var posti := _attorno(bandiera, loro.size(), terreno)
 	for i in loro.size():

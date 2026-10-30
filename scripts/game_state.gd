@@ -1010,6 +1010,8 @@ func _tick() -> void:
 		_consegna_raccolti("di metà stagione")
 	if tick_in_stagione == _tick_evento:
 		_pesca_evento()
+	if tick_in_stagione == _tick_proposta:
+		_mostra_proposta()
 	_addestra_un_giorno()
 	_avanza_missioni()
 	if tick_in_stagione == _tick_banditi:
@@ -1450,6 +1452,8 @@ func scegli_evento(indice: int) -> void:
 		felicita = clampf(felicita + float(e.felicita), 0.0, 100.0)
 	if e.has("re"):
 		re_atteggiamento = clampi(re_atteggiamento + int(e.re), -100, 100)
+	if e.has("feudo"):
+		_effetto_feudo(e.feudo)
 	var n := int(e.get("abitanti", 0))
 	if n > 0:
 		abitanti += n
@@ -2023,6 +2027,7 @@ func _prepara_regni() -> void:
 		if regni[k].tipo == "signore":
 			regni[k].abitanti = rng_s.randi_range(int(sv.abitanti_iniziali[0]), int(sv.abitanti_iniziali[1]))
 			regni[k].ritmo = snappedf(rng_s.randf_range(float(sv.ritmo[0]), float(sv.ritmo[1])), 0.01)
+	_prepara_feudi(rng_s)
 
 
 ## A ogni stagione i feudi dei signori crescono verso quanto è grande il nostro (chi più in fretta,
@@ -2055,6 +2060,489 @@ func livello_regno(chiave: String) -> int:
 func difese_regno(chiave: String) -> String:
 	var livelli: Array = bil.battaglia.assedio.livelli
 	return str(livelli[clampi(livello_regno(chiave), 0, livelli.size() - 1)].nome)
+
+
+# --- I feudi dei signori: giocatori del computer -----------------------------------------
+## Ogni signore ha un carattere (mercante, guerriero, diplomatico), le sue scorte che crescono con
+## gli abitanti, alleati e nemici fra gli altri signori. A ogni stagione produce, cambia umore verso
+## di noi, fa alleanze o guerre con gli altri e a volte manda un messaggero con una proposta (una
+## carta): uno scambio, un patto commerciale, un'alleanza, una richiesta di aiuto o un tributo.
+## Noi possiamo comprare, vendere, fare doni e proporre patti dalla mappa del regno.
+
+const CARATTERI := {"mercante": "mercante: ama i commerci", "guerriero": "guerriero: rispetta solo la forza",
+	"diplomatico": "diplomatico: cerca alleati e pace"}
+const MERCI := ["cibo", "legna", "pietra", "ferro"]
+
+var _proposta: Dictionary = {}  # la carta che un messaggero porterà in questa stagione
+var _tick_proposta := -1
+
+
+## I signori e le loro cose (chiamato quando si preparano i regni).
+func _prepara_feudi(rng: RandomNumberGenerator) -> void:
+	var f: Dictionary = bil.feudi
+	var chiavi := CARATTERI.keys()
+	for k in regni:
+		var r: Dictionary = regni[k]
+		if r.tipo != "signore":
+			continue
+		r.carattere = chiavi[rng.randi() % chiavi.size()]
+		r.scorte = {"oro": float(f.scorte_iniziali)}
+		for m in MERCI:
+			r.scorte[m] = float(f.scorte_iniziali)
+		r.scorte[merce_di(k)] = float(f.scorte_iniziali) * 2.0
+		r.alleati_di = []
+		r.guerra_con = ""
+		r.guerra_mancano = 0
+		r.commercio = false
+		r.vendetta = false
+
+
+## Che cosa produce un regno (la sua risorsa, nei nomi delle nostre risorse).
+func merce_di(chiave: String) -> String:
+	return str(RISORSA_DEL_TRIBUTO.get(regni[chiave].risorsa, "cibo"))
+
+
+func _valore(merce: String) -> float:
+	return float(mercato.dati.prezzi_base.get(merce, 2.0))
+
+
+func signori_attivi() -> Array:
+	return regni.keys().filter(func(k): return regni[k].tipo == "signore" and not regni[k].conquistato and regni[k].has("scorte"))
+
+
+## Il turno dei signori, a ogni cambio di stagione.
+func _turno_feudi() -> void:
+	var f: Dictionary = bil.feudi
+	var signori := signori_attivi()
+	for k in signori:
+		var r: Dictionary = regni[k]
+		_produci_feudo(k)
+		var deriva := int(f.deriva.get(r.carattere, 0)) + (2 if r.alleato else 0) + (int(f.trattato.atteggiamento) if r.commercio else 0)
+		r.atteggiamento = clampi(int(r.atteggiamento) + deriva, -100, 100)
+		if r.commercio:
+			_carico_del_patto(k)
+		if r.guerra_con != "" and k < str(r.guerra_con):
+			_guerra_fra_feudi(k, str(r.guerra_con))
+		if r.get("vendetta", false) and banditi.is_empty() and capo >= 0 and _rng.randf() < float(f.vendetta):
+			r.vendetta = false
+			_spedizione(k)
+	_alleanze_e_guerre(signori)
+	if diplomazia_possibile() and capo >= 0:
+		_prepara_proposta(signori)
+
+
+func _produci_feudo(k: String) -> void:
+	var f: Dictionary = bil.feudi
+	var r: Dictionary = regni[k]
+	var ab := float(r.get("abitanti", 15))
+	var merce := merce_di(k)
+	for m in r.scorte:
+		var fatto := ab * float(f.altre_per_abitante)
+		if m == merce:
+			fatto = ab * float(f.produzione_per_abitante)
+		elif m == "oro":
+			fatto = ab * float(f.oro_per_abitante) * (1.5 if r.carattere == "mercante" else 1.0)
+		r.scorte[m] = minf(float(f.scorta_massima), float(r.scorte[m]) + fatto)
+	if not r.scorte.has(merce):
+		r.scorte[merce] = ab * float(f.produzione_per_abitante)
+
+
+## Il patto commerciale: ogni stagione loro mandano la loro merce, noi paghiamo (a prezzo di favore).
+func _carico_del_patto(k: String) -> void:
+	var t: Dictionary = bil.feudi.trattato
+	var r: Dictionary = regni[k]
+	var merce := merce_di(k)
+	var q := int(t.quanti)
+	var paga := ceili(q * _valore(merce) * float(t.sconto))
+	if risorse.oro < paga or float(r.scorte.get(merce, 0)) < q:
+		r.atteggiamento = int(r.atteggiamento) - 2
+		message.emit("Il carico del patto con %s salta: %s." % [r.signore, "non abbiamo l'oro" if risorse.oro < paga else "non hanno merce"])
+		return
+	risorse.oro -= paga
+	risorse[merce] = minf(capacita(), risorse[merce] + q)
+	r.scorte[merce] = float(r.scorte[merce]) - q
+	r.scorte.oro = float(r.scorte.oro) + paga
+	message.emit("Il carico del patto con %s: %d %s per %d oro." % [r.signore, q, nome_risorsa(merce).to_lower(), paga])
+
+
+## Fra i signori: a volte due si alleano, a volte uno muove guerra a un altro (i guerrieri più spesso).
+func _alleanze_e_guerre(signori: Array) -> void:
+	if signori.size() < 2:
+		return
+	var f: Dictionary = bil.feudi
+	var a: String = signori[_rng.randi() % signori.size()]
+	var b: String = signori[_rng.randi() % signori.size()]
+	if a == b:
+		return
+	var ra: Dictionary = regni[a]
+	var rb: Dictionary = regni[b]
+	if ra.guerra_con != "" or rb.guerra_con != "" or ra.signore == rb.signore:
+		return  # in guerra, o terre dello stesso signore
+	var p_alleanza := float(f.probabilita_alleanza_fra_loro) * (2.0 if "diplomatico" in [ra.carattere, rb.carattere] else 1.0)
+	var p_guerra := float(f.probabilita_guerra_fra_loro) * (2.0 if "guerriero" in [ra.carattere, rb.carattere] else 0.5)
+	var x := _rng.randf()
+	if not b in ra.alleati_di and x < p_alleanza:
+		ra.alleati_di.append(b)
+		rb.alleati_di.append(a)
+		_racconta("oro", "Notizie dal regno: %s di %s e %s di %s si sono alleati." % [ra.signore, ra.nome, rb.signore, rb.nome])
+	elif not b in ra.alleati_di and x < p_alleanza + p_guerra:
+		ra.guerra_con = b
+		rb.guerra_con = a
+		var mancano := _rng.randi_range(int(f.durata_guerra[0]), int(f.durata_guerra[1]))
+		ra.guerra_mancano = mancano
+		rb.guerra_mancano = mancano
+		var chi := ra if ra.carattere == "guerriero" or rb.carattere != "guerriero" else rb
+		var altro: Dictionary = rb if chi == ra else ra
+		_racconta("oro", "Guerra nel regno! %s di %s attacca %s di %s." % [chi.signore, chi.nome, altro.signore, altro.nome])
+
+
+## Una stagione di guerra fra due signori: tutti e due perdono gente (il più debole di più); alla fine
+## il più forte vince e si prende parte di quello che l'altro ha perso.
+func _guerra_fra_feudi(a: String, b: String) -> void:
+	var f: Dictionary = bil.feudi
+	var ra: Dictionary = regni[a]
+	var rb: Dictionary = regni[b]
+	var forte := a if forza_regno(a) >= forza_regno(b) else b
+	var debole := b if forte == a else a
+	var perso_debole := maxi(1, roundi(int(regni[debole].abitanti) * float(f.perdite_guerra[1])))
+	regni[debole].abitanti = maxi(8, int(regni[debole].abitanti) - perso_debole)
+	regni[forte].abitanti = maxi(8, int(regni[forte].abitanti) - roundi(int(regni[forte].abitanti) * float(f.perdite_guerra[0])))
+	ra.guerra_mancano = int(ra.guerra_mancano) - 1
+	rb.guerra_mancano = ra.guerra_mancano
+	if int(ra.guerra_mancano) <= 0:
+		ra.guerra_con = ""
+		rb.guerra_con = ""
+		regni[forte].abitanti = int(regni[forte].abitanti) + perso_debole / 2
+		_racconta("oro", "La guerra tra %s e %s è finita: ha vinto %s di %s." % [ra.nome, rb.nome, regni[forte].signore, regni[forte].nome])
+
+
+## Il signore offeso manda il suo esercito contro il borgo (come una banda, ma più forte).
+func _spedizione(k: String) -> void:
+	var r: Dictionary = regni[k]
+	_avvista_banditi()
+	banditi.signore = k
+	banditi.forza = forza_regno(k) * float(bil.feudi.forza_spedizione)
+	banditi.numero = clampi(roundi(float(banditi.forza) / 3.0), 4, 14)
+	_racconta("costruire", "L'esercito di %s marcia contro di noi da %s! Arriva tra %d giorni: forza %d contro la nostra %d." % [
+		r.signore, banditi.da, int(banditi.mancano), roundi(banditi.forza), roundi(difesa().totale)])
+	banditi_avvistati.emit(banditi)
+
+
+# --- Le proposte dei signori (carte) ----------------------------------------------------
+
+## Sceglie se e quale messaggero arriverà in questa stagione: prima chi ha bisogno (un alleato in
+## guerra) o chi minaccia, poi gli scambi, i patti e le alleanze, secondo il carattere.
+func _prepara_proposta(signori: Array) -> void:
+	_proposta = {}
+	_tick_proposta = -1
+	var f: Dictionary = bil.feudi
+	if _rng.randf() >= float(f.probabilita_proposta):
+		return
+	var urgenti := []
+	var altre := []
+	for k in signori:
+		var r: Dictionary = regni[k]
+		var att := int(r.atteggiamento)
+		if r.alleato and r.guerra_con != "":
+			urgenti.append(_carta_aiuto(k))
+		if r.carattere == "guerriero" and att <= -20 and forza_regno(k) > forza_esercito(soldati_presenti()) * 1.1:
+			urgenti.append(_carta_tributo(k))
+		if not r.alleato and att >= 35 and (r.carattere == "diplomatico" or att >= 55):
+			altre.append(_carta_alleanza(k))
+		if not r.commercio and att >= 0 and (r.carattere == "mercante" or att >= 30):
+			altre.append(_carta_patto(k))
+		if att > -40:
+			var vende := _carta_vende(k)
+			if not vende.is_empty():
+				altre.append(vende)
+			var compra := _carta_compra(k)
+			if not compra.is_empty():
+				altre.append(compra)
+			if r.carattere == "mercante" and not vende.is_empty():
+				altre.append(vende)  # i mercanti propongono affari più spesso
+	var scelta: Array = urgenti if not urgenti.is_empty() else altre
+	if scelta.is_empty():
+		return
+	_proposta = scelta[_rng.randi() % scelta.size()]
+	var tps := int(bil.tick_per_stagione)
+	_tick_proposta = _rng.randi_range(tps / 5, tps * 3 / 4)
+
+
+func _mostra_proposta() -> void:
+	if _proposta.is_empty():
+		return
+	if not evento_attivo.is_empty():
+		_tick_proposta += 1  # c'è già una carta aperta: il messaggero aspetta un giorno
+		return
+	var carta := _proposta
+	_proposta = {}
+	_tick_proposta = -1
+	mostra_evento(carta)
+	eventi_usati.erase(carta.id)
+
+
+func _carta(k: String, titolo: String, testo: String, scelte: Array) -> Dictionary:
+	var r: Dictionary = regni[k]
+	return {"id": "feudo", "area": "oro", "titolo": titolo,
+		"testo": "%s\n(%s di %s è %s, %s verso di noi)" % [testo, r.signore, r.nome, CARATTERI[r.carattere].split(":")[0], testo_atteggiamento(int(r.atteggiamento))],
+		"scelte": scelte}
+
+
+## Vendono la loro merce: tanti pezzi per tanto oro (i mercanti e chi ci è amico fanno lo sconto).
+func _carta_vende(k: String) -> Dictionary:
+	var r: Dictionary = regni[k]
+	var merce := merce_di(k)
+	var q := int(bil.feudi.lotto)
+	if float(r.scorte.get(merce, 0)) < q * 2:
+		return {}
+	var prezzo := prezzo_da(k)
+	return _carta(k, "Un mercante di %s" % r.nome, "Il mercante di %s offre %d %s per %d oro." % [r.signore, q, nome_risorsa(merce).to_lower(), prezzo],
+		[{"testo": "Compriamo", "effetti": {"risorse": {merce: q, "oro": -prezzo}, "feudo": {"regione": k, "atteggiamento": 4, "scorte": {merce: -q, "oro": prezzo}}}},
+		{"testo": "No, grazie", "effetti": {"feudo": {"regione": k, "atteggiamento": -1}}}])
+
+
+## Comprano quello che a loro manca e a noi avanza (pagano un po' di più del mercato).
+func _carta_compra(k: String) -> Dictionary:
+	var r: Dictionary = regni[k]
+	var m := bisogno_di(k)
+	var q := int(bil.feudi.lotto)
+	if m == "" or risorse[m] < q + 20:
+		return {}
+	var paga := prezzo_a(k)
+	return _carta(k, "Un mercante di %s" % r.nome, "%s ha bisogno di %s: ne compra %d per %d oro." % [r.signore, nome_risorsa(m).to_lower(), q, paga],
+		[{"testo": "Vendiamo", "effetti": {"risorse": {m: -q, "oro": paga}, "feudo": {"regione": k, "atteggiamento": 4, "scorte": {m: q, "oro": -paga}}}},
+		{"testo": "Ci serve", "effetti": {"feudo": {"regione": k, "atteggiamento": -1}}}])
+
+
+func _carta_patto(k: String) -> Dictionary:
+	var r: Dictionary = regni[k]
+	var t: Dictionary = bil.feudi.trattato
+	var merce := merce_di(k)
+	return _carta(k, "Un patto commerciale", "%s propone un patto: ogni stagione ci manda %d %s e noi paghiamo %d oro, meno del mercato. Si può rompere quando si vuole." % [
+		r.signore, int(t.quanti), nome_risorsa(merce).to_lower(), ceili(int(t.quanti) * _valore(merce) * float(t.sconto))],
+		[{"testo": "Firmiamo", "effetti": {"feudo": {"regione": k, "commercio": true, "atteggiamento": 8}}},
+		{"testo": "Non ora", "effetti": {"feudo": {"regione": k, "atteggiamento": -3}}}])
+
+
+func _carta_alleanza(k: String) -> Dictionary:
+	var r: Dictionary = regni[k]
+	return _carta(k, "Un'alleanza", "%s ci offre la sua alleanza: rinforzi contro i banditi e un dono ogni stagione, e nessuno dei due attaccherà l'altro." % r.signore,
+		[{"testo": "Accettiamo", "effetti": {"feudo": {"regione": k, "alleato": true, "atteggiamento": 15}}},
+		{"testo": "Rifiutiamo", "effetti": {"feudo": {"regione": k, "atteggiamento": -8}}}])
+
+
+func _carta_tributo(k: String) -> Dictionary:
+	var r: Dictionary = regni[k]
+	var f: Dictionary = bil.feudi
+	var chiesto := roundi(_rng.randf_range(float(f.tributo_chiesto[0]), float(f.tributo_chiesto[1])) * (1.0 + 0.15 * (anno - 1)))
+	return _carta(k, "Una minaccia", "Un cavaliere di %s, con la mano sulla spada: «Il mio signore vuole %d oro. O verrà a prenderseli». Il suo esercito vale %d, il nostro %d." % [
+		r.signore, chiesto, forza_regno(k), roundi(forza_esercito(soldati_presenti()))],
+		[{"testo": "Paghiamo", "effetti": {"risorse": {"oro": -chiesto}, "feudo": {"regione": k, "atteggiamento": 15, "scorte": {"oro": chiesto}}}},
+		{"testo": "Venga pure", "effetti": {"feudo": {"regione": k, "atteggiamento": -15, "vendetta": true}}}])
+
+
+func _carta_aiuto(k: String) -> Dictionary:
+	var r: Dictionary = regni[k]
+	var nemico: Dictionary = regni[str(r.guerra_con)]
+	var oro := int(bil.feudi.aiuto_guerra)
+	return _carta(k, "Un alleato chiede aiuto", "%s, nostro alleato, è in guerra con %s e chiede %d oro per pagare i suoi soldati." % [r.signore, nemico.signore, oro],
+		[{"testo": "Mandiamo l'oro", "effetti": {"risorse": {"oro": -oro}, "feudo": {"regione": k, "atteggiamento": 15, "aiuto": true}}},
+		{"testo": "Non possiamo", "effetti": {"feudo": {"regione": k, "atteggiamento": -15}}}])
+
+
+## Gli effetti di una carta su un signore: umore, alleanza, patto, scorte, vendetta, aiuto in guerra.
+func _effetto_feudo(e: Dictionary) -> void:
+	var k := str(e.get("regione", ""))
+	if not regni.has(k):
+		return
+	var r: Dictionary = regni[k]
+	r.atteggiamento = clampi(int(r.atteggiamento) + int(e.get("atteggiamento", 0)), -100, 100)
+	if e.get("alleato", false):
+		r.alleato = true
+		_racconta("oro", "Siamo alleati di %s!" % r.signore)
+	if e.get("commercio", false):
+		r.commercio = true
+	if e.get("vendetta", false):
+		r.vendetta = true
+	var sc: Dictionary = e.get("scorte", {})
+	for m in sc:
+		r.scorte[m] = maxf(0.0, float(r.scorte.get(m, 0)) + float(sc[m]))
+	if e.get("aiuto", false) and r.guerra_con != "":
+		var nemico: Dictionary = regni[str(r.guerra_con)]
+		nemico.abitanti = maxi(8, roundi(int(nemico.abitanti) * 0.9))
+		nemico.atteggiamento = int(nemico.atteggiamento) - 20
+
+
+# --- Le nostre mosse verso i signori (dalla mappa del regno) ----------------------------
+
+## Il prezzo per comprare un carico della loro merce (sconto ai mercanti e agli amici).
+func prezzo_da(k: String) -> int:
+	var r: Dictionary = regni[k]
+	var q := int(bil.feudi.lotto)
+	var molt := (0.85 if r.carattere == "mercante" else 1.0) * (1.0 - int(r.atteggiamento) / 400.0)
+	return ceili(q * _valore(merce_di(k)) * molt)
+
+
+## Quanto pagano per un carico di quello che manca a loro.
+func prezzo_a(k: String) -> int:
+	var r: Dictionary = regni[k]
+	var q := int(bil.feudi.lotto)
+	return ceili(q * _valore(bisogno_di(k)) * (1.2 + int(r.atteggiamento) / 400.0))
+
+
+## La merce che manca di più al signore (non la sua), o "".
+func bisogno_di(k: String) -> String:
+	var r: Dictionary = regni[k]
+	var merce := merce_di(k)
+	var peggio := ""
+	for m in MERCI:
+		if m != merce and (peggio == "" or float(r.scorte.get(m, 0)) < float(r.scorte.get(peggio, 0))):
+			peggio = m
+	return peggio
+
+
+## "" se si può fare l'affare, altrimenti il perché.
+func perche_no_affare(azione: String, k: String) -> String:
+	if not diplomazia_possibile():
+		return "si può dal Borgo in poi"
+	var r: Dictionary = regni[k]
+	if r.tipo != "signore" or r.conquistato or not r.has("scorte"):
+		return "lì non c'è un signore"
+	if int(r.atteggiamento) <= -40 and azione != "dono":
+		return "non vogliono trattare con noi"
+	var q := int(bil.feudi.lotto)
+	match azione:
+		"compra":
+			if float(r.scorte.get(merce_di(k), 0)) < q:
+				return "non hanno merce"
+			if risorse.oro < prezzo_da(k):
+				return "servono %d oro" % prezzo_da(k)
+		"vendi":
+			if risorse[bisogno_di(k)] < q:
+				return "ci servono %d %s" % [q, nome_risorsa(bisogno_di(k)).to_lower()]
+			if float(r.scorte.oro) < prezzo_a(k):
+				return "non hanno l'oro"
+		"dono":
+			if risorse.oro < float(bil.feudi.dono):
+				return "servono %d oro" % int(bil.feudi.dono)
+		"patto":
+			if r.commercio:
+				return "il patto c'è già"
+			if not missione_per(k).is_empty():
+				return "c'è già qualcuno in viaggio"
+	return ""
+
+
+func compra_da(k: String) -> bool:
+	if perche_no_affare("compra", k) != "":
+		return false
+	var r: Dictionary = regni[k]
+	var merce := merce_di(k)
+	var q := int(bil.feudi.lotto)
+	var prezzo := prezzo_da(k)
+	risorse.oro -= prezzo
+	risorse[merce] = minf(maxf(capacita(), risorse[merce]), risorse[merce] + q)
+	r.scorte[merce] = float(r.scorte[merce]) - q
+	r.scorte.oro = float(r.scorte.oro) + prezzo
+	r.atteggiamento = mini(100, int(r.atteggiamento) + 2)
+	changed.emit()
+	return true
+
+
+func vendi_a(k: String) -> bool:
+	if perche_no_affare("vendi", k) != "":
+		return false
+	var r: Dictionary = regni[k]
+	var m := bisogno_di(k)
+	var q := int(bil.feudi.lotto)
+	var paga := prezzo_a(k)
+	risorse[m] -= q
+	risorse.oro = minf(maxf(capacita(), risorse.oro), risorse.oro + paga)
+	r.scorte[m] = float(r.scorte.get(m, 0)) + q
+	r.scorte.oro = float(r.scorte.oro) - paga
+	r.atteggiamento = mini(100, int(r.atteggiamento) + 3)
+	changed.emit()
+	return true
+
+
+func dono_a(k: String) -> bool:
+	if perche_no_affare("dono", k) != "":
+		return false
+	var r: Dictionary = regni[k]
+	risorse.oro -= float(bil.feudi.dono)
+	r.scorte.oro = float(r.scorte.oro) + float(bil.feudi.dono)
+	r.atteggiamento = mini(100, int(r.atteggiamento) + int(bil.feudi.dono_atteggiamento))
+	changed.emit()
+	return true
+
+
+## Il messaggero va a proporre il patto commerciale: risponde quando arriva.
+func proponi_patto(k: String) -> bool:
+	if perche_no_affare("patto", k) != "":
+		return false
+	missioni.append({"tipo": "patto", "regione": k, "mancano": int(bil.diplomazia.giorni_messaggero)})
+	changed.emit()
+	return true
+
+
+func _risposta_patto(m: Dictionary) -> void:
+	var r: Dictionary = regni[m.regione]
+	var probabilita := clampf(0.3 + int(r.atteggiamento) / 100.0 + (0.25 if r.carattere == "mercante" else 0.0), 0.05, 0.95)
+	var esito := {"tipo": "patto", "regione": m.regione, "riuscita": _rng.randf() < probabilita}
+	if esito.riuscita:
+		r.commercio = true
+		r.atteggiamento = mini(100, int(r.atteggiamento) + 8)
+		_racconta("oro", "%s accetta il patto commerciale: ogni stagione arriverà il suo carico." % r.signore)
+	else:
+		r.atteggiamento = int(r.atteggiamento) - 3
+		_racconta("oro", "%s non vuole un patto commerciale con noi, per ora." % r.signore)
+	missione_finita.emit(esito)
+	changed.emit()
+
+
+func rompi_patto(k: String) -> void:
+	var r: Dictionary = regni[k]
+	if r.get("commercio", false):
+		r.commercio = false
+		r.atteggiamento = int(r.atteggiamento) - 10
+		changed.emit()
+
+
+## Quando attacchiamo un signore, i suoi alleati si arrabbiano (e mandano rinforzi in battaglia);
+## il patto con lui si rompe.
+func _reazione_all_attacco(k: String) -> void:
+	var r: Dictionary = regni[k]
+	r.commercio = false
+	r.alleato = false
+	for a in r.get("alleati_di", []):
+		if regni.has(a) and not regni[a].conquistato:
+			regni[a].atteggiamento = int(regni[a].atteggiamento) - int(bil.feudi.reazione_attacco_alleati)
+			if regni[a].alleato:
+				regni[a].alleato = false
+				_racconta("oro", "%s rompe l'alleanza con noi: abbiamo attaccato un suo alleato." % regni[a].signore)
+
+
+## I rinforzi degli alleati di un signore in battaglia (uomini in più).
+func rinforzi_per(k: String) -> int:
+	var f := 0.0
+	for a in regni[k].get("alleati_di", []):
+		if regni.has(a) and not regni[a].conquistato:
+			f += forza_regno(a) * float(bil.feudi.rinforzi_alleati)
+	return roundi(f / float(bil.battaglia.unita.cavalieri.forza))
+
+
+## Un regno conquistato esce dai giochi degli altri: niente alleanze né guerre con lui.
+func _togli_dai_giochi(k: String) -> void:
+	for altro in regni:
+		var r: Dictionary = regni[altro]
+		if r.has("alleati_di"):
+			r.alleati_di.erase(k)
+		if str(r.get("guerra_con", "")) == k:
+			r.guerra_con = ""
+	if regni[k].has("guerra_con"):
+		regni[k].guerra_con = ""
+		regni[k].alleati_di = []
+		regni[k].commercio = false
 
 
 func diplomazia_possibile() -> bool:
@@ -2148,6 +2636,8 @@ func attacca(chiave: String) -> bool:
 		return false
 	missioni.append({"tipo": "attacco", "regione": chiave, "mancano": int(bil.diplomazia.giorni_marcia),
 		"soldati": soldati_presenti(), "truppe": truppe_presenti()})
+	if regni[chiave].tipo == "signore":
+		_reazione_all_attacco(chiave)
 	changed.emit()
 	return true
 
@@ -2162,6 +2652,8 @@ func _avanza_missioni() -> void:
 					_ritorno_spia(m)
 				"alleanza":
 					_risposta_alleanza(m)
+				"patto":
+					_risposta_patto(m)
 				"attacco":
 					_battaglia(m)
 
@@ -2229,7 +2721,13 @@ func _battaglia(m: Dictionary) -> void:
 	for k in regni:
 		if regni[k].conquistato:
 			aiuti += roundi(leva_vassallo(k) / float(c.unita.vassalli.forza))
-	var nemici := maxi(2, roundi(forza_regno(m.regione) / float(c.unita[c.eserciti[r.tipo][0]].forza)))
+	# quanti uomini: la forza del regno divisa per quella di un soldato tipico (non del capobanda)
+	var tipico: String = {"signore": "cavalieri", "banditi": "predoni", "libera": "contadini"}.get(r.tipo, "contadini")
+	var nemici := maxi(2, roundi(forza_regno(m.regione) / float(c.unita[tipico].forza)))
+	var rinforzi := rinforzi_per(m.regione) if r.tipo == "signore" else 0
+	if rinforzi > 0:
+		nemici += rinforzi
+		_racconta("costruire", "Gli alleati di %s gli mandano %d uomini di rinforzo!" % [r.signore, rinforzi])
 	var mt: Dictionary = m.get("truppe", {"fanti": int(m.soldati)})
 	battaglia = LogicaBattaglia.crea(m.regione, r.tipo, mt, 0, aiuti, nemici, _rng.randi(), c, livello_regno(m.regione) if r.tipo == "signore" else -1)
 	if velocita > 0:
@@ -2350,6 +2848,7 @@ func _fine_battaglia(vinta: bool, perche: String) -> void:
 	var esito := {"tipo": "attacco", "regione": b.regione, "riuscita": vinta, "caduti": caduti, "perche": perche}
 	if vinta:
 		r.conquistato = true
+		_togli_dai_giochi(b.regione)
 		r.alleato = false
 		var liberi := consiglieri_liberi()
 		nomina_vassallo(b.regione, liberi[0] if not liberi.is_empty() else CAVALIERE)
@@ -2894,6 +3393,7 @@ func _fine_stagione() -> void:
 	_riscuoti_tasse()
 	_riscuoti_tributi()
 	_sviluppa_regni()
+	_turno_feudi()
 	if finita:
 		return
 	if abitanti <= 0:
@@ -3221,6 +3721,18 @@ func carica() -> bool:
 			for campo in ["forza", "atteggiamento", "vassallo", "lealta"]:
 				regni[k][campo] = int(salvati[k].get(campo, 0))
 			regni[k].tributo = str(salvati[k].get("tributo", "normale"))
+			if regni[k].tipo == "signore" and regni[k].has("scorte"):
+				var sv_k: Dictionary = salvati[k]
+				regni[k].carattere = str(sv_k.get("carattere", regni[k].carattere))
+				var sc: Dictionary = sv_k.get("scorte", regni[k].scorte)
+				regni[k].scorte = {}
+				for m in sc:
+					regni[k].scorte[m] = float(sc[m])
+				regni[k].alleati_di = Array(sv_k.get("alleati_di", [])).map(func(x): return str(x))
+				regni[k].guerra_con = str(sv_k.get("guerra_con", ""))
+				regni[k].guerra_mancano = int(sv_k.get("guerra_mancano", 0))
+				regni[k].commercio = bool(sv_k.get("commercio", false))
+				regni[k].vendetta = bool(sv_k.get("vendetta", false))
 			if regni[k].tipo == "signore":
 				# i salvataggi di prima: gli abitanti dalla forza che avevano
 				var spa := float(bil.diplomazia.sviluppo.soldati_per_abitante) * float(bil.battaglia.unita.cavalieri.forza)

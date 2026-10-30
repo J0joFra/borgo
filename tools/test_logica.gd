@@ -800,6 +800,7 @@ func _ready() -> void:
 	_prova_assedio()
 	_prova_sviluppo_regni()
 	_prova_fiume()
+	_prova_feudi()
 	var soldati_r := GameState.soldati
 	GameState.attacca(forte)
 	for i in int(GameState.bil.diplomazia.giorni_marcia):
@@ -1771,3 +1772,125 @@ func _prova_fiume() -> void:
 	f.attaccato = false
 	f.mosse = 8
 	_verifica(LogicaBattaglia.raggiungibili(b, f, cfg).keys().any(di_la), "dal ponte si passa dall'altra parte")
+
+
+## I feudi dei signori come giocatori del computer: scorte, affari, patti, alleanze e guerre fra loro,
+## proposte (carte), vendette e reazioni.
+func _prova_feudi() -> void:
+	var f: Dictionary = GameState.bil.feudi
+	var livello_prima := GameState.livello
+	GameState.livello = maxi(GameState.livello, int(GameState.bil.diplomazia.dal_livello))
+	var prob_prima := float(f.probabilita_proposta)
+	f.probabilita_proposta = 0.0
+	var signori := GameState.signori_attivi()
+	_verifica(signori.size() >= 2 and signori.all(func(k): return GameState.CARATTERI.has(GameState.regni[k].carattere) and GameState.regni[k].scorte.has("oro")), "ogni signore ha un carattere e le sue scorte (%d signori)" % signori.size())
+	if signori.size() < 2:
+		GameState.livello = livello_prima
+		return
+	var a: String = signori[0]
+	var b: String = signori[1]
+	for altro in signori:
+		if GameState.regni[altro].signore != GameState.regni[a].signore:
+			b = altro  # due signori diversi (uno stesso signore può avere più terre)
+			break
+	var ra: Dictionary = GameState.regni[a]
+	var rb: Dictionary = GameState.regni[b]
+	for r in [ra, rb]:
+		r.atteggiamento = 10
+		r.alleato = false
+		r.commercio = false
+		r.alleati_di = []
+		r.guerra_con = ""
+		r.vendetta = false
+	var merce := GameState.merce_di(a)
+	var scorta_prima := float(ra.scorte[merce])
+	GameState._turno_feudi()
+	_verifica(float(ra.scorte[merce]) > scorta_prima, "a ogni stagione il signore produce la sua merce (%s)" % merce)
+	# affari dalla mappa del regno
+	GameState.risorse.oro = 200.0
+	ra.scorte[merce] = 100.0
+	var oro_prima: float = GameState.risorse.oro
+	var mia_prima: float = GameState.risorse[merce]
+	var att_prima := int(ra.atteggiamento)
+	_verifica(GameState.compra_da(a) and GameState.risorse.oro == oro_prima - GameState.prezzo_da(a) + 0.0 or GameState.risorse.oro < oro_prima, "compriamo la loro merce con l'oro")
+	_verifica(GameState.risorse[merce] > mia_prima and int(ra.atteggiamento) > att_prima, "la merce arriva e il signore è più contento")
+	var serve := GameState.bisogno_di(a)
+	GameState.risorse[serve] = 100.0
+	ra.scorte.oro = 200.0
+	oro_prima = GameState.risorse.oro
+	_verifica(serve != merce and GameState.vendi_a(a) and GameState.risorse.oro > oro_prima and GameState.risorse[serve] == 80.0, "vendiamo quello che manca a loro (%s)" % serve)
+	att_prima = int(ra.atteggiamento)
+	_verifica(GameState.dono_a(a) and int(ra.atteggiamento) == att_prima + int(f.dono_atteggiamento), "un dono migliora l'umore")
+	ra.atteggiamento = -60
+	_verifica(GameState.perche_no_affare("compra", a) != "" and GameState.perche_no_affare("dono", a) == "", "un signore ostile non commercia, ma un dono lo accetta")
+	ra.atteggiamento = 20
+	# il patto commerciale: ogni stagione il carico
+	GameState._effetto_feudo({"regione": a, "commercio": true})
+	ra.scorte[merce] = 100.0
+	GameState.risorse[merce] = 0.0
+	oro_prima = GameState.risorse.oro
+	GameState._turno_feudi()
+	_verifica(GameState.risorse[merce] >= float(f.trattato.quanti) and GameState.risorse.oro < oro_prima, "col patto ogni stagione arriva il carico e si paga")
+	GameState.rompi_patto(a)
+	_verifica(not ra.commercio, "il patto si può rompere")
+	# fra loro: alleanze e guerre
+	var p_a := float(f.probabilita_alleanza_fra_loro)
+	var p_g := float(f.probabilita_guerra_fra_loro)
+	f.probabilita_alleanza_fra_loro = 1.0
+	for i in 40:
+		if b in ra.alleati_di:
+			break
+		GameState._alleanze_e_guerre([a, b])
+	_verifica(b in ra.alleati_di and a in rb.alleati_di, "due signori si alleano fra loro")
+	ra.alleati_di = []
+	rb.alleati_di = []
+	f.probabilita_alleanza_fra_loro = 0.0
+	f.probabilita_guerra_fra_loro = 1.0
+	for i in 40:
+		if ra.guerra_con == b:
+			break
+		GameState._alleanze_e_guerre([a, b])
+	_verifica(ra.guerra_con == b and rb.guerra_con == a, "o si fanno la guerra")
+	var abitanti_prima := int(ra.abitanti) + int(rb.abitanti)
+	ra.guerra_mancano = 1
+	GameState._guerra_fra_feudi(a, b)
+	_verifica(ra.guerra_con == "" and rb.guerra_con == "" and int(ra.abitanti) + int(rb.abitanti) < abitanti_prima, "la guerra costa gente, poi finisce")
+	f.probabilita_alleanza_fra_loro = p_a
+	f.probabilita_guerra_fra_loro = p_g
+	# le proposte arrivano come carte
+	f.probabilita_proposta = 1.0
+	ra.atteggiamento = 70
+	ra.carattere = "diplomatico"
+	GameState._prepara_proposta([a])
+	_verifica(not GameState._proposta.is_empty() and GameState._tick_proposta > 0, "un messaggero porterà una proposta")
+	GameState.evento_attivo = {}
+	GameState._mostra_proposta()
+	_verifica(GameState.evento_attivo.get("id", "") == "feudo" and GameState.evento_attivo.scelte.size() == 2, "la proposta è una carta da scegliere")
+	GameState.scegli_evento(0 if GameState.scelta_possibile(0) else 1)
+	_verifica(GameState.evento_attivo.is_empty(), "e si sceglie")
+	# un guerriero offeso manda l'esercito
+	GameState.banditi = {}
+	ra.carattere = "guerriero"
+	var c_tributo := GameState._carta_tributo(a)
+	GameState.evento_attivo = c_tributo
+	GameState.scegli_evento(1)
+	_verifica(ra.vendetta and int(ra.atteggiamento) < 70, "rifiutare il tributo offende")
+	var vend := float(f.vendetta)
+	f.vendetta = 1.0
+	f.probabilita_proposta = 0.0
+	GameState._turno_feudi()
+	_verifica(GameState.banditi.get("signore", "") == a and not ra.vendetta, "e il signore offeso manda il suo esercito contro il borgo")
+	GameState.banditi = {}
+	f.vendetta = vend
+	# attaccare un signore fa arrabbiare i suoi alleati, che mandano rinforzi
+	ra.alleati_di = [b]
+	rb.alleati_di = [a]
+	rb.atteggiamento = 50
+	rb.alleato = true
+	GameState._reazione_all_attacco(a)
+	_verifica(int(rb.atteggiamento) == 50 - int(f.reazione_attacco_alleati) and not rb.alleato, "attaccato un signore, i suoi alleati si arrabbiano (e l'alleanza con noi si rompe)")
+	_verifica(GameState.rinforzi_per(a) > 0, "in battaglia i suoi alleati mandano rinforzi")
+	ra.alleati_di = []
+	rb.alleati_di = []
+	f.probabilita_proposta = prob_prima
+	GameState.livello = livello_prima

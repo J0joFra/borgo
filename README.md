@@ -10,6 +10,7 @@ Il design completo è nel documento "Borgo — Game Design Document".
 ![I soldati da vicino](docs/soldati.png)
 ![Gli abitanti attorno al falò](docs/abitanti.png)
 ![La banda di banditi in arrivo](docs/banditi.png)
+![Un signore manda un messaggero con una proposta](docs/proposta.png)
 ![Vittoria: l'esercito nemico è distrutto](docs/battaglia_fine.png)
 ![Il tutorial dopo il prologo](docs/tutorial.png)
 ![Il primo inverno senza cibo: il castello apre le porte](docs/primo_inverno.png)
@@ -127,7 +128,10 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
   - **Attacco e battaglia** (in stile Humankind): parte tutto l'esercito a casa e arriva dopo un mese. Allora si apre
     il **campo di battaglia**: un piccolo diorama a quadretti come il terreno del feudo, di **forma irregolare** (le diagonali contano come un passo), con i colori del suolo, gli alberi e la luce del clima della regione e della stagione, colline a gradoni, boschetti e stagni, e gli **edifici 3D del borgo**: mura, torri e porta del castello, case, chiesa e maniero nelle città, tende nei covi dei banditi, fattorie e mulino nelle terre libere. Spesso un **fiume** taglia il campo: si passa da un ponte di pietra, se c'è, oppure un fante abbatte un albero e con la legna getta un **ponte di barche** dalla riva (ci passa anche il nemico): le nostre unità a sinistra (lancieri,
     spadaccini, arcieri, balestrieri, cavalieri; uomini dei vassalli), quelle nemiche a destra a difesa della loro
-    **bandiera** (cavalieri e balestrieri dei signori, predoni, contadini armati). Prima lo **schieramento**: si tocca
+    **bandiera**: i signori schierano l'esercito del loro livello (contadini e lancieri nei villaggi; lancieri,
+    balestrieri, cavalieri e spadaccini nei borghi; spadaccini e cavalieri nelle città), i banditi un **capobanda**
+    con predoni e **briganti con la balestra**, le terre libere **milizia**, contadini e **cacciatori**; ogni figura
+    ha un aspetto un po' diverso e il mantello del colore della regione nemica sulla mappa. Prima lo **schieramento**: si tocca
     una nostra unità e poi una cella della zona azzurra (sulle nostre unità si scambiano), poi "Inizia la battaglia".
     Tocchi un'unità: le celle chiare sono dove può andare (boschi e colline costano 2 mosse), i nemici rossi quelli
     che può attaccare. Il **primo tocco su un nemico mostra le perdite previste** con i bonus, il secondo attacca.
@@ -148,6 +152,20 @@ Nel feudo si torna al regno con il pulsante "Regno" o rimpicciolendo oltre lo zo
     quanti ne ha il nostro borgo (chi più in fretta, chi meno, e un po' ogni anno anche se noi restiamo piccoli; non
     calano mai). Dagli abitanti vengono il livello (villaggio, borgo, città, con le stesse soglie del nostro),
     l'esercito (0,3 soldati per abitante) e le difese dell'assedio. La spia racconta quanti sono e come sono difesi.
+  - **Gli altri feudi giocano** (`scripts/game_state.gd`, sezione "feudi"): ogni signore ha un **carattere**
+    (mercante, guerriero, diplomatico) e le sue **scorte** (oro, cibo, legna, pietra, ferro: la sua merce di più) che
+    crescono con gli abitanti. A ogni stagione il suo umore verso di noi cambia secondo il carattere (i diplomatici si
+    addolciscono, i guerrieri si induriscono; patti e alleanze aiutano), e fra loro i signori **si alleano** o **si fanno
+    la guerra** (la guerra costa gente a tutti e due; il più forte vince e si prende parte di quello che l'altro ha
+    perso). Spesso un **messaggero** porta una proposta, come una carta da scegliere: un mercante che **vende** la sua
+    merce o **compra** quello che a loro manca, un **patto commerciale** (ogni stagione arriva un carico della loro
+    merce a prezzo di favore), un'**alleanza**, un alleato in guerra che **chiede aiuto**, o un guerriero più forte di
+    noi che **chiede un tributo**: rifiutando, spesso manda il suo **esercito contro il borgo** (si vedono i suoi
+    soldati marciare, come una banda ma più forte). Dalla mappa del regno, nella scheda di un signore: carattere,
+    alleanze e guerre, scorte (con la spia), e i pulsanti per **comprare**, **vendere**, fare un **dono** (+umore),
+    proporre o rompere un **patto**. Sulla mappa: alleanze fra signori in blu, guerre in rosso con le spade, i nostri
+    patti in oro. Attaccare un signore rompe i patti con lui, fa arrabbiare i suoi alleati (che rompono l'alleanza con
+    noi) e in battaglia gli mandano **rinforzi**. Valori in `bilanciamento.json`, sezione `feudi`.
     Vincendo la regione è nostra e la governa un **vassallo**. Conquistare un covo di banditi fa arrivare meno incursioni.
     Perdendo torna solo una parte dei soldati.
   - **Vassalli** (scheda di una regione conquistata): la governa un consigliere libero oppure un cavaliere ("Affida a").

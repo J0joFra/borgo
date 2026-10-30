@@ -79,10 +79,17 @@ const ASPETTI := [["Rogue_Hooded", ["Rogue_Cape", "Knife"], true], ["Barbarian",
 	["Rogue", ["Rogue_Cape", "Knife", "Knife_Offhand"], false]]
 
 
-## Un bandito: il personaggio 3D o, senza modelli, la figura in codice.
+## Un bandito: il personaggio 3D o, senza modelli, la figura in codice. Se a marciare è l'esercito
+## di un signore (o del re) sono soldati veri: lancieri, spadaccini e balestrieri col mantello blu.
 func _bandito(i: int) -> Node3D:
 	var a: Array = ASPETTI[i % ASPETTI.size()]
-	var s := Soldato.crea_con(str(a[0]), a[1], MANTELLO, "Idle", "", "", null, 1.3)
+	var s: Soldato
+	if GameState.banditi.get("signore", "") != "" or GameState.banditi.get("regio", false):
+		s = Soldato.crea(["fanti", "spadaccini", "balestrieri"][i % 3], Color("3f6f9f"), null, i)
+		if s:
+			s.scale = Vector3.ONE * 1.3
+			return s
+	s = Soldato.crea_con(str(a[0]), a[1], MANTELLO, "Idle", "", "", null, 1.3)
 	if s == null:
 		var m := MeshInstance3D.new()
 		m.mesh = _mesh

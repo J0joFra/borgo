@@ -19,7 +19,23 @@ const TIPI := {
 	"vassalli": ["Barbarian", ["Barbarian_Hat", "Barbarian_Cape", "1H_Axe", "Barbarian_Round_Shield"], "1H_Melee_Attack_Chop", "Idle"],
 	"predoni": ["Rogue_Hooded", ["Rogue_Cape", "Knife", "Knife_Offhand"], "Dualwield_Melee_Attack_Stab", "Idle"],
 	"contadini": ["Barbarian", ["2H_Axe"], "2H_Melee_Attack_Chop", "2H_Melee_Idle"],
+	"briganti": ["Rogue_Hooded", ["Rogue_Cape", "2H_Crossbow"], "2H_Ranged_Shoot", "Idle"],
+	"capobanda": ["Barbarian", ["Barbarian_Hat", "Barbarian_Cape", "2H_Axe"], "2H_Melee_Attack_Spin", "2H_Melee_Idle"],
+	"milizia": ["Barbarian", ["Barbarian_Round_Shield", "1H_Axe"], "1H_Melee_Attack_Chop", "Idle"],
+	"cacciatori": ["Rogue", ["Rogue_Cape", "1H_Crossbow"], "1H_Ranged_Shoot", "Idle"],
 }
+## Aspetti diversi per le figure della stessa unità: [modello, pezzi] (le armi restano quelle del tipo).
+const VARIANTI := {
+	"predoni": [["Rogue_Hooded", ["Rogue_Cape", "Knife", "Knife_Offhand"]], ["Rogue", ["Rogue_Cape", "Knife", "Knife_Offhand"]], ["Rogue_Hooded", ["Knife", "Knife_Offhand"]]],
+	"contadini": [["Barbarian", ["2H_Axe"]], ["Barbarian", ["Barbarian_Hat", "2H_Axe"]], ["Barbarian", ["Barbarian_Cape", "2H_Axe"]]],
+	"vassalli": [["Barbarian", ["Barbarian_Hat", "Barbarian_Cape", "1H_Axe", "Barbarian_Round_Shield"]], ["Barbarian", ["Barbarian_Cape", "1H_Axe", "Barbarian_Round_Shield"]]],
+	"milizia": [["Barbarian", ["Barbarian_Round_Shield", "1H_Axe"]], ["Barbarian", ["Barbarian_Hat", "Barbarian_Round_Shield", "1H_Axe"]], ["Barbarian", ["Barbarian_Cape", "Barbarian_Round_Shield", "1H_Axe"]]],
+	"briganti": [["Rogue_Hooded", ["Rogue_Cape", "2H_Crossbow"]], ["Rogue", ["2H_Crossbow"]]],
+	"cacciatori": [["Rogue", ["Rogue_Cape", "1H_Crossbow"]], ["Rogue_Hooded", ["1H_Crossbow"]]],
+	"fanti": [["Knight", ["Knight_Helmet", "Knight_Cape", "Round_Shield", "1H_Sword"]], ["Knight", ["Knight_Helmet", "Knight_Cape", "Rectangle_Shield", "1H_Sword"]]],
+	"spadaccini": [["Knight", ["Knight_Helmet", "Knight_Cape", "Badge_Shield", "1H_Sword"]], ["Knight", ["Knight_Helmet", "Knight_Cape", "Spike_Shield", "1H_Sword"]], ["Knight", ["Knight_Cape", "Badge_Shield", "1H_Sword"]]],
+}
+const GRANDI := {"capobanda": 1.25}  # chi è più grosso degli altri
 const IN_GIRO := ["Idle", "2H_Melee_Idle", "Sit_Chair_Idle", "Sit_Floor_Idle", "Walking_A", "Running_A"]
 
 static var _scene: Dictionary = {}  # modello -> PackedScene (o null)
@@ -32,10 +48,16 @@ var _caduto := false
 var _lavoro := ""  # l'animazione che ripete mentre lavora (abbattere, raccogliere...)
 
 
-## Un soldato del tipo dato, o null se i modelli non ci sono.
-static func crea(tipo_unita: String, mantello: Color, cavallo: Mesh = null) -> Soldato:
+## Un soldato del tipo dato (nell'aspetto numero "variante"), o null se i modelli non ci sono.
+static func crea(tipo_unita: String, mantello: Color, cavallo: Mesh = null, variante := 0) -> Soldato:
 	var d: Array = TIPI.get(tipo_unita, TIPI.fanti)
-	return crea_con(str(d[0]), d[1], mantello, str(d[3]), str(d[2]), tipo_unita, cavallo)
+	var modello := str(d[0])
+	var pezzi: Array = d[1]
+	if VARIANTI.has(tipo_unita):
+		var v: Array = VARIANTI[tipo_unita][variante % VARIANTI[tipo_unita].size()]
+		modello = str(v[0])
+		pezzi = v[1]
+	return crea_con(modello, pezzi, mantello, str(d[3]), str(d[2]), tipo_unita, cavallo, float(GRANDI.get(tipo_unita, 1.0)))
 
 
 ## Un personaggio qualsiasi: modello (Knight, Barbarian, Rogue, Rogue_Hooded), i pezzi da mostrare,

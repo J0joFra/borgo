@@ -418,6 +418,31 @@ func _via() -> void:
 		await _attendi(1.0)
 		await _scatta("30_ruotato")
 	var spiata: String = GameState.regni.keys()[0]
+	# i signori come giocatori: due alleati fra loro, due in guerra, un nostro patto, e un messaggero
+	var signori_v := GameState.signori_attivi()
+	signori_v.sort_custom(func(x, y): return GameState.regni[x].signore < GameState.regni[y].signore)
+	# signori diversi a coppie (uno stesso signore può avere più terre)
+	var diversi := []
+	for k in signori_v:
+		if diversi.all(func(d): return GameState.regni[d].signore != GameState.regni[k].signore) or diversi.size() >= 3:
+			diversi.append(k)
+	signori_v = diversi
+	if signori_v.size() >= 4:
+		var s0: Dictionary = GameState.regni[signori_v[0]]
+		var s1: Dictionary = GameState.regni[signori_v[1]]
+		s0.alleati_di = [signori_v[1]]
+		s1.alleati_di = [signori_v[0]]
+		GameState.regni[signori_v[2]].guerra_con = signori_v[3]
+		GameState.regni[signori_v[3]].guerra_con = signori_v[2]
+		GameState.regni[signori_v[2]].guerra_mancano = 3
+		GameState.regni[signori_v[3]].guerra_mancano = 3
+		s0.commercio = true
+		s0.atteggiamento = 45
+		spiata = signori_v[0]
+		GameState.mostra_evento(GameState._carta_patto(signori_v[1]))
+		await _attendi(0.6)
+		await _scatta("21b_proposta_signore")
+		GameState.scegli_evento(1)
 	GameState.regni[spiata].spiato = true
 	GameState.manda_spia(GameState.regni.keys()[1])
 	GameState.attacca(GameState.regni.keys()[2])

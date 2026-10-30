@@ -28,6 +28,10 @@ var _vassallo_box: VBoxContainer   # per le regioni conquistate: vassallo e trib
 var _btn_tributo: Dictionary = {}  # "basso" | "normale" | "alto" -> Button
 var _btn_vassallo: Button
 var _scelta := ""  # chiave della regione aperta nella scheda
+var _scorri: ScrollContainer  # la scheda scorre se è più alta dello schermo
+var _colonna: VBoxContainer
+var _affari_box: GridContainer  # comprare, vendere, doni, patto: per i signori
+var _affari: Dictionary = {}  # azione -> Button
 
 
 func _ready() -> void:
@@ -105,7 +109,7 @@ func _crea_interfaccia() -> void:
 	titolo.offset_top = 8
 	add_child(titolo)
 	_info = Label.new()
-	_info.text = "Tocca la tua regione, bordata di rosso, per entrare nel feudo; le altre per spie, alleanze e guerra"
+	_info.text = "Tocca la tua regione, bordata di rosso, per entrare nel feudo; le altre per spie, commerci, alleanze e guerra"
 	_info.add_theme_color_override("font_color", INCHIOSTRO)
 	_info.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_info.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -140,20 +144,40 @@ func _crea_scheda() -> void:
 	_scheda.offset_right = -10
 	_scheda.visible = false
 	add_child(_scheda)
+	_scorri = ScrollContainer.new()
+	_scorri.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scheda.add_child(_scorri)
 	var col := VBoxContainer.new()
-	_scheda.add_child(col)
+	_colonna = col
+	_scorri.add_child(col)
 	_scheda_testo = Label.new()
 	_scheda_testo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_scheda_testo.custom_minimum_size.x = 190
+	_scheda_testo.custom_minimum_size.x = 230
+	_scheda_testo.add_theme_font_size_override("font_size", 7)
 	col.add_child(_scheda_testo)
 	for azione in ["spia", "alleanza", "attacco"]:
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(190, 18)
+		b.custom_minimum_size = Vector2(230, 18)
 		b.focus_mode = Control.FOCUS_NONE
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.pressed.connect(_azione.bind(azione))
 		col.add_child(b)
 		_scheda_bottoni[azione] = b
+	# gli affari con un signore: due colonne di pulsanti piccoli
+	_affari_box = GridContainer.new()
+	_affari_box.columns = 2
+	_affari_box.add_theme_constant_override("h_separation", 2)
+	_affari_box.add_theme_constant_override("v_separation", 2)
+	col.add_child(_affari_box)
+	for azione in ["compra", "vendi", "dono", "patto"]:
+		var ba := Button.new()
+		ba.custom_minimum_size = Vector2(114, 18)
+		ba.focus_mode = Control.FOCUS_NONE
+		ba.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		ba.add_theme_font_size_override("font_size", 6)
+		ba.pressed.connect(_affare.bind(azione))
+		_affari_box.add_child(ba)
+		_affari[azione] = ba
 	_vassallo_box = VBoxContainer.new()
 	col.add_child(_vassallo_box)
 	var riga := HBoxContainer.new()
@@ -184,7 +208,17 @@ func _apri_scheda(chiave: String) -> void:
 	_scelta = chiave
 	_scheda.visible = true
 	_aggiorna_scheda()
+	_scorri.scroll_vertical = 0
 	queue_redraw()
+
+
+## La scheda è alta quanto serve, ma mai più dello schermo (allora scorre).
+func _misura_scheda() -> void:
+	var serve := _colonna.get_combined_minimum_size()
+	_scorri.custom_minimum_size = Vector2(serve.x + 8, minf(serve.y, get_viewport_rect().size.y - 28))
+	_scheda.reset_size()
+	_scheda.offset_top = -_scheda.size.y / 2.0
+	_scheda.offset_bottom = _scheda.size.y / 2.0
 
 
 func _aggiorna_scheda() -> void:
@@ -218,8 +252,26 @@ func _aggiorna_scheda() -> void:
 				int(r.abitanti), GameState.difese_regno(_scelta).to_lower()])
 		if r.tipo == "signore":
 			righe.append("Verso di noi: %s%s" % [GameState.testo_atteggiamento(int(r.atteggiamento)), " · alleato" if r.alleato else ""])
+		if r.has("scorte"):
+			var sc: Array[String] = []
+			for m in r.scorte:
+				sc.append("%d %s" % [int(r.scorte[m]), "oro" if m == "oro" else GameState.nome_risorsa(m).to_lower()])
+			righe.append("Scorte: " + ", ".join(sc))
 	else:
 		righe.append("Non sappiamo quanto sono forti: manda una spia.")
+	# quello che si sa di un signore anche senza spie: carattere, alleanze, guerre, patti
+	if r.has("carattere") and not r.conquistato:
+		righe.append("Carattere: %s" % GameState.CARATTERI[r.carattere])
+		var amici: Array[String] = []
+		for a in r.get("alleati_di", []):
+			amici.append("%s (%s)" % [GameState.regni[a].nome, GameState.regni[a].signore])
+		if not amici.is_empty():
+			righe.append("Alleato di: " + ", ".join(amici))
+		if str(r.get("guerra_con", "")) != "":
+			righe.append("In guerra con %s (%s)" % [GameState.regni[r.guerra_con].nome, GameState.regni[r.guerra_con].signore])
+		if r.get("commercio", false):
+			var t: Dictionary = GameState.bil.feudi.trattato
+			righe.append("Patto commerciale: ogni stagione %d %s" % [int(t.quanti), GameState.nome_risorsa(GameState.merce_di(_scelta)).to_lower()])
 	var m := GameState.missione_per(_scelta)
 	if not m.is_empty():
 		righe.append("In viaggio: %s, %d giorni (il tempo scorre nel feudo)" % [m.tipo, int(m.mancano)])
@@ -234,6 +286,19 @@ func _aggiorna_scheda() -> void:
 		b.text = testi[azione] + ("" if perche == "" else "\n(%s)" % perche)
 		b.disabled = perche != ""
 		b.visible = not r.conquistato and not (azione == "alleanza" and r.tipo != "signore")
+	_misura_scheda.call_deferred()
+	_affari_box.visible = r.tipo == "signore" and not r.conquistato and r.has("scorte")
+	if _affari_box.visible:
+		var q := int(GameState.bil.feudi.lotto)
+		var testi_a := {"compra": "Compra %d %s (%d oro)" % [q, GameState.nome_risorsa(GameState.merce_di(_scelta)).to_lower(), GameState.prezzo_da(_scelta)],
+			"vendi": "Vendi %d %s (%d oro)" % [q, GameState.nome_risorsa(GameState.bisogno_di(_scelta)).to_lower(), GameState.prezzo_a(_scelta)],
+			"dono": "Dono di %d oro" % int(GameState.bil.feudi.dono),
+			"patto": "Rompi il patto" if r.get("commercio", false) else "Proponi un patto commerciale"}
+		for azione in _affari:
+			var ba: Button = _affari[azione]
+			var perche := "" if azione == "patto" and r.get("commercio", false) else GameState.perche_no_affare(azione, _scelta)
+			ba.text = testi_a[azione] + ("" if perche == "" else "\n(%s)" % perche)
+			ba.disabled = perche != ""
 
 
 ## Il prossimo candidato a vassallo: i consiglieri liberi, poi un cavaliere.
@@ -250,6 +315,25 @@ func _prossimo_vassallo() -> int:
 func _cambia_vassallo() -> void:
 	GameState.nomina_vassallo(_scelta, _prossimo_vassallo())
 	GameState.salva()
+
+
+func _affare(azione: String) -> void:
+	match azione:
+		"compra":
+			GameState.compra_da(_scelta)
+		"vendi":
+			GameState.vendi_a(_scelta)
+		"dono":
+			GameState.dono_a(_scelta)
+		"patto":
+			if GameState.regni[_scelta].get("commercio", false):
+				GameState.rompi_patto(_scelta)
+			else:
+				GameState.proponi_patto(_scelta)
+	Audio.effetto("click")
+	GameState.salva()
+	_aggiorna_scheda()
+	queue_redraw()
 
 
 func _azione(azione: String) -> void:
@@ -317,13 +401,30 @@ func _draw() -> void:
 			draw_polyline(bordo_r, Color("4f8a3b"), 2.0, true)
 		if str(i) == _scelta:
 			draw_polyline(bordo_r, Color("f2c94c"), 2.0, true)
+	# fra i signori: alleanze (blu tratteggiato), guerre (rosso con le spade), i nostri patti (oro)
+	for k in GameState.regni:
+		var st: Dictionary = GameState.regni[k]
+		var ck: Vector2 = _regioni[int(k)].get("centro", Vector2.ZERO)
+		for a in st.get("alleati_di", []):
+			if int(a) > int(k):
+				draw_dashed_line(ck, _regioni[int(a)].get("centro", Vector2.ZERO), Color("3f6f9f"), 1.5, 5.0)
+		var nemico := str(st.get("guerra_con", ""))
+		if nemico != "" and int(nemico) > int(k):
+			var cn: Vector2 = _regioni[int(nemico)].get("centro", Vector2.ZERO)
+			draw_line(ck, cn, Color("b03a2e", 0.8), 1.5, true)
+			var mezzo := ck.lerp(cn, 0.5)
+			draw_line(mezzo + Vector2(-4, -4), mezzo + Vector2(4, 4), Color("8a2a20"), 2.0, true)
+			draw_line(mezzo + Vector2(4, -4), mezzo + Vector2(-4, 4), Color("8a2a20"), 2.0, true)
+		if st.get("commercio", false):
+			draw_dashed_line(_regioni[_mia].get("centro", Vector2.ZERO), ck, Color("c89a2a"), 1.5, 3.0)
 	for m in GameState.missioni:
 		var a: Vector2 = _regioni[_mia].get("centro", Vector2.ZERO)
 		var b: Vector2 = _regioni[int(m.regione)].get("centro", Vector2.ZERO)
 		var colore_m := Color("8a2a20") if m.tipo == "attacco" else INCHIOSTRO
 		draw_dashed_line(a, b, colore_m, 1.5, 4.0)
 		var fatto := 1.0 - float(m.mancano) / float({"spia": GameState.bil.diplomazia.giorni_spia,
-			"alleanza": GameState.bil.diplomazia.giorni_messaggero, "attacco": GameState.bil.diplomazia.giorni_marcia}[m.tipo])
+			"alleanza": GameState.bil.diplomazia.giorni_messaggero, "patto": GameState.bil.diplomazia.giorni_messaggero,
+			"attacco": GameState.bil.diplomazia.giorni_marcia}[m.tipo])
 		draw_circle(a.lerp(b, clampf(fatto, 0.0, 1.0)), 3.0, colore_m)
 	for i in _regioni.size():
 		var r: Dictionary = _regioni[i]

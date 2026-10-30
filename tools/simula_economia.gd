@@ -36,6 +36,7 @@ func _partita(seme: int, anni: int) -> void:
 	GameState.bil.banditi.dall_anno = 99  # e niente banditi
 	GameState.bil.banditi.dal_livello = 99
 	GameState.banditi = {}
+	GameState.bil.feudi.probabilita_proposta = 0.0  # niente messaggeri dei signori
 	_centro = TerrenoFeudo.centro_feudo()
 	print("\n=== partita %d (clima %s) ===" % [seme, GameState.clima])
 	if not GameState.message.is_connected(_messaggio):

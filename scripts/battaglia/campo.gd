@@ -22,7 +22,8 @@ const TERRA := Color("8a6a45")
 const COLORI_LATO := {"noi": Color("b03a2e"), "loro": Color("3f6f9f")}
 const COLORI_NEMICI := {"signore": Color("3f6f9f"), "banditi": Color("3a3636"), "libera": Color("8a6a3a")}
 const TUNICHE := {"fanti": Color("a8322a"), "arcieri": Color("3f6b3a"), "vassalli": Color("d0802c"),
-	"cavalieri": Color("3f6f9f"), "balestrieri": Color("2f5a85"), "predoni": Color("2e2a2a"), "contadini": Color("8a6a3a")}
+	"cavalieri": Color("3f6f9f"), "balestrieri": Color("2f5a85"), "predoni": Color("2e2a2a"), "contadini": Color("8a6a3a"),
+	"briganti": Color("3a3030"), "capobanda": Color("5a2020"), "milizia": Color("7a6a3a"), "cacciatori": Color("4a5a2a"), "spadaccini": Color("3a5a8a")}
 ## Le nostre unità sono sempre nei toni del rosso, quelle nemiche nei colori del loro esercito.
 const TUNICHE_NOSTRE := {"fanti": Color("a8322a"), "spadaccini": Color("962a2a"), "arcieri": Color("8a3a2a"), "balestrieri": Color("7a2a22"),
 	"cavalieri": Color("c0402e"), "vassalli": Color("d0802c")}
@@ -476,14 +477,30 @@ func _cavallo() -> ArrayMesh:
 
 
 ## Una figura dell'unità: il soldato 3D (KayKit) col mantello della sua parte, o la figura in codice.
-func _figura(u: Dictionary) -> Node3D:
-	var mantello: Color = COLORI_LATO.noi if u.lato == "noi" else COLORI_NEMICI.get(GameState.battaglia.tipo_nemico, COLORI_LATO.loro)
-	var s := Soldato.crea(u.tipo, mantello, _cavallo() if u.tipo == "cavalieri" else null)
+func _figura(u: Dictionary, n: int) -> Node3D:
+	var mantello: Color = COLORI_LATO.noi if u.lato == "noi" else _colore_nemico()
+	var s := Soldato.crea(u.tipo, mantello, _cavallo() if u.tipo == "cavalieri" else null, n + int(u.id))
 	if s:
 		return s
 	var m := MeshInstance3D.new()
 	m.mesh = _mesh_di(u.tipo, u.lato)
 	return m
+
+
+## Il colore del nemico: quello della regione del signore sulla mappa del regno (banditi e terre
+## libere hanno i loro colori; nella prova, il blu).
+func _colore_nemico() -> Color:
+	if _mesh_figure.has("colore_nemico"):
+		return _mesh_figure.colore_nemico
+	var b := GameState.battaglia
+	var colore: Color = COLORI_NEMICI.get(b.tipo_nemico, COLORI_LATO.loro)
+	if b.tipo_nemico == "signore" and not b.get("prova", false) and str(b.get("regione", "")).is_valid_int():
+		var g := Regioni.genera(GameState.seme_mappa)
+		var i := int(b.regione)
+		if i >= 0 and i < g.regioni.size() and g.regioni[i].has("colore"):
+			colore = Color(g.regioni[i].colore).darkened(0.15)
+	_mesh_figure.colore_nemico = colore
+	return colore
 
 
 ## I soldati 3D di un'unità (per le animazioni).
@@ -549,7 +566,7 @@ func _crea_unita(u: Dictionary) -> void:
 	_nodi[int(u.id)] = nodo
 	nodo.position = posizione(LogicaBattaglia.cella(u))
 	nodo.rotation.y = PI / 2.0 if u.lato == "noi" else -PI / 2.0
-	var colore: Color = COLORI_LATO.noi if u.lato == "noi" else COLORI_NEMICI.get(GameState.battaglia.tipo_nemico, COLORI_LATO.loro)
+	var colore: Color = COLORI_LATO.noi if u.lato == "noi" else _colore_nemico()
 	var asta := MeshInstance3D.new()
 	var k := LowPoly.Costruttore.new()
 	k.forma(LowPoly.cilindro(0.05, 0.05, 2.6, 4), LowPoly.t(Vector3(-0.9, 1.3, -0.6)), Color("5a3a22"))
@@ -675,7 +692,7 @@ func _aggiorna_unita(u: Dictionary) -> void:
 			f.queue_free()
 	var posti := [Vector3(0, 0, 0.1), Vector3(0.62, 0, 0.5), Vector3(-0.62, 0, 0.5), Vector3(0.1, 0, -0.6), Vector3(-0.6, 0, -0.45)]
 	while figure.get_child_count() < quante:
-		var m := _figura(u)
+		var m := _figura(u, figure.get_child_count())
 		m.position = posti[figure.get_child_count()]
 		figure.add_child(m)
 	var etichetta: Label3D = nodo.get_node("Numero")

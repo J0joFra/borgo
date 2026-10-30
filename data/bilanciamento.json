@@ -108,8 +108,20 @@
 			{"nome": "Mura di pietra", "materiale": "pietra", "raggio": 2, "porta": 20, "difesa": 1.5, "case": 0},
 			{"nome": "Castello con le torri", "materiale": "pietra", "raggio": 3, "porta": 30, "difesa": 1.5, "case": 5, "torri": true}
 		]},
-		"unita": {"fanti": {"nome": "Lancieri", "forza": 5, "mosse": 3, "gittata": 1}, "spadaccini": {"nome": "Spadaccini", "forza": 7, "mosse": 3, "gittata": 1}, "arcieri": {"nome": "Arcieri", "forza": 4, "mosse": 3, "gittata": 2}, "vassalli": {"nome": "Uomini dei vassalli", "forza": 4, "mosse": 3, "gittata": 1}, "cavalieri": {"nome": "Cavalieri", "forza": 6, "mosse": 4, "gittata": 1}, "balestrieri": {"nome": "Balestrieri", "forza": 4, "mosse": 2, "gittata": 2}, "predoni": {"nome": "Predoni", "forza": 4, "mosse": 4, "gittata": 1}, "contadini": {"nome": "Contadini armati", "forza": 3, "mosse": 3, "gittata": 1}, "porta": {"nome": "Porta del castello", "forza": 0, "mosse": 0, "gittata": 0}},
-		"eserciti": {"signore": ["cavalieri", "balestrieri", "cavalieri"], "banditi": ["predoni"], "libera": ["contadini"]}
+		"unita": {"fanti": {"nome": "Lancieri", "forza": 5, "mosse": 3, "gittata": 1}, "spadaccini": {"nome": "Spadaccini", "forza": 7, "mosse": 3, "gittata": 1}, "arcieri": {"nome": "Arcieri", "forza": 4, "mosse": 3, "gittata": 2}, "vassalli": {"nome": "Uomini dei vassalli", "forza": 4, "mosse": 3, "gittata": 1}, "cavalieri": {"nome": "Cavalieri", "forza": 6, "mosse": 4, "gittata": 1}, "balestrieri": {"nome": "Balestrieri", "forza": 4, "mosse": 2, "gittata": 2}, "predoni": {"nome": "Predoni", "forza": 4, "mosse": 4, "gittata": 1}, "contadini": {"nome": "Contadini armati", "forza": 3, "mosse": 3, "gittata": 1}, "porta": {"nome": "Porta del castello", "forza": 0, "mosse": 0, "gittata": 0}, "briganti": {"nome": "Briganti con la balestra", "forza": 3, "mosse": 3, "gittata": 2}, "capobanda": {"nome": "Il capobanda", "forza": 8, "mosse": 3, "gittata": 1}, "milizia": {"nome": "Milizia", "forza": 4, "mosse": 3, "gittata": 1}, "cacciatori": {"nome": "Cacciatori", "forza": 3, "mosse": 3, "gittata": 2}},
+		"eserciti": {"signore": ["cavalieri", "balestrieri", "cavalieri"], "banditi": ["capobanda", "predoni", "briganti", "predoni", "briganti", "predoni"], "libera": ["milizia", "contadini", "cacciatori", "contadini", "milizia"],
+			"signore_0": ["fanti", "contadini", "balestrieri", "fanti", "contadini"], "signore_1": ["fanti", "balestrieri", "cavalieri", "spadaccini", "fanti", "balestrieri"],
+			"signore_2": ["spadaccini", "cavalieri", "balestrieri", "fanti", "cavalieri", "balestrieri", "spadaccini"]}
+	},
+	"feudi": {
+		"scorte_iniziali": 40, "scorta_massima": 300,
+		"produzione_per_abitante": 0.6, "altre_per_abitante": 0.12, "oro_per_abitante": 0.15,
+		"deriva": {"mercante": 1, "guerriero": -3, "diplomatico": 3},
+		"probabilita_alleanza_fra_loro": 0.12, "probabilita_guerra_fra_loro": 0.08, "durata_guerra": [2, 4], "perdite_guerra": [0.04, 0.1],
+		"probabilita_proposta": 0.7, "lotto": 20, "dono": 20, "dono_atteggiamento": 10,
+		"trattato": {"quanti": 10, "sconto": 0.8, "atteggiamento": 2},
+		"tributo_chiesto": [20, 45], "vendetta": 0.6, "forza_spedizione": 0.6, "aiuto_guerra": 25,
+		"reazione_attacco_alleati": 30, "rinforzi_alleati": 0.3
 	},
 	"tributo_case": [[4, 1], [6, 2], [8, 3]],
 	"biomi": {
